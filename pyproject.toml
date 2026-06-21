@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spinetx"
+version = "0.1.0"
+description = "Deterministic CLI that prepares Markdown and EPUB documents for translation by a coding agent."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
+license-files = { paths = ["LICENSE"] }
+authors = [{ name = "spinetx contributors" }]
+keywords = ["translation", "epub", "markdown", "cli", "localization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Text Processing :: Markup :: HTML",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+    "typer",
+    "rich",
+    "pydantic>=2",
+    "ebooklib",
+    "lxml",
+    "beautifulsoup4",
+    "markdown-it-py",
+    "pysbd",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+spinetx = "spinetx.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/spinetx/spinetx"
+
+[tool.hatch.build.targets.wheel]
+# Non-src layout: the package lives at ./spinetx
+packages = ["spinetx"]
+
+[tool.hatch.build.targets.sdist]
+include = ["spinetx", "tests", "README.md", "LICENSE", "pyproject.toml"]

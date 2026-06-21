@@ -1,0 +1,105 @@
+"""Tests for spinetx.config: project layout, config read/write, source resolution."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from spinetx.config import (
+    SpinetxError,
+    detect_format,
+    find_source_file,
+    init_project,
+    load_names,
+    load_project,
+)
+
+
+def test_detect_format():
+    assert detect_format("book.md") == "markdown"
+    assert detect_format("book.epub") == "epub"
+    with pytest.raises(SpinetxError):
+        detect_format("book.pdf")
+
+
+def test_init_creates_full_layout(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    for d in (
+        proj.source_dir,
+        proj.spinetx_dir,
+        proj.chunks_dir,
+        proj.translated_dir,
+        proj.reports_dir,
+        proj.output_dir,
+    ):
+        assert d.is_dir(), f"{d} missing"
+    assert proj.config_path.is_file()
+    assert proj.names_path.is_file()
+    assert proj.config.target_language == "de"
+    assert proj.config.source_language == "en"
+    # empty names.json
+    assert load_names(proj).protected_terms == []
+
+
+def test_init_copies_supplied_source(tmp_path: Path, monkeypatch):
+    src = tmp_path / "novel.md"
+    src.write_text("# Title\n", encoding="utf-8")
+    proj = init_project(
+        tmp_path / "book",
+        target_language="de",
+        source_file=src,
+    )
+    assert (proj.source_dir / "novel.md").is_file()
+    assert proj.config.source_file == "novel.md"
+    assert proj.config.format == "markdown"
+
+
+def test_init_rejects_unsupported_source(tmp_path: Path):
+    src = tmp_path / "doc.pdf"
+    src.write_bytes(b"%PDF-1.4")
+    with pytest.raises(SpinetxError):
+        init_project(tmp_path / "book", target_language="de", source_file=src)
+
+    import tomllib
+
+    proj = init_project(tmp_path / "book", target_language="fr", source_language="en")
+    cfg_path = proj.config_path
+    # rewrite chunk_size and reload via TOML round-trip
+    with cfg_path.open("rb") as fh:
+        data = tomllib.load(fh)
+    data["chunk_size"] = 25
+    import tomli_w
+
+    cfg_path.write_bytes(tomli_w.dumps(data).encode("utf-8"))
+    proj2 = load_project(tmp_path / "book")
+    assert proj2.config.chunk_size == 25
+    assert proj2.config.target_language == "fr"
+
+
+def test_load_project_rejects_non_project(tmp_path: Path):
+    with pytest.raises(SpinetxError):
+        load_project(tmp_path / "nope")
+
+
+def test_find_source_file_requires_exactly_one(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    # No source file -> error
+    with pytest.raises(SpinetxError):
+        find_source_file(proj)
+    # Two sources -> ambiguous
+    (proj.source_dir / "a.md").write_text("a", encoding="utf-8")
+    (proj.source_dir / "b.md").write_text("b", encoding="utf-8")
+    with pytest.raises(SpinetxError):
+        find_source_file(proj)
+
+
+def test_find_source_file_syncs_config(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    (proj.source_dir / "story.md").write_text("# Hi\n", encoding="utf-8")
+    found = find_source_file(proj)
+    assert found.name == "story.md"
+    # config should now reflect the discovered file
+    proj2 = load_project(tmp_path / "book")
+    assert proj2.config.source_file == "story.md"
+    assert proj2.config.format == "markdown"

@@ -1,0 +1,292 @@
+"""Project configuration and ``.spinetx/`` directory management.
+
+A *project* is a directory laid out like this (see
+``spinetx_coding_agent_start.md``)::
+
+    book/
+      source/
+        book.md        # or book.epub; exactly one source file
+      .spinetx/
+        config.toml
+        manifest.json
+        names.json
+        chunks/
+        translated/
+        reports/
+      output/
+
+This module owns reading/writing those files and resolving the project root,
+the single source file, and the active :class:`~spinetx.models.ProjectConfig`.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import tomli_w
+import tomllib
+
+from spinetx.models import Manifest, NamesFile, ProjectConfig
+
+__all__ = [
+    "SUPPORTED_SOURCE_SUFFIXES",
+    "SpinetxError",
+    "Project",
+    "init_project",
+    "load_project",
+    "detect_format",
+    "write_manifest",
+    "write_names",
+    "load_names",
+]
+
+#: Filename suffixes spinetx understands in v1, mapped to format names.
+SUPPORTED_SOURCE_SUFFIXES: dict[str, str] = {
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".epub": "epub",
+}
+
+#: Default protected-terms file written by ``spinetx init``.
+DEFAULT_NAMES_JSON: dict[str, Any] = {"protected_terms": []}
+
+
+class SpinetxError(Exception):
+    """User-facing error from spinetx. Carries a stable ``code`` attribute."""
+
+
+def _err(code: str, message: str) -> SpinetxError:
+    e = SpinetxError(message)
+    e.code = code  # type: ignore[attr-defined]
+    return e
+
+
+@dataclass(slots=True)
+class Project:
+    """Resolved paths for a spinetx project."""
+
+    root: Path
+    source_dir: Path
+    spinetx_dir: Path
+    config_path: Path
+    manifest_path: Path
+    names_path: Path
+    chunks_dir: Path
+    translated_dir: Path
+    reports_dir: Path
+    output_dir: Path
+    config: ProjectConfig
+
+    @property
+    def source_path(self) -> Path:
+        """Full path to the single source document."""
+        return self.source_dir / self.config.source_file
+
+    def chunks(self) -> list[Path]:
+        return sorted(self.chunks_dir.glob("*.json"))
+
+    def translated(self) -> list[Path]:
+        return sorted(self.translated_dir.glob("*.json"))
+
+    def chunk_ids(self) -> list[str]:
+        return [p.stem for p in self.chunks()]
+
+    def translated_ids(self) -> list[str]:
+        return [p.stem for p in self.translated()]
+
+
+def detect_format(filename: str | Path) -> str:
+    """Return the spinetx format name for a filename, or raise."""
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_SOURCE_SUFFIXES:
+        raise _err(
+            "unsupported_format",
+            f"Unsupported source format '{suffix or '<none>'}'. "
+            "spinetx v1 supports only .md and .epub.",
+        )
+    return SUPPORTED_SOURCE_SUFFIXES[suffix]
+
+
+def init_project(
+    target: Path,
+    *,
+    target_language: str,
+    source_language: str = "en",
+    source_file: Path | str | None = None,
+    chunk_size: int = 50,
+) -> Project:
+    """Create the project layout and a starter config at ``target``.
+
+    If ``source_file`` is given, it is copied into ``target/source/`` and its
+    format is detected from the suffix. If it is omitted, an empty
+    ``source/`` directory is created and the user is expected to drop a file in.
+    """
+    root = Path(target).expanduser().resolve()
+    if root.exists() and not root.is_dir():
+        raise _err("not_a_directory", f"{root} exists and is not a directory.")
+    if not root.exists():
+        root.mkdir(parents=True, exist_ok=True)
+
+    source_dir = root / "source"
+    spinetx_dir = root / ".spinetx"
+    chunks_dir = spinetx_dir / "chunks"
+    translated_dir = spinetx_dir / "translated"
+    reports_dir = spinetx_dir / "reports"
+    output_dir = root / "output"
+    for d in (
+        source_dir,
+        spinetx_dir,
+        chunks_dir,
+        translated_dir,
+        reports_dir,
+        output_dir,
+    ):
+        d.mkdir(parents=True, exist_ok=True)
+
+    rel_source_name: str | None = None
+    fmt: str | None = None
+    if source_file is not None:
+        src = Path(source_file).expanduser().resolve()
+        if not src.is_file():
+            raise _err("source_not_found", f"Source file not found: {src}")
+        fmt = detect_format(src.name)
+        dest = source_dir / src.name
+        if src.resolve() != dest.resolve():
+            dest.write_bytes(src.read_bytes())
+        rel_source_name = src.name
+
+    if rel_source_name is None:
+        # No source supplied yet; defer until extract. We still need *some*
+        # value for the config, but leave it empty and let load/extract fail
+        # loudly if it stays empty.
+        rel_source_name = ""
+        fmt = "markdown"  # placeholder; re-detected at extract time
+
+    cfg = ProjectConfig(
+        source_language=source_language,
+        target_language=target_language,
+        source_file=rel_source_name,
+        format=fmt,
+        chunk_size=chunk_size,
+    )
+    _write_config(root / ".spinetx" / "config.toml", cfg)
+    # names.json: empty but present so the agent knows where to add terms.
+    (spinetx_dir / "names.json").write_text(
+        json.dumps(DEFAULT_NAMES_JSON, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return load_project(root)
+
+
+def load_project(root: Path | str) -> Project:
+    """Load an existing project, validating its layout."""
+    r = Path(root).expanduser().resolve()
+    spinetx_dir = r / ".spinetx"
+    config_path = spinetx_dir / "config.toml"
+    if not config_path.is_file():
+        raise _err(
+            "not_a_project",
+            f"{r} is not a spinetx project: missing {config_path}.",
+        )
+    cfg = _read_config(config_path)
+
+    return Project(
+        root=r,
+        source_dir=r / "source",
+        spinetx_dir=spinetx_dir,
+        config_path=config_path,
+        manifest_path=spinetx_dir / "manifest.json",
+        names_path=spinetx_dir / "names.json",
+        chunks_dir=spinetx_dir / "chunks",
+        translated_dir=spinetx_dir / "translated",
+        reports_dir=spinetx_dir / "reports",
+        output_dir=r / "output",
+        config=cfg,
+    )
+
+
+def _read_config(path: Path) -> ProjectConfig:
+    with path.open("rb") as fh:
+        data = tomllib.load(fh)
+    return ProjectConfig.model_validate(data)
+
+
+def _write_config(path: Path, cfg: ProjectConfig) -> None:
+    data = cfg.model_dump(mode="json")
+    # tomli_w does not accept ints-as-strings; model_dump(mode="json") is fine.
+    path.write_bytes(tomli_w.dumps(data).encode("utf-8"))
+
+
+def write_manifest(project: Project, manifest: Manifest) -> None:
+    project.manifest_path.write_text(
+        manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def load_manifest(project: Project) -> Manifest | None:
+    if not project.manifest_path.is_file():
+        return None
+    return Manifest.model_validate_json(project.manifest_path.read_text("utf-8"))
+
+
+def write_names(project: Project, names: NamesFile) -> None:
+    project.names_path.write_text(
+        json.dumps(names.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def load_names(project: Project) -> NamesFile:
+    if not project.names_path.is_file():
+        return NamesFile()
+    try:
+        return NamesFile.model_validate_json(project.names_path.read_text("utf-8"))
+    except Exception as exc:  # noqa: BLE001 - surface as SpinetxError
+        raise _err("bad_names_json", f"names.json is invalid: {exc}") from exc
+
+
+def find_source_file(project: Project) -> Path:
+    """Resolve the single source document, or raise a clear error.
+
+    Rules:
+    - If config.source_file is set and the file exists, use it.
+    - Otherwise scan ``source/`` for exactly one supported file.
+    - Zero or >1 candidate is a hard error.
+    """
+    configured = project.config.source_file.strip()
+    if configured:
+        candidate = project.source_dir / configured
+        if candidate.is_file():
+            return candidate
+        # Fall through to scan; the configured name may be stale.
+
+    candidates = [
+        p
+        for p in sorted(project.source_dir.iterdir())
+        if p.is_file() and p.suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
+    ]
+    if not candidates:
+        raise _err(
+            "no_source",
+            f"No source document found in {project.source_dir}. "
+            "Drop a .md or .epub file into source/.",
+        )
+    if len(candidates) > 1:
+        names = ", ".join(p.name for p in candidates)
+        raise _err(
+            "ambiguous_source",
+            f"Found multiple source documents in {project.source_dir}: {names}. "
+            "Keep exactly one.",
+        )
+    chosen = candidates[0]
+    # Keep config in sync with the discovered file.
+    if project.config.source_file != chosen.name or (
+        project.config.format != detect_format(chosen.name)
+    ):
+        project.config.source_file = chosen.name
+        project.config.format = detect_format(chosen.name)
+        _write_config(project.config_path, project.config)
+    return chosen
