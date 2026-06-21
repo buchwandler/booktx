@@ -27,7 +27,11 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
-import tomllib
+
+try:
+    import tomllib  # Python 3.11+ stdlib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib  # type: ignore[no-redef]
 
 from spinetx.models import Manifest, NamesFile, ProjectConfig
 

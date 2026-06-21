@@ -61,7 +61,7 @@ def test_init_rejects_unsupported_source(tmp_path: Path):
     with pytest.raises(SpinetxError):
         init_project(tmp_path / "book", target_language="de", source_file=src)
 
-    import tomllib
+    from spinetx.config import tomllib
 
     proj = init_project(tmp_path / "book", target_language="fr", source_language="en")
     cfg_path = proj.config_path

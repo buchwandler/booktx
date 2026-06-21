@@ -100,3 +100,49 @@ def test_spans_to_chunks_end_to_end():
     # all record ids unique
     ids = [r.id for c in chunks for r in c.records]
     assert len(ids) == len(set(ids))
+
+
+def test_segment_phrasplit_abbreviations():
+    spans = [
+        ProseSpan(
+            text="Dr. Smith met Mr. Jones. They talked about the U.S.A.",
+            placeholders=[],
+            protected_terms=[],
+        )
+    ]
+    records = segment_spans(spans, language="en")
+    assert [r.source for r in records] == [
+        "Dr. Smith met Mr. Jones.",
+        "They talked about the U.S.A.",
+    ]
+
+
+def test_segment_bcp47_language_code_uses_primary_subtag():
+    spans = [
+        ProseSpan(text="Dr. Smith arrived. Good.", placeholders=[], protected_terms=[])
+    ]
+    records = segment_spans(spans, language="en-US")
+    assert [r.source for r in records] == ["Dr. Smith arrived.", "Good."]
+
+
+def test_segment_unknown_language_falls_back_to_english():
+    spans = [
+        ProseSpan(text="Dr. Smith arrived. Good.", placeholders=[], protected_terms=[])
+    ]
+    records = segment_spans(spans, language="xx-TEST")
+    assert [r.source for r in records] == ["Dr. Smith arrived.", "Good."]
+
+
+def test_segment_preserves_placeholder_tokens():
+    spans = [
+        ProseSpan(
+            text="__NAME_001__ met __NAME_002__. Then __TAG_001__ stayed.",
+            placeholders=[],
+            protected_terms=[],
+        )
+    ]
+    records = segment_spans(spans, language="en")
+    assert [r.source for r in records] == [
+        "__NAME_001__ met __NAME_002__.",
+        "Then __TAG_001__ stayed.",
+    ]

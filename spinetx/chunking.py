@@ -3,7 +3,7 @@
 The extractor hands chunking a list of *protected prose spans* (each already
 had names and inline tags replaced by placeholder tokens). chunking:
 
-1. Segments each span into sentences with :mod:`pysbd`.
+1. Segments each span into sentences with :mod:`phrasplit`.
 2. Assigns each resulting sentence a stable record id.
 3. Packs records into :class:`~spinetx.models.Chunk` objects of at most
    ``chunk_size`` records, numbering chunks from 1.
@@ -12,15 +12,14 @@ Record ids are ``NNNN-NNNNNN``: the 4-digit chunk id, a dash, and a 1-based
 6-digit index inside that chunk. Chunk ids are zero-padded 4-digit strings.
 
 The goal stated in the spec is **one source sentence to one translated
-sentence** — chunking never merges or splits beyond what pysbd returns.
+sentence** — chunking never merges or splits beyond what phrasplit returns.
 """
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 
-import pysbd
+from phrasplit import split_with_offsets
 
 from spinetx.models import Chunk, Placeholder, Record
 
@@ -31,14 +30,33 @@ __all__ = [
     "spans_to_chunks",
 ]
 
-# pysbd emits some SyntaxWarnings on import under Python 3.12+; silence them at
-# the boundary so they never leak into spinetx output.
-warnings.filterwarnings(
-    "ignore",
-    message="invalid escape sequence",
-    category=SyntaxWarning,
-    module=r"pysbd\..*",
-)
+# phrasplit's simple backend expects spaCy-style model names for abbreviation
+# lookup, even when spaCy is not used. Keep spinetx deterministic by forcing the
+# regex backend and mapping BCP-47-ish project language codes to phrasplit's
+# abbreviation tables.
+_LANGUAGE_MODEL_BY_CODE: dict[str, str] = {
+    "ca": "ca_core_news_sm",
+    "da": "da_core_news_sm",
+    "de": "de_core_news_sm",
+    "el": "el_core_news_sm",
+    "en": "en_core_web_sm",
+    "es": "es_core_news_sm",
+    "fi": "fi_core_news_sm",
+    "fr": "fr_core_news_sm",
+    "hr": "hr_core_news_sm",
+    "it": "it_core_news_sm",
+    "lt": "lt_core_news_sm",
+    "mk": "mk_core_news_sm",
+    "nb": "nb_core_news_sm",
+    "nl": "nl_core_news_sm",
+    "pl": "pl_core_news_sm",
+    "pt": "pt_core_news_sm",
+    "ro": "ro_core_news_sm",
+    "ru": "ru_core_news_sm",
+    "sl": "sl_core_news_sm",
+    "sv": "sv_core_news_sm",
+    "uk": "uk_core_news_sm",
+}
 
 
 @dataclass(slots=True)
@@ -57,14 +75,22 @@ class ProseSpan:
     protected_terms: list[str]
 
 
-def _segmenter(language: str) -> pysbd.Segmenter:
-    # pysbd uses ISO-639-1 codes; spinetx config codes are BCP-47-ish, so we
-    # pass the primary subtag and let pysbd fall back if needed.
-    code = language.split("-")[0].lower() or "en"
-    try:
-        return pysbd.Segmenter(language=code)
-    except Exception:  # noqa: BLE001 - unknown language -> English fallback
-        return pysbd.Segmenter(language="en")
+def _language_model(language: str) -> str:
+    # spinetx config language codes are BCP-47-ish. phrasplit's abbreviation
+    # tables are keyed by spaCy model names. Fall back to English for unknown
+    # language codes so segmentation stays deterministic.
+    code = language.split("-", 1)[0].lower() or "en"
+    return _LANGUAGE_MODEL_BY_CODE.get(code, "en_core_web_sm")
+
+
+def _sentences(text: str, *, language: str) -> list[str]:
+    segments = split_with_offsets(
+        text,
+        mode="sentence",
+        use_spacy=False,
+        language_model=_language_model(language),
+    )
+    return [segment.text for segment in segments]
 
 
 def segment_spans(spans: list[ProseSpan], *, language: str = "en") -> list[Record]:
@@ -74,13 +100,12 @@ def segment_spans(spans: list[ProseSpan], *, language: str = "en") -> list[Recor
     record. Each record inherits the full placeholder + protected-term list of
     its parent span (the contract lists them per record).
     """
-    segmenter = _segmenter(language)
     records: list[Record] = []
     counter = 0
     for span in spans:
         if not span.text or not span.text.strip():
             continue
-        sentences = segmenter.segment(span.text)
+        sentences = _sentences(span.text, language=language)
         for sentence in sentences:
             cleaned = sentence.strip()
             if not cleaned:

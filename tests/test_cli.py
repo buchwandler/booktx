@@ -47,7 +47,7 @@ def test_version_flag():
 
 def test_init_creates_layout(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
-    import tomllib
+    from spinetx.config import tomllib
 
     with (project_dir / ".spinetx" / "config.toml").open("rb") as fh:
         cfg = tomllib.load(fh)

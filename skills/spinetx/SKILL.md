@@ -1,6 +1,6 @@
 ---
 name: spinetx
-description: Use this skill when working with spinetx projects: translating .spinetx/chunks JSON into .spinetx/translated JSON, validating placeholders, or maintaining the deterministic Markdown/EPUB translation-preparation pipeline.
+description: Use this skill when working with spinetx projects
 ---
 
 # spinetx Skill
@@ -36,8 +36,8 @@ A source chunk looks like this:
       "source": "__NAME_001__ looked at __NAME_002__.",
       "protected_terms": ["Alice", "Mr. Smith"],
       "placeholders": [
-        {"token": "__NAME_001__", "original": "Alice", "kind": "name"},
-        {"token": "__NAME_002__", "original": "Mr. Smith", "kind": "name"}
+        { "token": "__NAME_001__", "original": "Alice", "kind": "name" },
+        { "token": "__NAME_002__", "original": "Mr. Smith", "kind": "name" }
       ]
     }
   ]
@@ -147,12 +147,18 @@ Prefer `spinetx validate` as the authoritative check.
 
 ## Known current maintenance priorities
 
-- Add missing `tomli-w` dependency.
 - Add Python 3.10 `tomli` fallback because `tomllib` is not available in Python 3.10.
 - Align CLI docs and options: `--source`/`--source-file`/`--source-lang` are currently easy to confuse.
 - Prefer console script target `spinetx.cli:main`.
 - Remove duplicate unreachable `return` in `spinetx/epub_io.py`.
 - Consider making `spinetx build` fail on invalid present translations instead of silently using partial fallback behavior.
+
+## Maintainer note: sentence segmentation
+
+`spinetx` uses `phrasplit` for deterministic sentence segmentation in chunk extraction.
+When editing `spinetx/chunking.py`, keep the simple backend forced with
+`use_spacy=False` unless the user explicitly requests an opt-in spaCy mode.
+Do not allow environment-dependent auto-detection in normal extraction.
 
 ## EPUB dependency guidance
 
