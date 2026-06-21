@@ -208,10 +208,10 @@ __marimo__/
 
 .codex
 
-taskledger/_version.py
+spinetx/_version.py
 
-context_taskledger.md
-context_taskledger.index.json
+context_spinetx.md
+context_spinetx.index.json
 *.unpack.py
 workspace/
 .taskledger/
