@@ -42,7 +42,10 @@ book/
   .spinetx/
     config.toml    # source/target language, format, chunk size
     manifest.json  # source digest + per-document templates (epub)
-    names.json     # manually protected terms (names, brands, places)
+    names.json     # manually protected verbatim terms (names, brands, places)
+    context.json   # authoritative style/glossary/questions context
+    context.md     # rendered context that agents must read before translating
+    chapter-map.json # detected chapter -> chunk ranges (additive metadata)
     chunks/        # 0001.json, 0002.json ... (spinetx writes these)
     translated/    # 0001.json, 0002.json ... (the agent writes these)
     reports/       # validation-report.json
@@ -57,13 +60,31 @@ spinetx init ./book --target de                 # create the project
 spinetx init ./book --target de --source book.md --source-lang en
 spinetx inspect ./book                          # summarise the source
 spinetx extract ./book                          # write .spinetx/chunks/*.json
-spinetx next ./book                             # print the next chunk to translate
-spinetx validate ./book                         # enforce the translation contract
+spinetx context init ./book --non-interactive   # create open questions/context
+spinetx context questions ./book                # show required context questions
+spinetx context answer ./book Q001 --text de-DE # answer one context question
+spinetx context mark-ready ./book               # mark ready after required answers
+spinetx chapters ./book                         # list detected chapter ranges
+spinetx next ./book                             # print next chunk (requires context)
+spinetx next ./book --unit chapter              # print next incomplete chapter
+spinetx next-chapter ./book                     # chapter workflow shortcut
+spinetx validate ./book                         # enforce contract + context lint
 spinetx build ./book                            # rebuild output/book.<target>.<ext>
 ```
 
-`spinetx next` prints the first untranslated chunk id and path and exits `0`;
-it exits `1` once every chunk is translated (so you can loop until done).
+`spinetx next` refuses to return translation work until `.spinetx/context.json`
+exists and has `ready: true`. When ready, it prints the rendered context path
+before the chunk path. Use `--allow-missing-context` only for legacy workflows
+and tests that deliberately bypass the context gate.
+
+`spinetx next --unit chapter` and `spinetx next-chapter` print the next
+incomplete chapter and all chunk files it covers. `spinetx chapters` writes
+`.spinetx/chapter-map.json` and lists detected chapter ranges.
+
+`spinetx context init --non-interactive` creates a not-ready context with open
+questions and a seed glossary. Required questions must be answered before
+`spinetx context mark-ready` succeeds. `context.md` is generated from
+`context.json`; the JSON file is authoritative.
 
 `spinetx extract` is **idempotent**: it rebuilds `chunks/` on every run but
 leaves `translated/` untouched, so re-extracting after editing the source never

@@ -23,12 +23,21 @@ from rich.table import Table
 
 from spinetx import __version__
 from spinetx.build import BuildError, build_project
+from spinetx.chapters import detect_chapters, write_chapter_map
 from spinetx.chunking import spans_to_chunks
 from spinetx.config import (
     SpinetxError,
     find_source_file,
     init_project,
     load_project,
+)
+from spinetx.context import (
+    GlossaryEntry,
+    context_markdown_path,
+    default_context,
+    load_context,
+    write_context,
+    write_context_markdown,
 )
 from spinetx.epub_io import extract_epub
 from spinetx.html_io import build_xhtml  # noqa: F401  (kept for downstream use)
@@ -47,6 +56,8 @@ app = typer.Typer(
 )
 
 console = Console()
+context_app = typer.Typer(help="Build, inspect, and render translation context.")
+app.add_typer(context_app, name="context")
 
 
 def _die(message: str, code: int = 1) -> None:
@@ -67,6 +78,193 @@ def version() -> None:
     """Print the spinetx version."""
     console.print(__version__)
 
+
+
+# --- context -----------------------------------------------------------------
+
+
+def _load_project_or_exit(project_dir: Path):
+    try:
+        return load_project(project_dir)
+    except SpinetxError as exc:
+        _handle_spinetx_error(exc)
+        raise typer.Exit(code=1) from exc
+
+
+def _load_context_or_exit(proj):
+    try:
+        ctx = load_context(proj)
+    except Exception as exc:  # noqa: BLE001 - surface as user-facing CLI error
+        _die(f"translation context is invalid: {exc}")
+        raise typer.Exit(code=1) from exc
+    if ctx is None:
+        _die("translation context is missing. Run: spinetx context init .")
+    return ctx
+
+
+def _open_required_questions(ctx) -> list:
+    return [q for q in ctx.questions if q.required and q.status == "open"]
+
+
+@context_app.command(name="init")
+def context_init(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    non_interactive: bool = typer.Option(
+        True, "--non-interactive/--interactive", help="Create open questions or prompt."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite an existing context."
+    ),
+) -> None:
+    """Create .spinetx/context.json and rendered context.md."""
+    proj = _load_project_or_exit(project_dir)
+    existing = None if force else load_context(proj)
+    if existing is not None:
+        write_context_markdown(proj, existing)
+        console.print(f"context exists: {context_markdown_path(proj)}")
+        return
+
+    ctx = default_context(proj)
+    if not non_interactive:
+        for q in ctx.questions:
+            answer = typer.prompt(q.question, default="", show_default=False)
+            if answer.strip():
+                q.answer = answer.strip()
+                q.status = "answered"
+        ctx.ready = not _open_required_questions(ctx)
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+    console.print(f"wrote {proj.spinetx_dir / 'context.json'}")
+    console.print(f"wrote {context_markdown_path(proj)}")
+
+
+@context_app.command(name="questions")
+def context_questions(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+) -> None:
+    """List context questions."""
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    for q in ctx.questions:
+        marker = "required" if q.required else "optional"
+        answer = f" -> {q.answer}" if q.answer else ""
+        console.print(f"{q.id} [{marker}] {q.status} {q.topic}: {q.question}{answer}")
+
+
+@context_app.command(name="status")
+def context_status(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+) -> None:
+    """Show translation context readiness."""
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    open_required = _open_required_questions(ctx)
+    open_total = [q for q in ctx.questions if q.status == "open"]
+    status = "READY" if ctx.ready else "NOT READY"
+    console.print(f"Status: {status}")
+    console.print(f"open_required={len(open_required)} open_total={len(open_total)}")
+    console.print(f"glossary_entries={len(ctx.glossary)}")
+    console.print(f"context: {context_markdown_path(proj)}")
+
+
+@context_app.command(name="render")
+def context_render(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+) -> None:
+    """Render context.md from context.json."""
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    write_context_markdown(proj, ctx)
+    console.print(f"rendered {context_markdown_path(proj)}")
+
+
+@context_app.command(name="answer")
+def context_answer(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    question_id: str = typer.Argument(..., help="Question id, e.g. Q001."),
+    text: str = typer.Option(..., "--text", help="Answer text."),
+) -> None:
+    """Answer one context question non-interactively."""
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    for q in ctx.questions:
+        if q.id == question_id:
+            q.answer = text
+            q.status = "answered" if text.strip() else "open"
+            write_context(proj, ctx)
+            write_context_markdown(proj, ctx)
+            console.print(f"answered {question_id}")
+            return
+    _die(f"unknown question id: {question_id}")
+
+
+@context_app.command(name="add-term")
+def context_add_term(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    source: str = typer.Argument(..., help="Source term."),
+    target: str | None = typer.Option(None, "--target", help="Approved target term."),
+    forbid: list[str] | None = typer.Option(
+        None, "--forbid", help="Forbidden target term (repeatable)."
+    ),
+    category: str = typer.Option("term", "--category", help="Glossary category."),
+    notes: str = typer.Option("", "--notes", help="Glossary notes."),
+    enforce: str = typer.Option(
+        "warn", "--enforce", help="Enforcement: off, warn, or error."
+    ),
+) -> None:
+    """Add or update a glossary entry."""
+    if enforce not in {"off", "warn", "error"}:
+        _die("--enforce must be off, warn, or error")
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    forbidden = forbid or []
+    for entry in ctx.glossary:
+        if entry.source == source:
+            if target is not None:
+                entry.target = target
+                entry.status = "approved" if target else entry.status
+            for value in forbidden:
+                if value not in entry.forbidden_targets:
+                    entry.forbidden_targets.append(value)
+            entry.category = category or entry.category
+            entry.notes = notes or entry.notes
+            entry.enforce = enforce  # type: ignore[assignment]
+            break
+    else:
+        ctx.glossary.append(
+            GlossaryEntry(
+                source=source,
+                target=target,
+                forbidden_targets=forbidden,
+                category=category,
+                status="approved" if target else "open",
+                notes=notes,
+                enforce=enforce,  # type: ignore[arg-type]
+            )
+        )
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+    console.print(f"updated term: {source}")
+
+
+@context_app.command(name="mark-ready")
+def context_mark_ready(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    force: bool = typer.Option(
+        False, "--force", help="Mark ready even with open required questions."
+    ),
+) -> None:
+    """Mark context ready once required questions are answered."""
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    open_required = _open_required_questions(ctx)
+    if open_required and not force:
+        ids = ", ".join(q.id for q in open_required)
+        _die(f"required questions are still open: {ids}")
+    ctx.ready = True
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+    console.print(f"context ready: {context_markdown_path(proj)}")
 
 # --- init --------------------------------------------------------------------
 
@@ -259,18 +457,59 @@ def _save_epub_manifest(proj, source, extraction) -> None:
     _ = (json, NamesFile)  # touch imports for clarity
 
 
+
+def _require_ready_context(proj, *, allow_missing_context: bool = False) -> bool:
+    """Return True when context was checked and should be printed."""
+    if allow_missing_context:
+        return False
+    ctx = load_context(proj)
+    if ctx is None or not ctx.ready:
+        _die(
+            "translation context is missing or not ready.\n"
+            "Run: spinetx context init ."
+        )
+    return True
+
+
+def _next_chapter(proj, *, print_context: bool) -> None:
+    chapter_map = detect_chapters(proj)
+    write_chapter_map(proj, chapter_map)
+    translated_ids = set(proj.translated_ids())
+    for chapter in chapter_map.chapters:
+        pending = [cid for cid in chapter.chunk_ids if cid not in translated_ids]
+        if not pending:
+            continue
+        if print_context:
+            console.print(f"context: {context_markdown_path(proj)}")
+        title = f"  {chapter.title}" if chapter.title else ""
+        console.print(f"chapter: {chapter.chapter_id}{title}")
+        console.print("chunks:")
+        for cid in chapter.chunk_ids:
+            console.print(f"  {proj.chunks_dir / f'{cid}.json'}")
+        console.print(f"[dim]write translations to:[/dim] {proj.translated_dir}/*.json")
+        raise typer.Exit(code=0)
+    console.print("All chapter chunks have translations.")
+    raise typer.Exit(code=1)
 # --- next --------------------------------------------------------------------
 
 
 @app.command(name="next")
 def next_cmd(
     project_dir: Path = typer.Argument(..., help="Project directory."),
+    allow_missing_context: bool = typer.Option(
+        False,
+        "--allow-missing-context",
+        help="Legacy override: allow next without a ready translation context.",
+    ),
+    unit: str = typer.Option(
+        "chunk", "--unit", help="Translation unit to return: chunk or chapter."
+    ),
 ) -> None:
     """Print the first untranslated chunk and exit 0, or exit 1 when done.
 
     No files are written (no skeleton). Exit codes:
       0 — a chunk is ready to translate (its id + path printed).
-      1 — every chunk is already translated.
+      1 — context is missing/not ready, or every chunk is already translated.
     """
     try:
         proj = load_project(project_dir)
@@ -278,6 +517,16 @@ def next_cmd(
         _handle_spinetx_error(exc)
         return
 
+    if unit not in {"chunk", "chapter"}:
+        _die("--unit must be chunk or chapter")
+    print_context = _require_ready_context(
+        proj, allow_missing_context=allow_missing_context
+    )
+    if unit == "chapter":
+        _next_chapter(proj, print_context=print_context)
+        return
+    if print_context:
+        console.print(f"context: {context_markdown_path(proj)}")
     chunk_ids = set(proj.chunk_ids())
     translated_ids = set(proj.translated_ids())
     pending = sorted(cid for cid in chunk_ids if cid not in translated_ids)
@@ -293,6 +542,51 @@ def next_cmd(
     console.print(f"{cid}\t{chunk_path}")
     console.print(f"[dim]write translation to:[/dim] {out_path}")
     raise typer.Exit(code=0)
+
+
+# --- chapters ---------------------------------------------------------------
+
+
+@app.command(name="chapters")
+def chapters_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+) -> None:
+    """Detect and list chapter ranges."""
+    try:
+        proj = load_project(project_dir)
+    except SpinetxError as exc:
+        _handle_spinetx_error(exc)
+        return
+    chapter_map = detect_chapters(proj)
+    write_chapter_map(proj, chapter_map)
+    for chapter in chapter_map.chapters:
+        chunks = ", ".join(chapter.chunk_ids)
+        title = f"  {chapter.title}" if chapter.title else ""
+        console.print(
+            f"{chapter.chapter_id}{title}\tchunks: {chunks}\t"
+            f"records: {chapter.start_record_id}..{chapter.end_record_id}"
+        )
+
+
+@app.command(name="next-chapter")
+def next_chapter_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    allow_missing_context: bool = typer.Option(
+        False,
+        "--allow-missing-context",
+        help="Legacy override: allow next-chapter without ready context.",
+    ),
+) -> None:
+    """Print the next incomplete chapter and all chunks it covers."""
+    try:
+        proj = load_project(project_dir)
+    except SpinetxError as exc:
+        _handle_spinetx_error(exc)
+        return
+    print_context = _require_ready_context(
+        proj, allow_missing_context=allow_missing_context
+    )
+    _next_chapter(proj, print_context=print_context)
 
 
 # --- validate ----------------------------------------------------------------

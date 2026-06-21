@@ -71,16 +71,36 @@ The translated file must be written to `.spinetx/translated/0001.json` and must 
 - Do not translate inline code, URLs, tag fragments, or protected names hidden behind placeholders.
 - Keep each `target` non-empty.
 
+## Required context gate
+
+Before translating any chunk or chapter, read `.spinetx/context.md`. If it does not exist, or `.spinetx/context.json` has `ready: false`, do not translate. Ask the user the context questionnaire first and write the answers to `.spinetx/context.json`, then render `.spinetx/context.md`.
+
+Glossary entries in the context override ordinary dictionary translations. Do not use a target listed under `forbidden_targets`. For this book, do not translate `Lowlands` / `Lowlander` as `Niederlande` / `Niederländer` unless the user explicitly approves it in context.
+
+Required sequence:
+
+1. Run or ask for context building before translation.
+2. Read `.spinetx/context.md` before opening any chunk.
+3. If `.spinetx/context.md` or `.spinetx/context.json` is missing or `ready=false`, stop translating and ask the user the initial questionnaire.
+4. Before translating a new chapter, read context again.
+5. Use the glossary as stronger than general dictionary intuition.
+6. Never use any `forbidden_targets` listed in the context.
+7. After each completed chapter, update the chapter summary/open issues in context.
+8. Run `spinetx validate` and fix both contract errors and context terminology errors.
+
 ## Translation workflow
 
 From a project root:
 
 ```bash
 spinetx extract .
-spinetx next .
+spinetx context status .
+spinetx next . --unit chunk      # next untranslated chunk
+spinetx next . --unit chapter    # next incomplete chapter
+spinetx next-chapter .           # same chapter workflow, explicit command
 ```
 
-Open the reported `.spinetx/chunks/NNNN.json`, translate each record, then write `.spinetx/translated/NNNN.json`.
+Open `.spinetx/context.md` first, then open each reported `.spinetx/chunks/NNNN.json`, translate each record, and write `.spinetx/translated/NNNN.json`.
 
 After writing translations:
 

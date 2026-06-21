@@ -111,7 +111,7 @@ def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: P
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
     # First untranslated
-    res = runner.invoke(app, ["next", str(project_dir)])
+    res = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
     assert res.exit_code == 0, res.output
     assert "0001" in res.output
     # Provide a translation for every chunk
@@ -127,9 +127,38 @@ def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: P
         (translated_dir / chunk_file.name).write_text(
             json.dumps(payload), encoding="utf-8"
         )
-    res2 = runner.invoke(app, ["next", str(project_dir)])
+    res2 = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
     assert res2.exit_code == 1
     assert "All" in res2.output
+
+
+def test_next_requires_ready_context(tmp_path: Path):
+    project_dir = _make_markdown_project(tmp_path)
+    runner.invoke(app, ["extract", str(project_dir)])
+    res = runner.invoke(app, ["next", str(project_dir)])
+    assert res.exit_code == 1
+    assert "context" in res.output.lower()
+    assert "spinetx context init" in res.output
+
+
+def test_next_allow_missing_context_legacy_override(tmp_path: Path):
+    project_dir = _make_markdown_project(tmp_path)
+    runner.invoke(app, ["extract", str(project_dir)])
+    res = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
+    assert res.exit_code == 0
+    assert "0001" in res.output
+
+
+def test_next_prints_context_path_when_context_ready(tmp_path: Path):
+    project_dir = _make_markdown_project(tmp_path)
+    runner.invoke(app, ["extract", str(project_dir)])
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(app, ["context", "mark-ready", str(project_dir), "--force"])
+    res = runner.invoke(app, ["next", str(project_dir)])
+    assert res.exit_code == 0, res.output
+    assert "context:" in res.output
+    assert "context.md" in res.output
+    assert "0001" in res.output
 
 
 def test_validate_passes_with_identity_translation(tmp_path: Path):
@@ -198,7 +227,7 @@ def test_full_pipeline_end_to_end(tmp_path: Path):
     # extract
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
     # next
-    res_next = runner.invoke(app, ["next", str(project_dir)])
+    res_next = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
     assert res_next.exit_code == 0
     # translate identity
     translated_dir = project_dir / ".spinetx" / "translated"

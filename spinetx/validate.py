@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from spinetx.config import Project
+from spinetx.context import GlossaryEntry, TranslationContext, load_context
 from spinetx.models import Chunk, Placeholder, TranslatedChunk
 from spinetx.placeholders import TOKEN_RE
 
@@ -224,7 +225,65 @@ def _check_protected_names_preserved(
     return findings
 
 
-def validate_chunk_pair(source: Chunk, translated_path: Path | None) -> list[Finding]:
+def _contains_term(text: str, term: str, *, case_sensitive: bool) -> bool:
+    if case_sensitive:
+        return term in text
+    return term.casefold() in text.casefold()
+
+
+def _check_forbidden_terms(
+    source_rec,
+    target_rec,
+    chunk_id: str,
+    context: TranslationContext | None,
+ ) -> list[Finding]:
+    """Check glossary forbidden target terms for one record pair."""
+    if context is None:
+        return []
+    findings: list[Finding] = []
+    for entry in context.glossary:
+        if entry.enforce == "off" or not entry.forbidden_targets:
+            continue
+        if not _contains_term(
+            source_rec.source, entry.source, case_sensitive=entry.case_sensitive
+        ):
+            continue
+        severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
+        findings.extend(
+            _forbidden_target_findings(entry, target_rec, chunk_id, severity)
+        )
+    return findings
+
+
+def _forbidden_target_findings(
+    entry: GlossaryEntry,
+    target_rec,
+    chunk_id: str,
+    severity: str,
+ ) -> list[Finding]:
+    findings: list[Finding] = []
+    for forbidden in entry.forbidden_targets:
+        if not _contains_term(
+            target_rec.target, forbidden, case_sensitive=entry.case_sensitive
+        ):
+            continue
+        findings.append(
+            Finding(
+                chunk_id=chunk_id,
+                severity=severity,
+                rule="forbidden_term_used",
+                message=f"{entry.source} must not be translated as {forbidden}",
+                record_id=target_rec.id,
+            )
+        )
+    return findings
+
+
+def validate_chunk_pair(
+    source: Chunk,
+    translated_path: Path | None,
+    context: TranslationContext | None = None,
+ ) -> list[Finding]:
     """Validate one source chunk against its translated file (if any)."""
     chunk_id = source.chunk_id
     findings: list[Finding] = []
@@ -321,6 +380,7 @@ def validate_chunk_pair(source: Chunk, translated_path: Path | None) -> list[Fin
             )
         findings.extend(_check_placeholders_preserved(src_rec, tgt_rec, chunk_id))
         findings.extend(_check_protected_names_preserved(src_rec, tgt_rec, chunk_id))
+        findings.extend(_check_forbidden_terms(src_rec, tgt_rec, chunk_id, context))
 
     return findings
 
@@ -342,6 +402,18 @@ def validate_project(project: Project) -> ValidationReport:
 
     chunk_paths = {p.stem: p for p in project.chunks()}
     translated_paths = {p.stem: p for p in project.translated()}
+    try:
+        context = load_context(project)
+    except Exception as exc:  # noqa: BLE001 - surface invalid context as a finding
+        context = None
+        report.findings.append(
+            Finding(
+                chunk_id="context",
+                severity=Severity.ERROR,
+                rule="invalid_context",
+                message=f"context.json is invalid: {exc}",
+            )
+        )
 
     for chunk_id in sorted(chunk_paths):
         source = _load_source_chunk(chunk_paths[chunk_id])
@@ -350,7 +422,7 @@ def validate_project(project: Project) -> ValidationReport:
         if translated_path is None:
             report.chunks_missing_translation += 1
             continue
-        findings = validate_chunk_pair(source, translated_path)
+        findings = validate_chunk_pair(source, translated_path, context)
         report.findings.extend(findings)
         if not any(f.severity == Severity.ERROR for f in findings):
             report.chunks_passed += 1
