@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from booktx.chapters import detect_chapters, load_chapter_map, write_chapter_map
 from booktx.cli import app
-from booktx.config import init_project, load_project
+from booktx.config import init_project, load_project, project_source_sha256
 
 runner = CliRunner()
 
@@ -109,8 +109,10 @@ def _clear_manifest_navigation(payload: dict[str, object]) -> None:
 
 def test_detect_markdown_headings_and_chunk_ranges(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
-    chapter_map = detect_chapters(load_project(project_dir))
+    project = load_project(project_dir)
+    chapter_map = detect_chapters(project)
     assert [chapter.title for chapter in chapter_map.chapters] == ["One", "Two"]
+    assert chapter_map.source_sha256 == project_source_sha256(project)
     assert chapter_map.chapters[0].chapter_id == "0001"
     assert chapter_map.chapters[0].chunk_ids == ["0001", "0002"]
     assert chapter_map.chapters[0].start_record_id == "0001-000001"

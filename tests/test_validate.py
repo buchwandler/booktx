@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from booktx.config import init_project, load_project, write_manifest
+from booktx.config import init_project, load_project, write_manifest, write_translation_store
 from booktx.models import (
     Chunk,
     EpubTemplateData,
@@ -13,7 +13,10 @@ from booktx.models import (
     ManifestSource,
     Placeholder,
     Record,
+    StoredTranslationRecord,
+    TranslationStore,
 )
+from booktx.progress import source_record_sha256
 from booktx.validate import (
     Severity,
     validate_chunk_pair,
@@ -83,6 +86,37 @@ def test_valid_translation_passes(tmp_path: Path):
     report = validate_project(proj)
     assert report.passed, [f.as_dict() for f in report.findings]
     assert report.errors == []
+
+
+def test_store_backed_translation_passes(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    proj.chunks_dir.mkdir(parents=True, exist_ok=True)
+    source = _src_chunk()
+    (proj.chunks_dir / "0001.json").write_text(source.model_dump_json(), encoding="utf-8")
+    write_translation_store(
+        proj,
+        TranslationStore(
+            records={
+                "0001-000001": StoredTranslationRecord(
+                    chunk_id="0001",
+                    source_sha256=source_record_sha256(source.records[0].source),
+                    target="__NAME_001__ sah __NAME_002__ an.",
+                    updated_at="2026-06-22T12:00:00Z",
+                ),
+                "0001-000002": StoredTranslationRecord(
+                    chunk_id="0001",
+                    source_sha256=source_record_sha256(source.records[1].source),
+                    target="Führe __TAG_001__ aus.",
+                    updated_at="2026-06-22T12:00:00Z",
+                ),
+            }
+        ),
+    )
+
+    report = validate_project(load_project(proj.root))
+
+    assert report.passed, [f.as_dict() for f in report.findings]
+    assert report.chunks_passed == 1
 
 
 def test_rule_invalid_json(tmp_path: Path):
@@ -249,6 +283,33 @@ def test_stale_translation_is_a_warning(tmp_path: Path):
     report = validate_project(proj)
     assert report.passed  # warnings do not fail
     assert any(f.rule == "stale_translation" for f in report.warnings)
+
+
+def test_stale_store_record_is_an_error(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    proj.chunks_dir.mkdir(parents=True, exist_ok=True)
+    (proj.chunks_dir / "0001.json").write_text(
+        _src_chunk().model_dump_json(),
+        encoding="utf-8",
+    )
+    write_translation_store(
+        proj,
+        TranslationStore(
+            records={
+                "0001-000099": StoredTranslationRecord(
+                    chunk_id="0001",
+                    source_sha256="abc123",
+                    target="Ghost record.",
+                    updated_at="2026-06-22T12:00:00Z",
+                )
+            }
+        ),
+    )
+
+    report = validate_project(load_project(proj.root))
+
+    assert not report.passed
+    assert any(f.rule == "stale_store_record" for f in report.findings)
 
 
 def test_write_report_creates_json(tmp_path: Path):

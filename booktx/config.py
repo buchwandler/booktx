@@ -22,6 +22,7 @@ the single source file, and the active :class:`~booktx.models.ProjectConfig`.
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,7 +34,14 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
-from booktx.models import Manifest, NamesFile, ProjectConfig
+from booktx.epub_manifest import sha256_path
+from booktx.models import (
+    Manifest,
+    NamesFile,
+    ProjectConfig,
+    TranslationStore,
+    TranslationTask,
+)
 
 __all__ = [
     "SUPPORTED_SOURCE_SUFFIXES",
@@ -45,6 +53,14 @@ __all__ = [
     "write_manifest",
     "write_names",
     "load_names",
+    "project_source_sha256",
+    "translation_store_path",
+    "load_translation_store",
+    "write_translation_store",
+    "translation_task_dir",
+    "translation_task_path",
+    "load_translation_task",
+    "write_translation_task",
 ]
 
 #: Filename suffixes booktx understands in v1, mapped to format names.
@@ -80,6 +96,7 @@ class Project:
     names_path: Path
     chunks_dir: Path
     translated_dir: Path
+    tasks_dir: Path
     reports_dir: Path
     output_dir: Path
     config: ProjectConfig
@@ -138,6 +155,7 @@ def init_project(
     booktx_dir = root / ".booktx"
     chunks_dir = booktx_dir / "chunks"
     translated_dir = booktx_dir / "translated"
+    tasks_dir = booktx_dir / "tasks"
     reports_dir = booktx_dir / "reports"
     output_dir = root / "output"
     for d in (
@@ -145,6 +163,7 @@ def init_project(
         booktx_dir,
         chunks_dir,
         translated_dir,
+        tasks_dir,
         reports_dir,
         output_dir,
     ):
@@ -206,6 +225,7 @@ def load_project(root: Path | str) -> Project:
         names_path=booktx_dir / "names.json",
         chunks_dir=booktx_dir / "chunks",
         translated_dir=booktx_dir / "translated",
+        tasks_dir=booktx_dir / "tasks",
         reports_dir=booktx_dir / "reports",
         output_dir=r / "output",
         config=cfg,
@@ -252,6 +272,61 @@ def load_names(project: Project) -> NamesFile:
         raise _err("bad_names_json", f"names.json is invalid: {exc}") from exc
 
 
+def project_source_sha256(project: Project) -> str:
+    """Return the current source SHA, preferring the manifest when present."""
+    manifest = load_manifest(project)
+    if manifest is not None and manifest.source.sha256:
+        return manifest.source.sha256
+    return sha256_path(find_source_file(project))
+
+
+def translation_store_path(project: Project) -> Path:
+    """Path to the primary record-level translation store."""
+    return project.booktx_dir / "translation-store.json"
+
+
+def load_translation_store(project: Project) -> TranslationStore:
+    """Load the translation store, or return an empty store when absent."""
+    path = translation_store_path(project)
+    if not path.is_file():
+        return TranslationStore()
+    return TranslationStore.model_validate_json(path.read_text("utf-8"))
+
+
+def write_translation_store(project: Project, store: TranslationStore) -> None:
+    """Persist the translation store atomically."""
+    _write_json_atomic(
+        translation_store_path(project),
+        store.model_dump_json(indent=2) + "\n",
+    )
+
+
+def translation_task_dir(project: Project) -> Path:
+    """Directory holding persisted translation tasks."""
+    return project.tasks_dir
+
+
+def translation_task_path(project: Project, task_id: str) -> Path:
+    """Path for one persisted translation task."""
+    return translation_task_dir(project) / f"{task_id}.json"
+
+
+def load_translation_task(project: Project, task_id: str) -> TranslationTask | None:
+    """Load one translation task, or return ``None`` when missing."""
+    path = translation_task_path(project, task_id)
+    if not path.is_file():
+        return None
+    return TranslationTask.model_validate_json(path.read_text("utf-8"))
+
+
+def write_translation_task(project: Project, task: TranslationTask) -> None:
+    """Persist one translation task atomically."""
+    _write_json_atomic(
+        translation_task_path(project, task.task_id),
+        task.model_dump_json(indent=2) + "\n",
+    )
+
+
 def find_source_file(project: Project) -> Path:
     """Resolve the single source document, or raise a clear error.
 
@@ -294,3 +369,24 @@ def find_source_file(project: Project) -> Path:
         project.config.format = detect_format(chosen.name)
         _write_config(project.config_path, project.config)
     return chosen
+
+
+def _write_json_atomic(path: Path, text: str) -> None:
+    """Write UTF-8 text atomically into ``path``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fh:
+            fh.write(text)
+            tmp_path = Path(fh.name)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)

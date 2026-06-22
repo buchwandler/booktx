@@ -11,9 +11,17 @@ from booktx.config import (
     detect_format,
     find_source_file,
     init_project,
+    load_translation_store,
+    load_translation_task,
     load_names,
     load_project,
+    project_source_sha256,
+    translation_store_path,
+    translation_task_path,
+    write_translation_store,
+    write_translation_task,
 )
+from booktx.models import StoredTranslationRecord, TranslationStore, TranslationTask
 
 
 def test_detect_format():
@@ -30,6 +38,7 @@ def test_init_creates_full_layout(tmp_path: Path):
         proj.booktx_dir,
         proj.chunks_dir,
         proj.translated_dir,
+        proj.tasks_dir,
         proj.reports_dir,
         proj.output_dir,
     ):
@@ -103,3 +112,48 @@ def test_find_source_file_syncs_config(tmp_path: Path):
     proj2 = load_project(tmp_path / "book")
     assert proj2.config.source_file == "story.md"
     assert proj2.config.format == "markdown"
+
+
+def test_translation_store_helpers_roundtrip(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    (proj.source_dir / "story.md").write_text("# Hi\n", encoding="utf-8")
+    proj = load_project(proj.root)
+
+    assert translation_store_path(proj).name == "translation-store.json"
+
+    empty = load_translation_store(proj)
+    assert empty.records == {}
+
+    store = TranslationStore(
+        source_sha256=project_source_sha256(proj),
+        records={
+            "0001-000001": StoredTranslationRecord(
+                chunk_id="0001",
+                source_sha256="abc123",
+                target="Hallo.",
+                updated_at="2026-06-22T12:00:00Z",
+            )
+        },
+    )
+    write_translation_store(proj, store)
+
+    loaded = load_translation_store(proj)
+    assert loaded == store
+
+
+def test_translation_task_helpers_roundtrip(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    task = TranslationTask(
+        task_id="bt-task-1",
+        unit="batch",
+        source_language="en",
+        target_language="de",
+    )
+
+    assert translation_task_path(proj, "bt-task-1").name == "bt-task-1.json"
+    assert load_translation_task(proj, "bt-task-1") is None
+
+    write_translation_task(proj, task)
+
+    loaded = load_translation_task(proj, "bt-task-1")
+    assert loaded == task

@@ -14,8 +14,11 @@ booktx never translates text; it extracts, validates, and rebuilds.
 
 from __future__ import annotations
 
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -23,13 +26,20 @@ from rich.table import Table
 
 from booktx import __version__
 from booktx.build import BuildError, build_project
-from booktx.chapters import detect_chapters, write_chapter_map
+from booktx.chapters import detect_chapters, load_chapter_map, write_chapter_map
 from booktx.chunking import spans_to_chunks
 from booktx.config import (
     BooktxError,
     find_source_file,
     init_project,
+    load_manifest,
     load_project,
+    load_translation_store,
+    load_translation_task,
+    project_source_sha256,
+    translation_task_path,
+    write_translation_store,
+    write_translation_task,
 )
 from booktx.context import (
     GlossaryEntry,
@@ -44,8 +54,30 @@ from booktx.epub_io import extract_epub
 from booktx.epub_manifest import EPUB2TEXT_SCHEMA, EPUB_TEMPLATE_PIPELINE
 from booktx.html_io import build_xhtml  # noqa: F401  (kept for downstream use)
 from booktx.markdown_io import extract_markdown
-from booktx.models import NamesFile
-from booktx.validate import validate_project, write_report
+from booktx.models import (
+    NamesFile,
+    StoredTranslationRecord,
+    TranslationStore,
+    TranslationTask,
+    TranslationTaskRecord,
+    TranslatedChunk,
+    TranslatedRecord,
+)
+from booktx.progress import (
+    count_words,
+    load_source_chunks,
+    load_source_records,
+    source_record_sha256,
+)
+from booktx.validate import (
+    Severity,
+    load_effective_translated_chunks,
+    strict_load_translated,
+    validate_chunk_pair,
+    validate_project,
+    validate_record_pair,
+    write_report,
+)
 
 app = typer.Typer(
     name="booktx",
@@ -59,7 +91,9 @@ app = typer.Typer(
 
 console = Console()
 context_app = typer.Typer(help="Build, inspect, and render translation context.")
+translate_app = typer.Typer(help="Command-based translation workflow.")
 app.add_typer(context_app, name="context")
+app.add_typer(translate_app, name="translate")
 
 
 def _die(message: str, code: int = 1) -> None:
@@ -493,28 +527,559 @@ def _require_chunks(proj) -> list[Path]:
     return chunk_paths
 
 
-def _next_chapter(proj, *, print_context: bool) -> None:
-    chapter_map = detect_chapters(proj)
-    write_chapter_map(proj, chapter_map)
-    translated_ids = set(proj.translated_ids())
+def _coverage_status(*, total: int, translated: int, has_error: bool) -> str:
+    if has_error:
+        return "invalid"
+    if translated <= 0:
+        return "pending"
+    if translated >= total:
+        return "complete"
+    return "in_progress"
+
+
+def _format_chunk_span(chunk_ids: list[str]) -> str:
+    if not chunk_ids:
+        return "-"
+    if len(chunk_ids) == 1:
+        return chunk_ids[0]
+    return f"{chunk_ids[0]}..{chunk_ids[-1]}"
+
+
+def _load_context_status(proj) -> tuple[bool, bool]:
+    try:
+        ctx = load_context(proj)
+    except Exception as exc:  # noqa: BLE001
+        _die(f"translation context is invalid: {exc}")
+    return (ctx is not None, bool(ctx and ctx.ready))
+
+
+def _chapter_map_for_workflow(proj):
+    source_sha256 = project_source_sha256(proj)
+    chapter_map = load_chapter_map(proj)
+    if chapter_map is None or chapter_map.source_sha256 != source_sha256:
+        chapter_map = detect_chapters(proj)
+        write_chapter_map(proj, chapter_map)
+    return chapter_map
+
+
+def _project_status_snapshot(proj) -> dict[str, Any]:
+    source_path = find_source_file(proj)
+    manifest = load_manifest(proj)
+    context_exists, context_ready = _load_context_status(proj)
+    source_chunks = {chunk.chunk_id: chunk for chunk in load_source_chunks(proj)}
+    source_records = load_source_records(proj)
+    chapter_map = _chapter_map_for_workflow(proj)
+    effective = load_effective_translated_chunks(proj, source_chunks=source_chunks)
+
+    source_by_id = {record.record_id: record for record in source_records}
+    translated_by_id = {
+        record.id: record
+        for chunk in effective.chunks.values()
+        for record in chunk.records
+    }
+    findings = effective.findings
+    record_error_by_id = {
+        finding.record_id: finding
+        for finding in findings
+        if finding.severity == Severity.ERROR and finding.record_id
+    }
+    chunk_has_error = {
+        finding.chunk_id
+        for finding in findings
+        if finding.severity == Severity.ERROR and finding.chunk_id not in {"context", "store"}
+    }
+
+    ordered_record_ids = [record.record_id for record in source_records]
+    record_index_by_id = {record_id: idx for idx, record_id in enumerate(ordered_record_ids)}
+    record_ids_by_chapter: dict[str, list[str]] = {}
+    record_to_chapter: dict[str, str] = {}
+
     for chapter in chapter_map.chapters:
-        pending = [cid for cid in chapter.chunk_ids if cid not in translated_ids]
-        if not pending:
+        start = record_index_by_id.get(chapter.start_record_id)
+        end = record_index_by_id.get(chapter.end_record_id)
+        if start is None or end is None or end < start:
+            record_ids: list[str] = []
+        else:
+            record_ids = ordered_record_ids[start : end + 1]
+        record_ids_by_chapter[chapter.chapter_id] = record_ids
+        for record_id in record_ids:
+            record_to_chapter[record_id] = chapter.chapter_id
+
+    chunk_summaries: list[dict[str, Any]] = []
+    for chunk in source_chunks.values():
+        chunk_record_ids = [record.id for record in chunk.records]
+        translated = [record_id for record_id in chunk_record_ids if record_id in translated_by_id]
+        source_words_total = sum(source_by_id[record_id].source_words for record_id in chunk_record_ids)
+        source_words_translated = sum(
+            source_by_id[record_id].source_words for record_id in translated
+        )
+        chunk_summaries.append(
+            {
+                "chunk_id": chunk.chunk_id,
+                "records_total": len(chunk_record_ids),
+                "records_translated": len(translated),
+                "records_remaining": len(chunk_record_ids) - len(translated),
+                "source_words_total": source_words_total,
+                "source_words_translated": source_words_translated,
+                "source_words_remaining": source_words_total - source_words_translated,
+                "status": _coverage_status(
+                    total=len(chunk_record_ids),
+                    translated=len(translated),
+                    has_error=chunk.chunk_id in chunk_has_error,
+                ),
+            }
+        )
+
+    chapter_summaries: list[dict[str, Any]] = []
+    for chapter in chapter_map.chapters:
+        chapter_record_ids = record_ids_by_chapter.get(chapter.chapter_id, [])
+        translated = [
+            record_id for record_id in chapter_record_ids if record_id in translated_by_id
+        ]
+        pending = [
+            record_id for record_id in chapter_record_ids if record_id not in translated_by_id
+        ]
+        pending_chunk_ids: list[str] = []
+        seen_pending_chunks: set[str] = set()
+        for record_id in pending:
+            chunk_id = source_by_id[record_id].chunk_id
+            if chunk_id in seen_pending_chunks:
+                continue
+            seen_pending_chunks.add(chunk_id)
+            pending_chunk_ids.append(chunk_id)
+        source_words_total = sum(
+            source_by_id[record_id].source_words for record_id in chapter_record_ids
+        )
+        source_words_translated = sum(
+            source_by_id[record_id].source_words for record_id in translated
+        )
+        chapter_summaries.append(
+            {
+                "chapter_id": chapter.chapter_id,
+                "title": chapter.title,
+                "chunk_ids": list(chapter.chunk_ids),
+                "pending_chunk_ids": pending_chunk_ids,
+                "record_range": {
+                    "start": chapter.start_record_id,
+                    "end": chapter.end_record_id,
+                },
+                "records_total": len(chapter_record_ids),
+                "records_translated": len(translated),
+                "records_remaining": len(chapter_record_ids) - len(translated),
+                "source_words_total": source_words_total,
+                "source_words_translated": source_words_translated,
+                "source_words_remaining": source_words_total - source_words_translated,
+                "status": _coverage_status(
+                    total=len(chapter_record_ids),
+                    translated=len(translated),
+                    has_error=any(chunk_id in chunk_has_error for chunk_id in chapter.chunk_ids),
+                ),
+            }
+        )
+
+    chapters_by_id = {chapter["chapter_id"]: chapter for chapter in chapter_summaries}
+    next_chapter = next(
+        (chapter for chapter in chapter_summaries if chapter["records_remaining"] > 0),
+        None,
+    )
+
+    total_source_words = sum(record.source_words for record in source_records)
+    translated_source_words = sum(
+        source_by_id[record_id].source_words for record_id in translated_by_id
+    )
+    chunks_complete = sum(
+        1 for chunk in chunk_summaries if chunk["records_translated"] == chunk["records_total"]
+    )
+    chunks_partial = sum(
+        1
+        for chunk in chunk_summaries
+        if 0 < chunk["records_translated"] < chunk["records_total"]
+    )
+    chunks_pending = len(chunk_summaries) - chunks_complete - chunks_partial
+    chapters_complete = sum(
+        1
+        for chapter in chapter_summaries
+        if chapter["records_translated"] == chapter["records_total"]
+    )
+    chapters_partial = sum(
+        1
+        for chapter in chapter_summaries
+        if 0 < chapter["records_translated"] < chapter["records_total"]
+    )
+    chapters_pending = len(chapter_summaries) - chapters_complete - chapters_partial
+
+    selected_chapters: list[dict[str, Any]] = []
+    source_sha256 = (
+        manifest.source.sha256
+        if manifest is not None and manifest.source.sha256
+        else project_source_sha256(proj)
+    )
+    return {
+        "version": 1,
+        "project": str(proj.root),
+        "source": {
+            "filename": source_path.name,
+            "format": proj.config.format,
+            "source_language": proj.config.source_language,
+            "target_language": proj.config.target_language,
+            "source_sha256": source_sha256,
+        },
+        "context": {"exists": context_exists, "ready": context_ready},
+        "totals": {
+            "source_words": total_source_words,
+            "translated_words": translated_source_words,
+            "remaining_words": total_source_words - translated_source_words,
+            "records_total": len(source_records),
+            "records_translated": len(translated_by_id),
+            "records_remaining": len(source_records) - len(translated_by_id),
+            "chunks_total": len(chunk_summaries),
+            "chunks_complete": chunks_complete,
+            "chunks_partial": chunks_partial,
+            "chunks_pending": chunks_pending,
+            "chapters_total": len(chapter_summaries),
+            "chapters_complete": chapters_complete,
+            "chapters_partial": chapters_partial,
+            "chapters_pending": chapters_pending,
+            "invalid_translation_files": len(chunk_has_error),
+            "stale_translation_files": len(
+                {finding.chunk_id for finding in findings if finding.rule == "stale_translation"}
+            ),
+        },
+        "next": next_chapter,
+        "chapters": selected_chapters,
+        "_source_chunks": source_chunks,
+        "_source_by_id": source_by_id,
+        "_translated_by_id": translated_by_id,
+        "_record_ids_by_chapter": record_ids_by_chapter,
+        "_record_to_chapter": record_to_chapter,
+        "_chapters_by_id": chapters_by_id,
+        "_chunk_summaries": chunk_summaries,
+        "_record_error_by_id": record_error_by_id,
+    }
+
+
+def _selected_chapter(summary: dict[str, Any], chapter_id: str | None) -> dict[str, Any] | None:
+    if chapter_id is None:
+        return summary["next"]
+    chapter = summary["_chapters_by_id"].get(chapter_id)
+    if chapter is None:
+        _die(f"unknown chapter id: {chapter_id}")
+    return chapter
+
+
+def _limit_records_by_words(
+    record_ids: list[str], source_by_id: dict[str, Any], max_words: int
+) -> list[str]:
+    if max_words < 1:
+        _die("--max-words must be >= 1")
+    selected: list[str] = []
+    total = 0
+    for record_id in record_ids:
+        words = source_by_id[record_id].source_words
+        if selected and total + words > max_words:
+            break
+        selected.append(record_id)
+        total += words
+    return selected
+
+
+def _select_translation_record_ids(
+    summary: dict[str, Any],
+    chapter: dict[str, Any],
+    *,
+    unit: str,
+    max_words: int,
+) -> tuple[str, list[str]]:
+    source_by_id = summary["_source_by_id"]
+    pending = [
+        record_id
+        for record_id in summary["_record_ids_by_chapter"][chapter["chapter_id"]]
+        if record_id not in summary["_translated_by_id"]
+    ]
+    if not pending:
+        return (unit, [])
+    if unit == "chapter":
+        return (unit, pending)
+    if unit == "chunk":
+        first_chunk_id = source_by_id[pending[0]].chunk_id
+        return (
+            unit,
+            [record_id for record_id in pending if source_by_id[record_id].chunk_id == first_chunk_id],
+        )
+    if unit == "paragraph":
+        first_record = source_by_id[pending[0]]
+        if first_record.span_index is None:
+            unit = "batch"
+        else:
+            same_span = [
+                record_id
+                for record_id in pending
+                if source_by_id[record_id].span_index == first_record.span_index
+            ]
+            return (unit, _limit_records_by_words(same_span, source_by_id, max_words))
+    return (unit, _limit_records_by_words(pending, source_by_id, max_words))
+
+
+def _make_task_id(chapter_id: str, first_record_id: str, record_ids: list[str]) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    record_part = first_record_id.replace("-", "")
+    digest = str(abs(hash("|".join(record_ids))))[-6:]
+    return f"bt-task-{stamp}-{chapter_id}-{record_part}-{digest}"
+
+
+def _create_translation_task(
+    proj,
+    summary: dict[str, Any],
+    chapter: dict[str, Any],
+    *,
+    unit: str,
+    record_ids: list[str],
+) -> TranslationTask:
+    source_by_id = summary["_source_by_id"]
+    task = TranslationTask(
+        task_id=_make_task_id(chapter["chapter_id"], record_ids[0], record_ids),
+        unit=unit,  # type: ignore[arg-type]
+        chapter_id=chapter["chapter_id"],
+        chapter_title=chapter["title"],
+        source_language=proj.config.source_language,
+        target_language=proj.config.target_language,
+        source_words=sum(source_by_id[record_id].source_words for record_id in record_ids),
+        record_count=len(record_ids),
+        records=[
+            TranslationTaskRecord(
+                id=record_id,
+                chunk_id=source_by_id[record_id].chunk_id,
+                source=source_by_id[record_id].source,
+                protected_terms=list(source_by_id[record_id].protected_terms),
+                placeholders=list(source_by_id[record_id].placeholders),
+            )
+            for record_id in record_ids
+        ],
+    )
+    write_translation_task(proj, task)
+    return task
+
+
+def _print_status_human(summary: dict[str, Any], chapter: dict[str, Any] | None) -> None:
+    console.print(f"booktx status — {summary['project']}")
+    console.print()
+    console.print(f"Source: {summary['source']['filename']}")
+    console.print(f"Source language: {summary['source']['source_language']}")
+    console.print(f"Target language: {summary['source']['target_language']}")
+    console.print(f"Context: {'READY' if summary['context']['ready'] else 'NOT READY'}")
+    console.print()
+    totals = summary["totals"]
+    console.print(f"Total source words: {totals['source_words']:>10,}")
+    console.print(f"Translated words:   {totals['translated_words']:>10,}")
+    console.print(f"Remaining words:    {totals['remaining_words']:>10,}")
+    console.print()
+    console.print(
+        f"Chunks:   {totals['chunks_complete']} / {totals['chunks_total']} complete, "
+        f"{totals['chunks_partial']} partial, {totals['chunks_pending']} pending"
+    )
+    console.print(
+        f"Chapters: {totals['chapters_complete']} / {totals['chapters_total']} complete, "
+        f"{totals['chapters_partial']} partial, {totals['chapters_pending']} pending"
+    )
+    if totals["invalid_translation_files"] or totals["stale_translation_files"]:
+        console.print(
+            f"Translation files: {totals['invalid_translation_files']} invalid, "
+            f"{totals['stale_translation_files']} stale"
+        )
+    ready_for_final = totals["records_remaining"] == 0 and totals["invalid_translation_files"] == 0
+    console.print()
+    console.print(f"Ready for final build: {'yes' if ready_for_final else 'no'}")
+    if not ready_for_final:
+        if totals["remaining_words"] > 0:
+            console.print(
+                f"Reason: {totals['remaining_words']:,} source words remain untranslated"
+            )
+        elif totals["invalid_translation_files"] > 0:
+            console.print(
+                f"Reason: {totals['invalid_translation_files']} translation file(s) are invalid"
+            )
+    detail = chapter or summary["next"]
+    if detail is None:
+        return
+    console.print()
+    console.print("Next chapter:" if chapter is None else "Chapter:")
+    console.print(f"  {detail['chapter_id']}  {detail['title']}".rstrip())
+    console.print(f"  status: {detail['status']}")
+    console.print(
+        f"  records: {detail['records_translated']} / {detail['records_total']} translated, "
+        f"{detail['records_remaining']} remaining"
+    )
+    console.print(
+        f"  words: {detail['source_words_translated']:,} / {detail['source_words_total']:,} translated, "
+        f"{detail['source_words_remaining']:,} remaining"
+    )
+    console.print(f"  chunks: {_format_chunk_span(detail['chunk_ids'])}")
+    console.print(f"  pending chunks: {_format_chunk_span(detail['pending_chunk_ids'])}")
+    console.print(
+        f"  record range: {detail['record_range']['start']}..{detail['record_range']['end']}"
+    )
+
+
+def _print_translate_task(task: TranslationTask, *, as_json: bool, output_format: str) -> None:
+    payload = {
+        "version": 1,
+        "task_id": task.task_id,
+        "unit": task.unit,
+        "chapter_id": task.chapter_id,
+        "chapter_title": task.chapter_title,
+        "source_language": task.source_language,
+        "target_language": task.target_language,
+        "source_words": task.source_words,
+        "record_count": task.record_count,
+        "records": [record.model_dump(mode="json") for record in task.records],
+        "submit_hint": (
+            f"booktx translate insert . --task-id {task.task_id} --stdin"
+        ),
+    }
+    if as_json:
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    if output_format == "tsv":
+        console.print(f"# task: {task.task_id}")
+        console.print(f"# chapter: {task.chapter_id}\t{task.chapter_title}".rstrip())
+        for record in task.records:
+            console.print(f"{record.id}\t{record.source}")
+        console.print(
+            f"# submit: booktx translate insert . --task-id {task.task_id} --stdin"
+        )
+        return
+    console.print(f"task: {task.task_id}")
+    console.print(f"chapter: {task.chapter_id}  {task.chapter_title}".rstrip())
+    console.print(f"unit: {task.unit}")
+    console.print(f"records: {task.record_count}")
+    console.print(f"source words: {task.source_words}")
+    console.print()
+    for idx, record in enumerate(task.records):
+        if idx:
+            console.print()
+        console.print(record.id)
+        console.print(record.source)
+    console.print()
+    console.print("Submit with:")
+    console.print(f"booktx translate insert . --task-id {task.task_id} --stdin")
+
+
+def _load_translation_task_or_exit(proj, task_id: str) -> TranslationTask:
+    task = load_translation_task(proj, task_id)
+    if task is None:
+        _die(f"unknown task id: {task_id} ({translation_task_path(proj, task_id)})")
+    return task
+
+
+def _parse_json_submission(text: str) -> tuple[str | None, list[dict[str, str]]]:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        _die(f"invalid JSON submission: {exc.msg} (line {exc.lineno} col {exc.colno})")
+    if not isinstance(payload, dict):
+        _die("JSON submission must be an object")
+    records = payload.get("records")
+    if not isinstance(records, list):
+        _die("JSON submission must contain a 'records' array")
+    parsed: list[dict[str, str]] = []
+    for item in records:
+        if not isinstance(item, dict):
+            _die("each submitted record must be an object")
+        record_id = str(item.get("id", "")).strip()
+        target = item.get("target")
+        if not record_id or not isinstance(target, str):
+            _die("each submitted record must contain string fields 'id' and 'target'")
+        parsed.append({"id": record_id, "target": target})
+    task_id = payload.get("task_id")
+    return (str(task_id).strip() if task_id else None, parsed)
+
+
+def _parse_tsv_submission(text: str) -> list[dict[str, str]]:
+    parsed: list[dict[str, str]] = []
+    for line_no, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.rstrip("\n")
+        if not line.strip():
             continue
-        if print_context:
-            console.print(f"context: {context_markdown_path(proj)}")
-        title = f"  {chapter.title}" if chapter.title else ""
-        console.print(f"chapter: {chapter.chapter_id}{title}")
-        console.print("chunks:")
-        for cid in chapter.chunk_ids:
-            console.print(f"  {proj.chunks_dir / f'{cid}.json'}")
-        console.print(f"[dim]write translations to:[/dim] {proj.translated_dir}/*.json")
-        raise typer.Exit(code=0)
-    console.print("All chapter chunks have translations.")
-    raise typer.Exit(code=1)
+        if "\t" not in line:
+            _die(f"malformed TSV line {line_no}: expected '<record-id><TAB><target>'")
+        record_id, target = line.split("\t", 1)
+        if not record_id.strip():
+            _die(f"malformed TSV line {line_no}: missing record id")
+        parsed.append({"id": record_id.strip(), "target": target})
+    return parsed
+
+
+def _render_submission_failures(findings) -> None:
+    console.print("[red]error:[/red] submission rejected; no files changed")
+    console.print()
+    for finding in findings:
+        if finding.record_id:
+            console.print(f"{finding.record_id} {finding.rule}:")
+        else:
+            console.print(f"{finding.chunk_id} {finding.rule}:")
+        console.print(f"  {finding.message}")
+
+
+def _next_chapter(proj, *, print_context: bool) -> None:
+    summary = _project_status_snapshot(proj)
+    chapter = summary["next"]
+    if chapter is None:
+        console.print("All chapter records have accepted translations.")
+        raise typer.Exit(code=1)
+    if print_context:
+        console.print(f"context: {context_markdown_path(proj)}")
+    console.print(f"chapter: {chapter['chapter_id']}  {chapter['title']}".rstrip())
+    console.print(f"status: {chapter['status']}")
+    console.print(
+        f"record range: {chapter['record_range']['start']}..{chapter['record_range']['end']}"
+    )
+    console.print(
+        f"records: {chapter['records_translated']} / {chapter['records_total']} translated, "
+        f"{chapter['records_remaining']} remaining"
+    )
+    console.print(f"chunks: {_format_chunk_span(chapter['chunk_ids'])}")
+    console.print(f"pending chunks: {_format_chunk_span(chapter['pending_chunk_ids'])}")
+    console.print(f"source words remaining: {chapter['source_words_remaining']:,}")
+    console.print("[dim]next command:[/dim] booktx translate next . --unit chapter")
+    raise typer.Exit(code=0)
 
 
 # --- next --------------------------------------------------------------------
+
+
+@app.command(name="status")
+def status_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    chapter: str | None = typer.Option(
+        None, "--chapter", help="Optional chapter id to focus the report."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit stable JSON output."),
+) -> None:
+    """Report record-aware translation progress."""
+    try:
+        proj = load_project(project_dir)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    _require_chunks(proj)
+    summary = _project_status_snapshot(proj)
+    selected = _selected_chapter(summary, chapter)
+    if selected is not None:
+        summary["chapters"] = [selected]
+        summary["next"] = selected
+    if as_json:
+        payload = {
+            "version": summary["version"],
+            "project": summary["project"],
+            "source": summary["source"],
+            "context": summary["context"],
+            "totals": summary["totals"],
+            "next": summary["next"],
+            "chapters": summary["chapters"],
+        }
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    _print_status_human(summary, selected)
 
 
 @app.command(name="next")
@@ -529,12 +1094,7 @@ def next_cmd(
         "chunk", "--unit", help="Translation unit to return: chunk or chapter."
     ),
 ) -> None:
-    """Print the first untranslated chunk and exit 0, or exit 1 when done.
-
-    No files are written (no skeleton). Exit codes:
-      0 — a chunk is ready to translate (its id + path printed).
-      1 — context is missing/not ready, or every chunk is already translated.
-    """
+    """Print the next pending legacy work item and point callers at translate/*."""
     try:
         proj = load_project(project_dir)
     except BooktxError as exc:
@@ -543,29 +1103,34 @@ def next_cmd(
 
     if unit not in {"chunk", "chapter"}:
         _die("--unit must be chunk or chapter")
-    chunk_paths = _require_chunks(proj)
+    _require_chunks(proj)
     print_context = _require_ready_context(
         proj, allow_missing_context=allow_missing_context
     )
     if unit == "chapter":
         _next_chapter(proj, print_context=print_context)
         return
+    summary = _project_status_snapshot(proj)
+    source_chunks = summary["_source_chunks"]
+    pending_chunks = [
+        chunk["chunk_id"]
+        for chunk in summary["_chunk_summaries"]
+        if chunk["records_remaining"] > 0
+    ]
+    if not pending_chunks:
+        console.print("All chunk records have accepted translations.")
+        raise typer.Exit(code=1)
     if print_context:
         console.print(f"context: {context_markdown_path(proj)}")
-    chunk_ids = {path.stem for path in chunk_paths}
-    translated_ids = set(proj.translated_ids())
-    pending = sorted(cid for cid in chunk_ids if cid not in translated_ids)
-    if not pending:
-        console.print(
-            f"All {len(chunk_ids)} chunk(s) have translations in {proj.translated_dir}."
-        )
-        raise typer.Exit(code=1)
-
-    cid = pending[0]
+    cid = pending_chunks[0]
     chunk_path = proj.chunks_dir / f"{cid}.json"
-    out_path = proj.translated_dir / f"{cid}.json"
     console.print(f"{cid}\t{chunk_path}")
-    console.print(f"[dim]write translation to:[/dim] {out_path}")
+    console.print(
+        f"records remaining: {next(chunk['records_remaining'] for chunk in summary['_chunk_summaries'] if chunk['chunk_id'] == cid)}"
+    )
+    console.print("[dim]submit with:[/dim]")
+    console.print(f"booktx translate next {project_dir} --unit chunk")
+    console.print("booktx translate insert . --stdin")
     raise typer.Exit(code=0)
 
 
@@ -615,6 +1180,271 @@ def next_chapter_cmd(
     _next_chapter(proj, print_context=print_context)
 
 
+@translate_app.command(name="next")
+def translate_next(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    chapter: str | None = typer.Option(None, "--chapter", help="Optional chapter id."),
+    unit: str = typer.Option(
+        "paragraph",
+        "--unit",
+        help="Work-unit selection: paragraph, batch, chunk, or chapter.",
+    ),
+    max_words: int = typer.Option(
+        900,
+        "--max-words",
+        help="Maximum source words to return for paragraph or batch work units.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+    output_format: str = typer.Option(
+        "text",
+        "--format",
+        help="Human output format: text or tsv.",
+    ),
+    allow_missing_context: bool = typer.Option(
+        False,
+        "--allow-missing-context",
+        help="Legacy override: allow next without a ready translation context.",
+    ),
+) -> None:
+    """Return the next text to translate and persist a task id."""
+    try:
+        proj = load_project(project_dir)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if unit not in {"paragraph", "batch", "chunk", "chapter"}:
+        _die("--unit must be paragraph, batch, chunk, or chapter")
+    if output_format not in {"text", "tsv"}:
+        _die("--format must be text or tsv")
+    if as_json and output_format != "text":
+        _die("--json cannot be combined with --format")
+    _require_chunks(proj)
+    _require_ready_context(proj, allow_missing_context=allow_missing_context)
+    summary = _project_status_snapshot(proj)
+    selected_chapter = _selected_chapter(summary, chapter)
+    if selected_chapter is None:
+        console.print("All records already have accepted translations.")
+        raise typer.Exit(code=1)
+    actual_unit, record_ids = _select_translation_record_ids(
+        summary,
+        selected_chapter,
+        unit=unit,
+        max_words=max_words,
+    )
+    if not record_ids:
+        console.print("Selected chapter has no remaining records.")
+        raise typer.Exit(code=1)
+    task = _create_translation_task(
+        proj,
+        summary,
+        selected_chapter,
+        unit=actual_unit,
+        record_ids=record_ids,
+    )
+    _print_translate_task(task, as_json=as_json, output_format=output_format)
+
+
+@translate_app.command(name="insert")
+def translate_insert(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    task_id: str | None = typer.Option(None, "--task-id", help="Optional task id."),
+    stdin: bool = typer.Option(False, "--stdin", help="Read the payload from stdin."),
+    record_id: str | None = typer.Option(None, "--record-id", help="Single record id."),
+    target: str | None = typer.Option(None, "--target", help="Single target text."),
+    json_file: Path | None = typer.Option(None, "--json-file", help="Read JSON payload from a file."),
+    input_format: str = typer.Option(
+        "json", "--format", help="Input format for stdin payloads: json or tsv."
+    ),
+    allow_missing_context: bool = typer.Option(
+        False,
+        "--allow-missing-context",
+        help="Legacy override: allow insert without a ready translation context.",
+    ),
+) -> None:
+    """Accept translated text through the CLI and write the store atomically."""
+    try:
+        proj = load_project(project_dir)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if input_format not in {"json", "tsv"}:
+        _die("--format must be json or tsv")
+    _require_chunks(proj)
+    _require_ready_context(proj, allow_missing_context=allow_missing_context)
+
+    submitted: list[dict[str, str]] = []
+    payload_task_id: str | None = None
+    if record_id is not None or target is not None:
+        if not record_id or target is None:
+            _die("--record-id and --target must be supplied together")
+        submitted = [{"id": record_id, "target": target}]
+    elif json_file is not None:
+        payload_task_id, submitted = _parse_json_submission(
+            json_file.read_text(encoding="utf-8")
+        )
+    elif stdin:
+        raw = sys.stdin.read()
+        if input_format == "json":
+            payload_task_id, submitted = _parse_json_submission(raw)
+        else:
+            submitted = _parse_tsv_submission(raw)
+    else:
+        _die("provide one of --record-id/--target, --json-file, or --stdin")
+
+    effective_task_id = task_id or payload_task_id
+    task = _load_translation_task_or_exit(proj, effective_task_id) if effective_task_id else None
+    allowed_ids = {record.id for record in task.records} if task is not None else None
+    summary = _project_status_snapshot(proj)
+    source_by_id = summary["_source_by_id"]
+    source_chunks = summary["_source_chunks"]
+    failures = []
+
+    seen_ids: set[str] = set()
+    for item in submitted:
+        record_id = item["id"]
+        if record_id in seen_ids:
+            _die(f"duplicate record id in submission: {record_id}")
+        seen_ids.add(record_id)
+        if record_id not in source_by_id:
+            _die(f"unknown source record id: {record_id}")
+        if allowed_ids is not None and record_id not in allowed_ids:
+            _die(f"record {record_id} is not part of task {task.task_id}")
+        source_view = source_by_id[record_id]
+        translated = TranslatedRecord(id=record_id, target=item["target"])
+        source_chunk = source_chunks[source_view.chunk_id]
+        source_record = next(record for record in source_chunk.records if record.id == record_id)
+        failures.extend(
+            validate_record_pair(source_record, translated, source_chunk.chunk_id, load_context(proj))
+        )
+
+    if any(finding.severity == Severity.ERROR for finding in failures):
+        _render_submission_failures(
+            [finding for finding in failures if finding.severity == Severity.ERROR]
+        )
+        raise typer.Exit(code=1)
+
+    store = load_translation_store(proj)
+    store.source_sha256 = summary["source"]["source_sha256"]
+    updated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )
+    for item in submitted:
+        source_view = source_by_id[item["id"]]
+        store.records[item["id"]] = StoredTranslationRecord(
+            chunk_id=source_view.chunk_id,
+            source_sha256=source_view.source_sha256,
+            target=item["target"],
+            updated_at=updated_at,
+        )
+    write_translation_store(proj, store)
+
+    refreshed = _project_status_snapshot(proj)
+    first_record_id = submitted[0]["id"]
+    chapter_id = refreshed["_record_to_chapter"].get(first_record_id, "")
+    chapter = refreshed["_chapters_by_id"].get(chapter_id)
+    target_words = sum(count_words(item["target"]) for item in submitted)
+    console.print(
+        f"accepted: {len(submitted)} record(s), {target_words} target word(s)"
+    )
+    if chapter is not None:
+        console.print(f"chapter: {chapter['chapter_id']} {chapter['title']}".rstrip())
+        console.print(
+            f"progress: {chapter['records_translated']} / {chapter['records_total']} records translated, "
+            f"{chapter['records_remaining']} remaining"
+        )
+        console.print(
+            f"next: booktx translate next . --chapter {chapter['chapter_id']} --unit paragraph"
+        )
+
+
+@translate_app.command(name="import-legacy")
+def translate_import_legacy(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+) -> None:
+    """Import valid legacy translated chunk files into the translation store."""
+    try:
+        proj = load_project(project_dir)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    _require_chunks(proj)
+    store = load_translation_store(proj)
+    imported_records = 0
+    imported_chunks = 0
+    source_chunks = {chunk.chunk_id: chunk for chunk in load_source_chunks(proj)}
+    for chunk_id, source_chunk in source_chunks.items():
+        path = proj.translated_dir / f"{chunk_id}.json"
+        if not path.is_file():
+            continue
+        findings = validate_chunk_pair(source_chunk, path, load_context(proj))
+        if any(finding.severity == Severity.ERROR for finding in findings):
+            continue
+        translated_chunk, err = strict_load_translated(path)
+        if err is not None or translated_chunk is None:
+            continue
+        imported_chunks += 1
+        source_records = {record.id: record for record in source_chunk.records}
+        for record in translated_chunk.records:
+            if record.id in store.records:
+                continue
+            source_record = source_records[record.id]
+            store.records[record.id] = StoredTranslationRecord(
+                chunk_id=chunk_id,
+                source_sha256=source_record_sha256(source_record.source),
+                target=record.target,
+                updated_at=datetime.now(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
+            )
+            imported_records += 1
+    store.source_sha256 = project_source_sha256(proj)
+    write_translation_store(proj, store)
+    console.print(
+        f"imported: {imported_records} record(s) from {imported_chunks} legacy chunk(s)"
+    )
+
+
+@translate_app.command(name="export")
+def translate_export(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+) -> None:
+    """Export fully accepted store-backed chunks into translated/*.json."""
+    try:
+        proj = load_project(project_dir)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    _require_chunks(proj)
+    store = load_translation_store(proj)
+    exported = 0
+    for chunk in load_source_chunks(proj):
+        if not all(record.id in store.records for record in chunk.records):
+            continue
+        translated_chunk = TranslatedChunk(
+            chunk_id=chunk.chunk_id,
+            records=[
+                TranslatedRecord(id=record.id, target=store.records[record.id].target)
+                for record in chunk.records
+            ],
+        )
+        findings = []
+        for source_record, translated_record in zip(
+            chunk.records, translated_chunk.records, strict=True
+        ):
+            findings.extend(
+                validate_record_pair(source_record, translated_record, chunk.chunk_id, load_context(proj))
+            )
+        if any(finding.severity == Severity.ERROR for finding in findings):
+            continue
+        (proj.translated_dir / f"{chunk.chunk_id}.json").write_text(
+            translated_chunk.model_dump_json(indent=2) + "\n",
+            encoding="utf-8",
+        )
+        exported += 1
+    console.print(f"exported: {exported} chunk(s) to {proj.translated_dir}")
+
+
 # --- validate ----------------------------------------------------------------
 
 
@@ -657,11 +1487,16 @@ def validate(
 @app.command()
 def build(
     project_dir: Path = typer.Argument(..., help="Project directory."),
+    require_complete: bool = typer.Option(
+        False,
+        "--require-complete",
+        help="Fail when any record is untranslated or invalid.",
+    ),
 ) -> None:
     """Rebuild the translated document into ``output/``."""
     try:
         proj = load_project(project_dir)
-        result = build_project(proj)
+        result = build_project(proj, require_complete=require_complete)
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return

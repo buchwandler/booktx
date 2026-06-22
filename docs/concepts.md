@@ -46,16 +46,17 @@ A chunk is a JSON file containing a small ordered batch of source records. Chunk
 
 The chunk size is configured in `.booktx/config.toml` as `chunk_size`.
 
+## Translation store
+
+`.booktx/translation-store.json` is the primary record-level translation state
+owned by `booktx`. `booktx translate insert` writes accepted records here after
+validation.
+
 ## Translated chunk
 
-A translated chunk is a JSON file written by a human translator or coding agent. It must be placed in `.booktx/translated/` and must have the same file stem as the source chunk.
-
-For example:
-
-```text
-.booktx/chunks/0007.json
-.booktx/translated/0007.json
-```
+`.booktx/translated/*.json` remains a compatibility/export layer. Valid legacy
+chunk files still count as progress, and `booktx translate export` can
+materialize full translated chunk files from the accepted store.
 
 ## Placeholder
 
@@ -95,13 +96,15 @@ The context includes:
 - open questions
 - chapter notes
 
-`booktx next` refuses to return translation work unless context is present and ready, unless the caller uses the explicit legacy override.
+`booktx translate next` refuses to return translation work unless context is
+present and ready, unless the caller uses the explicit legacy override.
 
 ## Chapter map
 
-`.booktx/chapter-map.json` is generated metadata that maps detected chapters to chunk ranges. It supports chapter-level workflows such as:
+`.booktx/chapter-map.json` is generated metadata that maps detected chapters to
+chunk and record ranges. It supports chapter-level workflows such as:
 
 ```bash
-booktx next ./project --unit chapter
-booktx next-chapter ./project
+booktx status ./project --chapter 0006
+booktx translate next ./project --unit chapter --json
 ```

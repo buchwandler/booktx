@@ -57,7 +57,8 @@ Writes `.booktx/chunks/*.json`.
 Extraction is idempotent:
 
 - `chunks/` is rebuilt.
-- `translated/` is preserved.
+- `translation-store.json` is preserved.
+- `translated/` is preserved as compatibility output.
 - EPUB extraction writes manifest v2 metadata.
 - Fresh EPUB chunks are rejected if they contain `__TAG_` or `__SPANTX_` tokens.
 
@@ -122,14 +123,62 @@ booktx context mark-ready PROJECT_DIR --force
 
 Without `--force`, this fails while required questions are open.
 
-## Next chunk
+## Status
+
+```bash
+booktx status PROJECT_DIR
+booktx status PROJECT_DIR --json
+booktx status PROJECT_DIR --chapter 0006
+```
+
+Reports deterministic record-, chunk-, chapter-, and word-level progress.
+
+## Command workflow
+
+### Next task
+
+```bash
+booktx translate next PROJECT_DIR
+booktx translate next PROJECT_DIR --json
+booktx translate next PROJECT_DIR --unit paragraph
+booktx translate next PROJECT_DIR --unit chapter --chapter 0006
+booktx translate next PROJECT_DIR --format tsv
+```
+
+Returns the next pending work unit, persists a task id, and prints a submit hint.
+
+### Insert translated records
+
+```bash
+booktx translate insert PROJECT_DIR --task-id TASK --stdin
+booktx translate insert PROJECT_DIR --record-id 0001-000001 --target "..."
+booktx translate insert PROJECT_DIR --stdin --format tsv
+booktx translate insert PROJECT_DIR --json-file payload.json
+```
+
+Validates submitted records before writing `.booktx/translation-store.json`.
+Invalid submissions are rejected atomically.
+
+### Legacy import/export
+
+```bash
+booktx translate import-legacy PROJECT_DIR
+booktx translate export PROJECT_DIR
+```
+
+`import-legacy` copies valid compatibility chunk files from `translated/` into
+the record-level store. `export` materializes full translated chunk files for
+chunks whose records are all accepted in the store.
+
+## Legacy next summary
 
 ```bash
 booktx next PROJECT_DIR
 booktx next PROJECT_DIR --allow-missing-context
 ```
 
-Prints the first source chunk without a matching translated chunk.
+Prints the next pending chunk summary and points callers at `booktx translate next`
+and `booktx translate insert`.
 
 Exit codes:
 
@@ -140,7 +189,7 @@ Exit codes:
 
 The default command requires ready context. Use `--allow-missing-context` only for legacy workflows and tests.
 
-## Chapter workflow
+## Legacy chapter summary
 
 ```bash
 booktx chapters PROJECT_DIR
@@ -150,7 +199,9 @@ booktx next-chapter PROJECT_DIR
 
 `chapters` detects chapter ranges and writes `.booktx/chapter-map.json`.
 
-`next --unit chapter` and `next-chapter` print the next incomplete chapter and every chunk it covers.
+`next --unit chapter` and `next-chapter` print the next incomplete chapter with
+record ranges, pending chunk boundaries, and the recommended `booktx translate`
+command.
 
 ## Validate
 
@@ -164,8 +215,11 @@ Checks translated chunks against the contract and context rules, writes `.booktx
 
 ```bash
 booktx build PROJECT_DIR
+booktx build PROJECT_DIR --require-complete
 ```
 
 Writes the final translated document to `output/`.
 
-For EPUB, build verifies source checksums and scans the rebuilt EPUB for unresolved placeholder tokens.
+By default, missing records still fall back to source text. `--require-complete`
+fails when any record is missing or invalid. For EPUB, build verifies source
+checksums and scans the rebuilt EPUB for unresolved placeholder tokens.

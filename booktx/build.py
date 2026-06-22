@@ -11,6 +11,8 @@ from booktx.epub_manifest import assert_source_sha, load_epub_template_from_mani
 from booktx.markdown_io import build_markdown, extract_markdown
 from booktx.models import Chunk, EpubSpanRef, TranslatedChunk
 from booktx.placeholders import restore
+from booktx.progress import count_words
+from booktx.validate import Severity, load_effective_translated_chunks
 
 __all__ = [
     "BuildResult",
@@ -33,18 +35,16 @@ def _load_chunks(project: Project) -> list[Chunk]:
 
 
 def _load_translated(project: Project) -> dict[str, TranslatedChunk]:
-    out: dict[str, TranslatedChunk] = {}
-    for path in project.translated():
-        try:
-            translated_chunk = TranslatedChunk.model_validate_json(
-                path.read_text("utf-8")
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise BuildError(
-                f"translated file {path.name} is not valid: {exc}"
-            ) from exc
-        out[translated_chunk.chunk_id] = translated_chunk
-    return out
+    effective = load_effective_translated_chunks(project)
+    errors = [finding for finding in effective.findings if finding.severity == Severity.ERROR]
+    if errors:
+        first = errors[0]
+        location = f" [{first.record_id}]" if first.record_id else ""
+        raise BuildError(
+            f"translation data is invalid: {first.chunk_id}{location} "
+            f"{first.rule}: {first.message}"
+        )
+    return effective.chunks
 
 
 def records_to_span_text(span: ProseSpan, targets: list[str]) -> str:
@@ -54,20 +54,36 @@ def records_to_span_text(span: ProseSpan, targets: list[str]) -> str:
 
 
 def _build_target_stream(
-    chunks: list[Chunk], translated: dict[str, TranslatedChunk]
+    chunks: list[Chunk],
+    translated: dict[str, TranslatedChunk],
+    *,
+    require_complete: bool = False,
 ) -> list[str]:
     target_stream: list[str] = []
+    missing_records = 0
+    missing_words = 0
     for chunk in chunks:
         translated_chunk = translated.get(chunk.chunk_id)
         if translated_chunk is None:
+            if require_complete:
+                missing_records += len(chunk.records)
+                missing_words += sum(count_words(record.source) for record in chunk.records)
             target_stream.extend(record.source for record in chunk.records)
             continue
         by_id = {record.id: record for record in translated_chunk.records}
         for record in chunk.records:
             translated_record = by_id.get(record.id)
+            if translated_record is None and require_complete:
+                missing_records += 1
+                missing_words += count_words(record.source)
             target_stream.append(
                 translated_record.target if translated_record else record.source
             )
+    if require_complete and missing_records:
+        raise BuildError(
+            "build requires complete translations: "
+            f"{missing_records} record(s), {missing_words} source word(s) remaining"
+        )
     return target_stream
 
 
@@ -79,7 +95,7 @@ def _prose_span_from_ref(span_ref: EpubSpanRef) -> ProseSpan:
     )
 
 
-def _build_markdown(project: Project) -> BuildResult:
+def _build_markdown(project: Project, *, require_complete: bool = False) -> BuildResult:
     source = find_source_file(project)
     text = source.read_text("utf-8")
     names = _load_names(project)
@@ -96,7 +112,11 @@ def _build_markdown(project: Project) -> BuildResult:
         len(segment_spans([span], language=project.config.source_language))
         for span in spans
     ]
-    target_stream = _build_target_stream(chunks, translated)
+    target_stream = _build_target_stream(
+        chunks,
+        translated,
+        require_complete=require_complete,
+    )
 
     pos = 0
     for idx, span in enumerate(spans):
@@ -114,7 +134,7 @@ def _build_markdown(project: Project) -> BuildResult:
     return BuildResult(output_path=out_path, format="markdown", span_count=len(spans))
 
 
-def _build_epub(project: Project) -> BuildResult:
+def _build_epub(project: Project, *, require_complete: bool = False) -> BuildResult:
     from text2epub import Replacement, ReplacementPlan, rebuild_epub
     from text2epub.errors import ReplacementError, ValidationError
     from text2epub.validation import scan_epub_for_unresolved_tokens
@@ -138,7 +158,11 @@ def _build_epub(project: Project) -> BuildResult:
 
     chunks = _load_chunks(project)
     translated = _load_translated(project)
-    target_stream = _build_target_stream(chunks, translated)
+    target_stream = _build_target_stream(
+        chunks,
+        translated,
+        require_complete=require_complete,
+    )
 
     from booktx.chunking import segment_spans
 
@@ -247,16 +271,16 @@ class BuildResult:
         }
 
 
-def build_project(project: Project) -> BuildResult:
+def build_project(project: Project, *, require_complete: bool = False) -> BuildResult:
     """Build the translated output document for ``project``."""
     source = find_source_file(project)
     if project.config.format == "markdown" or source.suffix.lower() in (
         ".md",
         ".markdown",
     ):
-        return _build_markdown(project)
+        return _build_markdown(project, require_complete=require_complete)
     if project.config.format == "epub" or source.suffix.lower() == ".epub":
-        return _build_epub(project)
+        return _build_epub(project, require_complete=require_complete)
     raise BuildError(
         f"Cannot build format {project.config.format!r}; "
         "booktx v1 supports only markdown and epub."

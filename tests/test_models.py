@@ -19,6 +19,10 @@ from booktx.models import (
     Placeholder,
     ProjectConfig,
     Record,
+    StoredTranslationRecord,
+    TranslationStore,
+    TranslationTask,
+    TranslationTaskRecord,
     TranslatedChunk,
     TranslatedRecord,
 )
@@ -41,6 +45,8 @@ def test_record_has_contract_fields():
         "source",
         "protected_terms",
         "placeholders",
+        "span_index",
+        "span_record_index",
     ]
 
 
@@ -87,6 +93,56 @@ def test_translated_chunk_matches_contract_example():
         "id": "0001-000001",
         "target": "Alice sah Mr. Smith an.",
     }
+
+
+def test_translation_store_roundtrip():
+    store = TranslationStore(
+        source_sha256="abc123",
+        records={
+            "0001-000001": StoredTranslationRecord(
+                chunk_id="0001",
+                source_sha256="def456",
+                target="Hallo Welt.",
+                updated_at="2026-06-22T12:00:00Z",
+            )
+        },
+    )
+
+    dumped = json.loads(store.model_dump_json())
+
+    assert dumped["version"] == 1
+    assert dumped["records"]["0001-000001"]["chunk_id"] == "0001"
+    assert TranslationStore.model_validate_json(store.model_dump_json()) == store
+
+
+def test_translation_task_roundtrip():
+    task = TranslationTask(
+        task_id="bt-task-1",
+        unit="paragraph",
+        chapter_id="0006",
+        chapter_title="Two",
+        source_language="en",
+        target_language="de",
+        source_words=12,
+        record_count=1,
+        records=[
+            TranslationTaskRecord(
+                id="0006-000001",
+                chunk_id="0006",
+                source="Hello __NAME_001__.",
+                protected_terms=["Alice"],
+                placeholders=[
+                    Placeholder(token="__NAME_001__", original="Alice", kind="name")
+                ],
+            )
+        ],
+    )
+
+    dumped = json.loads(task.model_dump_json())
+
+    assert dumped["task_id"] == "bt-task-1"
+    assert dumped["records"][0]["chunk_id"] == "0006"
+    assert TranslationTask.model_validate_json(task.model_dump_json()) == task
 
 
 def test_chunk_roundtrip_through_json():

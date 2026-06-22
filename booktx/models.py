@@ -11,7 +11,7 @@ Both must round-trip through JSON with stable field names and ordering.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -21,6 +21,10 @@ __all__ = [
     "TranslatedRecord",
     "Chunk",
     "TranslatedChunk",
+    "StoredTranslationRecord",
+    "TranslationStore",
+    "TranslationTaskRecord",
+    "TranslationTask",
     "NamesFile",
     "ProjectConfig",
     "EpubSpanRef",
@@ -61,6 +65,14 @@ class Record(BaseModel):
         default_factory=list,
         description="Placeholders present in this record",
     )
+    span_index: int | None = Field(
+        default=None,
+        description="Original prose-span index for paragraph-aware grouping",
+    )
+    span_record_index: int | None = Field(
+        default=None,
+        description="Sentence index inside the original prose span",
+    )
 
     @field_validator("source")
     @classmethod
@@ -99,6 +111,61 @@ class TranslatedChunk(BaseModel):
 
     chunk_id: str = Field(..., description="Chunk id, e.g. 0001")
     records: list[TranslatedRecord] = Field(default_factory=list)
+
+
+class StoredTranslationRecord(BaseModel):
+    """One accepted record stored in ``translation-store.json``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_id: str = Field(..., description="Owning chunk id, e.g. 0001")
+    source_sha256: str = Field(
+        default="", description="SHA256 of the source record text when accepted"
+    )
+    target: str = Field(..., description="Accepted target text")
+    status: Literal["accepted"] = Field(default="accepted")
+    updated_at: str = Field(
+        default="", description="UTC timestamp of the latest accepted update"
+    )
+
+
+class TranslationStore(BaseModel):
+    """Primary record-level translation state owned by booktx."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(default=1)
+    source_sha256: str = Field(default="", description="Current project source SHA256")
+    records: dict[str, StoredTranslationRecord] = Field(default_factory=dict)
+
+
+class TranslationTaskRecord(BaseModel):
+    """A record assigned to a CLI-created translation task."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(..., description="Record id, e.g. 0001-000001")
+    chunk_id: str = Field(..., description="Owning chunk id, e.g. 0001")
+    source: str = Field(..., description="Source text with placeholders")
+    protected_terms: list[str] = Field(default_factory=list)
+    placeholders: list[Placeholder] = Field(default_factory=list)
+
+
+class TranslationTask(BaseModel):
+    """A persisted work item returned by ``booktx translate next``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(default=1)
+    task_id: str
+    unit: Literal["paragraph", "batch", "chunk", "chapter"]
+    chapter_id: str = ""
+    chapter_title: str = ""
+    source_language: str
+    target_language: str
+    source_words: int = 0
+    record_count: int = 0
+    records: list[TranslationTaskRecord] = Field(default_factory=list)
 
 
 class NamesFile(BaseModel):

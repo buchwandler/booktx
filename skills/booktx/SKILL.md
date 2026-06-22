@@ -15,9 +15,9 @@ Do not translate outside the JSON contract. Do not alter source files unless the
 
 Use this skill for any of these tasks:
 
-- Translate `.booktx/chunks/NNNN.json` into `.booktx/translated/NNNN.json`.
-- Inspect, validate, or repair translated chunk files.
-- Run `booktx extract`, `booktx next`, `booktx validate`, or `booktx build`.
+- Translate the records returned by `booktx translate next` and submit them with `booktx translate insert`.
+- Inspect, validate, or repair translation-store entries or compatibility translated chunk files.
+- Run `booktx extract`, `booktx status`, `booktx translate next`, `booktx translate insert`, `booktx validate`, or `booktx build`.
 - Maintain the `booktx` Python package, especially extraction, placeholders, validation, rebuild, or CLI behavior.
 - Review EPUB/Markdown translation safety and placeholder preservation.
 
@@ -44,7 +44,7 @@ A source chunk looks like this:
 }
 ```
 
-The translated file must be written to `.booktx/translated/0001.json` and must look like this:
+Compatibility translated chunk files still look like this when exported:
 
 ```json
 {
@@ -95,12 +95,15 @@ From a project root:
 ```bash
 booktx extract .
 booktx context status .
-booktx next . --unit chunk      # next untranslated chunk
-booktx next . --unit chapter    # next incomplete chapter
-booktx next-chapter .           # same chapter workflow, explicit command
+booktx status .
+booktx translate next . --json
+booktx translate next . --unit chapter --json
 ```
 
-Open `.booktx/context.md` first, then open each reported `.booktx/chunks/NNNN.json`, translate each record, and write `.booktx/translated/NNNN.json`.
+Open `.booktx/context.md` first, then use `booktx translate next` to fetch the
+exact records to translate. Submit results with `booktx translate insert`. Do
+not edit `.booktx/translated/*.json` directly; that directory is compatibility
+output managed by `booktx`.
 
 After writing translations:
 

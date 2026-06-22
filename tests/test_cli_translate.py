@@ -1,0 +1,221 @@
+"""CLI regressions for the command-based translation workflow."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from typer.testing import CliRunner
+
+from booktx.cli import app
+from booktx.config import load_project
+
+runner = CliRunner()
+
+DOC = """\
+# One
+
+First sentence. Second sentence.
+
+# Two
+
+Third sentence. Fourth sentence.
+"""
+
+
+def _make_project(tmp_path: Path, *, protected_terms: list[str] | None = None) -> Path:
+    src = tmp_path / "book.md"
+    src.write_text(DOC, encoding="utf-8")
+    project_dir = tmp_path / "book"
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--target",
+            "de",
+            "--source-file",
+            str(src),
+            "--chunk-size",
+            "2",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    if protected_terms:
+        proj = load_project(project_dir)
+        proj.names_path.write_text(
+            json.dumps({"protected_terms": protected_terms}),
+            encoding="utf-8",
+        )
+    ext = runner.invoke(app, ["extract", str(project_dir)])
+    assert ext.exit_code == 0, ext.output
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(app, ["context", "mark-ready", str(project_dir), "--force"])
+    return project_dir
+
+
+def _identity_legacy_chunk(project_dir: Path, chunk_id: str) -> None:
+    chunk_path = project_dir / ".booktx" / "chunks" / f"{chunk_id}.json"
+    chunk = json.loads(chunk_path.read_text("utf-8"))
+    payload = {
+        "chunk_id": chunk_id,
+        "records": [{"id": record["id"], "target": record["source"]} for record in chunk["records"]],
+    }
+    (project_dir / ".booktx" / "translated" / f"{chunk_id}.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+
+def test_status_json_reports_totals_before_translation(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+
+    res = runner.invoke(app, ["status", str(project_dir), "--json"])
+
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert data["totals"]["records_remaining"] == data["totals"]["records_total"]
+    assert data["totals"]["chapters_pending"] == 2
+    assert data["totals"]["chunks_pending"] == data["totals"]["chunks_total"]
+
+
+def test_status_and_translate_next_respect_boundary_overlap(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    _identity_legacy_chunk(project_dir, "0002")
+
+    status_res = runner.invoke(
+        app,
+        ["status", str(project_dir), "--chapter", "0002", "--json"],
+    )
+
+    assert status_res.exit_code == 0, status_res.output
+    status = json.loads(status_res.output)
+    chapter = status["chapters"][0]
+    assert chapter["record_range"]["start"] == "0002-000002"
+    assert chapter["record_range"]["end"] == "0003-000002"
+    assert chapter["records_total"] == 3
+    assert chapter["records_translated"] == 1
+    assert chapter["pending_chunk_ids"] == ["0003"]
+
+    next_res = runner.invoke(
+        app,
+        ["translate", "next", str(project_dir), "--chapter", "0002", "--unit", "chapter", "--json"],
+    )
+
+    assert next_res.exit_code == 0, next_res.output
+    payload = json.loads(next_res.output)
+    assert [record["id"] for record in payload["records"]] == [
+        "0003-000001",
+        "0003-000002",
+    ]
+
+
+def test_translate_next_and_insert_json_updates_store(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+
+    next_res = runner.invoke(
+        app,
+        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+
+    payload = {
+        "task_id": task["task_id"],
+        "records": [{"id": record["id"], "target": record["source"]} for record in task["records"]],
+    }
+    insert_res = runner.invoke(
+        app,
+        ["translate", "insert", str(project_dir), "--stdin"],
+        input=json.dumps(payload),
+    )
+
+    assert insert_res.exit_code == 0, insert_res.output
+    assert (project_dir / ".booktx" / "translation-store.json").is_file()
+    assert not list((project_dir / ".booktx" / "translated").glob("*.json"))
+
+    status_res = runner.invoke(app, ["status", str(project_dir), "--json"])
+    status = json.loads(status_res.output)
+    assert status["totals"]["records_translated"] >= len(task["records"])
+
+
+def test_translate_insert_tsv_accepts_batch(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+
+    next_res = runner.invoke(
+        app,
+        ["translate", "next", str(project_dir), "--unit", "batch", "--max-words", "20", "--json"],
+    )
+    task = json.loads(next_res.output)
+    tsv = "\n".join(f"{record['id']}\t{record['source']}" for record in task["records"]) + "\n"
+
+    insert_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--stdin",
+            "--format",
+            "tsv",
+        ],
+        input=tsv,
+    )
+
+    assert insert_res.exit_code == 0, insert_res.output
+    assert "accepted:" in insert_res.output
+
+
+def test_invalid_insert_is_atomic(tmp_path: Path):
+    project_dir = _make_project(tmp_path, protected_terms=["First", "Second"])
+
+    next_res = runner.invoke(
+        app,
+        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+    )
+    task = json.loads(next_res.output)
+    before = (project_dir / ".booktx" / "translation-store.json")
+    before_text = before.read_text("utf-8") if before.is_file() else None
+
+    payload = {
+        "task_id": task["task_id"],
+        "records": [{"id": task["records"][0]["id"], "target": "__NAME_999__ broken"}],
+    }
+    insert_res = runner.invoke(
+        app,
+        ["translate", "insert", str(project_dir), "--stdin"],
+        input=json.dumps(payload),
+    )
+
+    assert insert_res.exit_code == 1
+    assert "submission rejected" in insert_res.output
+    after = project_dir / ".booktx" / "translation-store.json"
+    after_text = after.read_text("utf-8") if after.is_file() else None
+    assert after_text == before_text
+
+
+def test_translate_import_legacy_and_export_roundtrip(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    _identity_legacy_chunk(project_dir, "0001")
+
+    import_res = runner.invoke(app, ["translate", "import-legacy", str(project_dir)])
+    assert import_res.exit_code == 0, import_res.output
+    store = json.loads((project_dir / ".booktx" / "translation-store.json").read_text("utf-8"))
+    assert any(record_id.startswith("0001-") for record_id in store["records"])
+
+    legacy_file = project_dir / ".booktx" / "translated" / "0001.json"
+    legacy_file.unlink()
+    export_res = runner.invoke(app, ["translate", "export", str(project_dir)])
+    assert export_res.exit_code == 0, export_res.output
+    assert legacy_file.is_file()
+
+
+def test_build_cli_require_complete_fails_with_missing_records(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+
+    res = runner.invoke(app, ["build", str(project_dir), "--require-complete"])
+
+    assert res.exit_code == 1
+    assert "build requires complete translations" in res.output

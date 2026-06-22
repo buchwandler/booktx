@@ -27,16 +27,21 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from booktx.config import Project, load_manifest
+from booktx.config import Project, load_manifest, load_translation_store
 from booktx.context import GlossaryEntry, TranslationContext, load_context
 from booktx.epub_manifest import load_epub_template_from_manifest
-from booktx.models import Chunk, Placeholder, TranslatedChunk
+from booktx.models import Chunk, Placeholder, TranslatedChunk, TranslatedRecord
+from booktx.progress import source_record_sha256
 from booktx.placeholders import TOKEN_RE, collect_tokens
 
 __all__ = [
     "Severity",
     "Finding",
     "ValidationReport",
+    "EffectiveTranslations",
+    "strict_load_translated",
+    "validate_record_pair",
+    "load_effective_translated_chunks",
     "validate_project",
     "validate_chunk_pair",
     "write_report",
@@ -111,6 +116,14 @@ class ValidationReport:
         }
 
 
+@dataclass(slots=True)
+class EffectiveTranslations:
+    """Merged accepted translations from the store and valid legacy chunks."""
+
+    chunks: dict[str, TranslatedChunk] = field(default_factory=dict)
+    findings: list[Finding] = field(default_factory=list)
+
+
 # --- per-pair validation -----------------------------------------------------
 
 
@@ -118,7 +131,7 @@ def _load_source_chunk(path: Path) -> Chunk:
     return Chunk.model_validate_json(path.read_text("utf-8"))
 
 
-def _strict_load_translated(path: Path) -> tuple[TranslatedChunk | None, str | None]:
+def strict_load_translated(path: Path) -> tuple[TranslatedChunk | None, str | None]:
     """Load a translated chunk, detecting commentary outside the JSON.
 
     Returns ``(model_or_None, error_message_or_None)``. We parse twice: once
@@ -226,6 +239,30 @@ def _check_protected_names_preserved(
     return findings
 
 
+def validate_record_pair(
+    source_rec,
+    target_rec,
+    chunk_id: str,
+    context: TranslationContext | None = None,
+) -> list[Finding]:
+    """Validate one translated record against one source record."""
+    findings: list[Finding] = []
+    if not target_rec.target or not target_rec.target.strip():
+        findings.append(
+            Finding(
+                chunk_id=chunk_id,
+                severity=Severity.ERROR,
+                rule="empty_target",
+                message=f"record {target_rec.id} has an empty target",
+                record_id=target_rec.id,
+            )
+        )
+    findings.extend(_check_placeholders_preserved(source_rec, target_rec, chunk_id))
+    findings.extend(_check_protected_names_preserved(source_rec, target_rec, chunk_id))
+    findings.extend(_check_forbidden_terms(source_rec, target_rec, chunk_id, context))
+    return findings
+
+
 def _contains_term(text: str, term: str, *, case_sensitive: bool) -> bool:
     if case_sensitive:
         return term in text
@@ -280,34 +317,14 @@ def _forbidden_target_findings(
     return findings
 
 
-def validate_chunk_pair(
+def _validate_translated_chunk(
     source: Chunk,
-    translated_path: Path | None,
+    translated: TranslatedChunk,
     context: TranslationContext | None = None,
 ) -> list[Finding]:
-    """Validate one source chunk against its translated file (if any)."""
+    """Validate one source chunk against a translated chunk model."""
     chunk_id = source.chunk_id
     findings: list[Finding] = []
-
-    if translated_path is None:
-        # Missing translation is not itself an error; it just means the chunk
-        # is not yet translated. Caller decides how to surface this.
-        return findings
-
-    if not translated_path.is_file():
-        return findings
-
-    translated, err = _strict_load_translated(translated_path)
-    if err is not None:
-        findings.append(
-            Finding(
-                chunk_id=chunk_id,
-                severity=Severity.ERROR,
-                rule="invalid_json_or_commentary",
-                message=err,
-            )
-        )
-        return findings
 
     # chunk_id must match.
     if translated.chunk_id != chunk_id:
@@ -368,25 +385,192 @@ def validate_chunk_pair(
         tgt_rec = tgt_records.get(rid)
         if tgt_rec is None:
             continue
-        # Target must not be empty.
-        if not tgt_rec.target or not tgt_rec.target.strip():
-            findings.append(
-                Finding(
-                    chunk_id=chunk_id,
-                    severity=Severity.ERROR,
-                    rule="empty_target",
-                    message=f"record {rid} has an empty target",
-                    record_id=rid,
-                )
-            )
-        findings.extend(_check_placeholders_preserved(src_rec, tgt_rec, chunk_id))
-        findings.extend(_check_protected_names_preserved(src_rec, tgt_rec, chunk_id))
-        findings.extend(_check_forbidden_terms(src_rec, tgt_rec, chunk_id, context))
+        findings.extend(validate_record_pair(src_rec, tgt_rec, chunk_id, context))
 
     return findings
 
 
+def validate_chunk_pair(
+    source: Chunk,
+    translated_path: Path | None,
+    context: TranslationContext | None = None,
+) -> list[Finding]:
+    """Validate one source chunk against its translated file (if any)."""
+    chunk_id = source.chunk_id
+    findings: list[Finding] = []
+
+    if translated_path is None:
+        return findings
+    if not translated_path.is_file():
+        return findings
+
+    translated, err = strict_load_translated(translated_path)
+    if err is not None:
+        findings.append(
+            Finding(
+                chunk_id=chunk_id,
+                severity=Severity.ERROR,
+                rule="invalid_json_or_commentary",
+                message=err,
+            )
+        )
+        return findings
+    return _validate_translated_chunk(source, translated, context)
+
+
 # --- project-level validation -----------------------------------------------
+
+
+def load_effective_translated_chunks(
+    project: Project,
+    *,
+    source_chunks: dict[str, Chunk] | None = None,
+    context: TranslationContext | None = None,
+) -> EffectiveTranslations:
+    """Merge valid legacy chunk files and accepted store records."""
+    if source_chunks is None:
+        source_chunks = {
+            path.stem: _load_source_chunk(path)
+            for path in sorted(project.chunks(), key=lambda path: path.stem)
+        }
+
+    translated_paths = {p.stem: p for p in project.translated()}
+    findings: list[Finding] = []
+    valid_legacy: dict[str, TranslatedChunk] = {}
+    store_records: dict[str, dict[str, TranslatedRecord]] = {}
+
+    for chunk_id, source in source_chunks.items():
+        translated_path = translated_paths.get(chunk_id)
+        if translated_path is None:
+            continue
+        translated, err = strict_load_translated(translated_path)
+        if err is not None:
+            findings.append(
+                Finding(
+                    chunk_id=chunk_id,
+                    severity=Severity.ERROR,
+                    rule="invalid_json_or_commentary",
+                    message=err,
+                )
+            )
+            continue
+        chunk_findings = _validate_translated_chunk(source, translated, context)
+        findings.extend(chunk_findings)
+        if not any(f.severity == Severity.ERROR for f in chunk_findings):
+            valid_legacy[chunk_id] = translated
+
+    stale = sorted(set(translated_paths) - set(source_chunks))
+    for chunk_id in stale:
+        findings.append(
+            Finding(
+                chunk_id=chunk_id,
+                severity=Severity.WARN,
+                rule="stale_translation",
+                message=(
+                    f"translated chunk {chunk_id} has no matching source chunk "
+                    f"(left in place; remove or re-extract to clear)"
+                ),
+            )
+        )
+
+    try:
+        store = load_translation_store(project)
+    except Exception as exc:  # noqa: BLE001 - surface invalid store structure
+        findings.append(
+            Finding(
+                chunk_id="store",
+                severity=Severity.ERROR,
+                rule="invalid_translation_store",
+                message=f"translation-store.json is invalid: {exc}",
+            )
+        )
+        store = None
+
+    if store is not None:
+        for record_id, stored in store.records.items():
+            chunk_id = stored.chunk_id
+            source = source_chunks.get(chunk_id)
+            if source is None:
+                findings.append(
+                    Finding(
+                        chunk_id=chunk_id,
+                        severity=Severity.ERROR,
+                        rule="stale_store_record",
+                        message=(
+                            f"store record {record_id} has no matching source chunk {chunk_id}"
+                        ),
+                        record_id=record_id,
+                    )
+                )
+                continue
+            if chunk_id != source.chunk_id or chunk_id != record_id.split("-", 1)[0]:
+                findings.append(
+                    Finding(
+                        chunk_id=chunk_id,
+                        severity=Severity.ERROR,
+                        rule="store_chunk_mismatch",
+                        message=(
+                            f"store record {record_id} points to chunk {chunk_id}, "
+                            f"but the record id does not match that chunk"
+                        ),
+                        record_id=record_id,
+                    )
+                )
+                continue
+
+            source_records = {record.id: record for record in source.records}
+            source_rec = source_records.get(record_id)
+            if source_rec is None:
+                findings.append(
+                    Finding(
+                        chunk_id=chunk_id,
+                        severity=Severity.ERROR,
+                        rule="stale_store_record",
+                        message=f"store record {record_id} has no matching source record",
+                        record_id=record_id,
+                    )
+                )
+                continue
+            if stored.source_sha256 and stored.source_sha256 != source_record_sha256(
+                source_rec.source
+            ):
+                findings.append(
+                    Finding(
+                        chunk_id=chunk_id,
+                        severity=Severity.ERROR,
+                        rule="stale_store_record",
+                        message=(
+                            f"store record {record_id} no longer matches the current source text"
+                        ),
+                        record_id=record_id,
+                    )
+                )
+                continue
+
+            translated_rec = TranslatedRecord(id=record_id, target=stored.target)
+            record_findings = validate_record_pair(
+                source_rec, translated_rec, chunk_id, context
+            )
+            findings.extend(record_findings)
+            if any(f.severity == Severity.ERROR for f in record_findings):
+                continue
+            store_records.setdefault(chunk_id, {})[record_id] = translated_rec
+
+    merged: dict[str, TranslatedChunk] = {}
+    for chunk_id, source in source_chunks.items():
+        by_id: dict[str, TranslatedRecord] = {}
+        legacy = valid_legacy.get(chunk_id)
+        if legacy is not None:
+            by_id.update({record.id: record for record in legacy.records})
+        by_id.update(store_records.get(chunk_id, {}))
+        if not by_id:
+            continue
+        merged[chunk_id] = TranslatedChunk(
+            chunk_id=chunk_id,
+            records=[by_id[record.id] for record in source.records if record.id in by_id],
+        )
+
+    return EffectiveTranslations(chunks=merged, findings=findings)
 
 
 def validate_project(project: Project) -> ValidationReport:
@@ -401,8 +585,10 @@ def validate_project(project: Project) -> ValidationReport:
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
 
-    chunk_paths = {p.stem: p for p in project.chunks()}
-    translated_paths = {p.stem: p for p in project.translated()}
+    source_chunks = {
+        path.stem: _load_source_chunk(path)
+        for path in sorted(project.chunks(), key=lambda path: path.stem)
+    }
     new_epub_pipeline = _uses_new_epub_pipeline(project)
     try:
         context = load_context(project)
@@ -417,34 +603,29 @@ def validate_project(project: Project) -> ValidationReport:
             )
         )
 
-    for chunk_id in sorted(chunk_paths):
-        source = _load_source_chunk(chunk_paths[chunk_id])
+    effective = load_effective_translated_chunks(
+        project,
+        source_chunks=source_chunks,
+        context=context,
+    )
+    report.findings.extend(effective.findings)
+
+    for chunk_id in sorted(source_chunks):
+        source = source_chunks[chunk_id]
         report.chunks_checked += 1
         if new_epub_pipeline:
             report.findings.extend(_check_new_epub_source_chunk(source))
-        translated_path = translated_paths.get(chunk_id)
-        if translated_path is None:
+        translated_chunk = effective.chunks.get(chunk_id)
+        if translated_chunk is None or not translated_chunk.records:
             report.chunks_missing_translation += 1
             continue
-        findings = validate_chunk_pair(source, translated_path, context)
-        report.findings.extend(findings)
-        if not any(f.severity == Severity.ERROR for f in findings):
+        chunk_errors = [
+            finding
+            for finding in report.findings
+            if finding.chunk_id == chunk_id and finding.severity == Severity.ERROR
+        ]
+        if len(translated_chunk.records) == len(source.records) and not chunk_errors:
             report.chunks_passed += 1
-
-    # Stale translated files: present in translated/ but no matching chunk.
-    stale = sorted(set(translated_paths) - set(chunk_paths))
-    for chunk_id in stale:
-        report.findings.append(
-            Finding(
-                chunk_id=chunk_id,
-                severity=Severity.WARN,
-                rule="stale_translation",
-                message=(
-                    f"translated chunk {chunk_id} has no matching source chunk "
-                    f"(left in place; remove or re-extract to clear)"
-                ),
-            )
-        )
 
     return report
 

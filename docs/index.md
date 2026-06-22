@@ -36,7 +36,7 @@ Use booktx when you need a repeatable translation workflow with explicit files:
 1. Put exactly one source document into `source/`.
 2. Run extraction to create `.booktx/chunks/*.json`.
 3. Build or approve `.booktx/context.json` and `.booktx/context.md`.
-4. Translate each chunk by writing `.booktx/translated/*.json`.
+4. Request work with `booktx translate next` and submit accepted records with `booktx translate insert`.
 5. Run validation.
 6. Rebuild the final document into `output/`.
 

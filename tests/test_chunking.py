@@ -45,6 +45,8 @@ def test_segment_carries_placeholders_and_terms():
     rec = records[0]
     assert rec.protected_terms == ["Alice"]
     assert rec.placeholders[0].original == "Alice"
+    assert rec.span_index == 0
+    assert rec.span_record_index == 0
 
 
 def test_segment_filters_placeholders_to_visible_record_tokens():
@@ -101,6 +103,29 @@ def test_pack_assigns_contract_ids():
     assert [r.id for r in chunks[1].records] == ["0002-000001"]
     assert chunks[0].source_language == "en"
     assert chunks[0].target_language == "de"
+
+
+def test_pack_preserves_span_metadata():
+    records = [
+        Record(
+            id="000001",
+            source="Sentence 1.",
+            span_index=3,
+            span_record_index=0,
+        ),
+        Record(
+            id="000002",
+            source="Sentence 2.",
+            span_index=3,
+            span_record_index=1,
+        ),
+    ]
+
+    chunks = pack_chunks(records, source_language="en", target_language="de", chunk_size=2)
+
+    assert chunks[0].records[0].span_index == 3
+    assert chunks[0].records[0].span_record_index == 0
+    assert chunks[0].records[1].span_record_index == 1
 
 
 def test_pack_respects_chunk_size():

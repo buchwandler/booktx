@@ -29,7 +29,9 @@ pack_chunks()
 translator / coding agent
   |
   v
-.booktx/translated/*.json
+.booktx/translation-store.json
+  |
+  +--> .booktx/translated/*.json (compatibility export / legacy input)
   |
   v
 validate_project()

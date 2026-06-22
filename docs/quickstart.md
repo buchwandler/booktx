@@ -55,7 +55,8 @@ demo/.booktx/chunks/0002.json
 ...
 ```
 
-Extraction is idempotent: rerunning it rebuilds `chunks/` but leaves `translated/` intact.
+Extraction is idempotent: rerunning it rebuilds `chunks/` but leaves the
+translation store and compatibility `translated/` files intact.
 
 ## Build translation context
 
@@ -87,17 +88,23 @@ demo/.booktx/context.json
 demo/.booktx/context.md
 ```
 
-## Translate one chunk
+## Translate the next task
 
-Ask for the next chunk:
+Ask for the next task:
 
 ```bash
-booktx next ./demo
+booktx status ./demo
+booktx translate next ./demo --json
 ```
 
-The command prints the context path and the next source chunk path. Create a matching file in `.booktx/translated/`.
+The command returns a task id and the exact records to translate. Submit the
+translated records through the CLI:
 
-Source chunk:
+```bash
+booktx translate insert ./demo --task-id TASK --stdin
+```
+
+The record contract is still:
 
 ```json
 {
@@ -117,7 +124,7 @@ Source chunk:
 }
 ```
 
-Translated chunk:
+Compatibility translated chunk shape:
 
 ```json
 {

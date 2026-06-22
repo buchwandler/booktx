@@ -2,12 +2,12 @@
 
 `booktx` is a deterministic command-line tool that prepares **Markdown** and
 **EPUB** documents for translation by a coding agent (or a human translator).
-It does the mechanical bookkeeping — extract translatable sentences, validate
-the translation, rebuild the document — and leaves the actual translation to
-you or your agent.
+It does the mechanical bookkeeping — extract translatable sentences, report
+progress, hand out the next safe work unit, validate submissions, rebuild the
+document — and leaves the actual translation to you or your agent.
 
 **booktx never translates text itself** and makes no LLM or network calls. All
-translation text comes from JSON chunk files that you (or an agent) fill in.
+translation text comes from local CLI submissions that `booktx` stores and validates.
 
 ## Legal notice
 
@@ -47,7 +47,9 @@ book/
     context.md     # rendered context that agents must read before translating
     chapter-map.json # detected chapter -> chunk ranges (additive metadata)
     chunks/        # 0001.json, 0002.json ... (booktx writes these)
-    translated/    # 0001.json, 0002.json ... (the agent writes these)
+    translation-store.json # primary record-level translation state
+    tasks/         # persisted work items created by booktx translate next
+    translated/    # compatibility/export chunk JSON managed by booktx
     reports/       # validation-report.json
   output/
     book.de.md     # or book.de.epub — the rebuilt translated document
@@ -64,22 +66,33 @@ booktx context init ./book --non-interactive   # create open questions/context
 booktx context questions ./book                # show required context questions
 booktx context answer ./book Q001 --text de-DE # answer one context question
 booktx context mark-ready ./book               # mark ready after required answers
+booktx status ./book                           # report translation progress
 booktx chapters ./book                         # list detected chapter ranges
-booktx next ./book                             # print next chunk (requires context)
-booktx next ./book --unit chapter              # print next incomplete chapter
+booktx translate next ./book --json            # get the next task payload
+booktx translate insert ./book --stdin         # submit translated records
+booktx translate import-legacy ./book          # import valid translated/*.json
+booktx translate export ./book                 # export full translated chunks
+booktx next ./book                             # legacy next-chunk summary
+booktx next ./book --unit chapter              # legacy next-chapter summary
 booktx next-chapter ./book                     # chapter workflow shortcut
 booktx validate ./book                         # enforce contract + context lint
 booktx build ./book                            # rebuild output/book.<target>.<ext>
+booktx build ./book --require-complete         # fail on any missing/invalid record
 ```
 
-`booktx next` refuses to return translation work until `.booktx/context.json`
-exists and has `ready: true`. When ready, it prints the rendered context path
-before the chunk path. Use `--allow-missing-context` only for legacy workflows
-and tests that deliberately bypass the context gate.
+`booktx translate next` refuses to return translation work until `.booktx/context.json`
+exists and has `ready: true`. Use `--allow-missing-context` only for legacy
+workflows and tests that deliberately bypass the context gate.
 
-`booktx next --unit chapter` and `booktx next-chapter` print the next
-incomplete chapter and all chunk files it covers. `booktx chapters` writes
-`.booktx/chapter-map.json` and lists detected chapter ranges.
+`booktx status` reports record-, chunk-, chapter-, and word-level progress.
+`booktx translate next` returns the next paragraph, batch, chunk, or chapter
+task together with a task id and submit hint. `booktx translate insert`
+validates each submitted record before writing `translation-store.json`.
+
+`booktx next --unit chapter` and `booktx next-chapter` remain available as
+legacy summaries, but they now point agents at `booktx translate next` and
+`booktx translate insert`. `booktx chapters` writes `.booktx/chapter-map.json`
+and lists detected chapter ranges.
 
 `booktx context init --non-interactive` creates a not-ready context with open
 questions and a seed glossary. Required questions must be answered before
@@ -87,9 +100,10 @@ questions and a seed glossary. Required questions must be answered before
 `context.json`; the JSON file is authoritative.
 
 `booktx extract` is **idempotent**: it rebuilds `chunks/` on every run but
-leaves `translated/` untouched, so re-extracting after editing the source never
-destroys work in progress. Stale `translated/*.json` files whose chunk no longer
-exists are kept and reported as warnings.
+leaves both `translation-store.json` and compatibility `translated/` files
+untouched, so re-extracting after editing the source never destroys work in
+progress. Stale `translated/*.json` files whose chunk no longer exists are kept
+and reported as warnings.
 
 ## The translation contract
 
@@ -111,7 +125,10 @@ exists are kept and reported as warnings.
 }
 ```
 
-The agent writes the matching file to `.booktx/translated/0001.json`:
+`booktx translate insert` accepts translated records and stores them in
+`.booktx/translation-store.json`. When you need compatibility chunk files,
+`booktx translate export` materializes `.booktx/translated/NNNN.json` from the
+accepted store entries:
 
 ```json
 {
@@ -211,9 +228,11 @@ pipeline.
 booktx init ./demo --target de
 cp book.md ./demo/source/
 booktx extract ./demo
-booktx next ./demo              # -> 0001   .booktx/chunks/0001.json
+booktx context init ./demo --non-interactive
+booktx context mark-ready ./demo --force
+booktx translate next ./demo --json
 
-# Fill in .booktx/translated/0001.json (see the contract above), then:
+# Submit the returned records through the CLI, then:
 
 booktx validate ./demo
 booktx build ./demo            # -> demo/output/book.de.md
@@ -224,9 +243,11 @@ booktx build ./demo            # -> demo/output/book.de.md
 ```bash
 booktx init ./demo --target de --source-file book.epub
 booktx extract ./demo
-booktx next ./demo
+booktx context init ./demo --non-interactive
+booktx context mark-ready ./demo --force
+booktx translate next ./demo --unit chapter --json
 
-# Fill in every .booktx/translated/*.json, then:
+# Submit translated records with booktx translate insert, then:
 
 booktx validate ./demo
 booktx build ./demo            # -> demo/output/book.de.epub

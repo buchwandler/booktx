@@ -14,8 +14,10 @@ import tests.test_epub_io as epub_fixtures
 from booktx.build import BuildError, build_project, records_to_span_text
 from booktx.chunking import ProseSpan, spans_to_chunks
 from booktx.cli import app
-from booktx.config import find_source_file, init_project, load_project
+from booktx.config import find_source_file, init_project, load_project, write_translation_store
 from booktx.markdown_io import extract_markdown
+from booktx.models import StoredTranslationRecord, TranslationStore
+from booktx.progress import source_record_sha256
 
 runner = CliRunner()
 
@@ -72,6 +74,19 @@ def _write_translations(proj, translations: dict[str, object]) -> None:
         (proj.translated_dir / f"{chunk_id}.json").write_text(
             json.dumps(payload), encoding="utf-8"
         )
+
+
+def _write_store_identity_translation(proj, chunks) -> None:
+    records: dict[str, StoredTranslationRecord] = {}
+    for chunk in chunks:
+        for record in chunk.records:
+            records[record.id] = StoredTranslationRecord(
+                chunk_id=chunk.chunk_id,
+                source_sha256=source_record_sha256(record.source),
+                target=record.source,
+                updated_at="2026-06-22T12:00:00Z",
+            )
+    write_translation_store(proj, TranslationStore(records=records))
 
 
 def _extract_epub_project(project_root: Path) -> None:
@@ -144,6 +159,37 @@ def test_build_markdown_translates_text(tmp_path: Path):
     out = result.output_path.read_text("utf-8")
     assert "HELLO" in out
     assert "Alice" in out
+
+
+def test_build_markdown_uses_translation_store(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    doc = "# Hello\n\nAlice ran fast.\n"
+    proj.names_path.write_text(
+        json.dumps({"protected_terms": ["Alice"]}),
+        encoding="utf-8",
+    )
+    (proj.source_dir / "book.md").write_text(doc, encoding="utf-8")
+    find_source_file(proj)
+    proj = load_project(proj.root)
+    chunks = _write_source_chunks_markdown(proj, doc)
+
+    _write_store_identity_translation(proj, chunks)
+
+    result = build_project(proj)
+    out = result.output_path.read_text("utf-8")
+    assert "Hello" in out
+    assert "Alice ran fast." in out
+
+
+def test_build_require_complete_fails_when_records_missing(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    (proj.source_dir / "book.md").write_text("# Hello\n\nAlice ran fast.\n", encoding="utf-8")
+    find_source_file(proj)
+    proj = load_project(proj.root)
+    _write_source_chunks_markdown(proj, "# Hello\n\nAlice ran fast.\n")
+
+    with pytest.raises(BuildError, match="build requires complete translations"):
+        build_project(proj, require_complete=True)
 
 
 def test_build_epub_without_translations_is_byte_identical(tmp_path: Path):
@@ -244,7 +290,7 @@ def test_build_epub_fails_on_unresolved_placeholder_token(tmp_path: Path):
         }
     _write_translations(proj, translations)
 
-    with pytest.raises(BuildError, match="unresolved placeholder __TAG_999__"):
+    with pytest.raises(BuildError, match="placeholder_added"):
         build_project(proj)
 
 

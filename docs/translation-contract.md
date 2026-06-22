@@ -2,7 +2,9 @@
 
 The contract is the boundary between booktx and the translator or coding agent.
 
-booktx writes source chunks. The translator writes translated chunks. Validation checks that translated chunks preserve the structure and all required tokens.
+booktx writes source chunks and accepts translated records through CLI commands.
+Validation checks that accepted records and compatibility translated chunks
+preserve the structure and all required tokens.
 
 ## Source chunk shape
 
@@ -24,7 +26,7 @@ booktx writes source chunks. The translator writes translated chunks. Validation
 }
 ```
 
-## Translated chunk shape
+## Compatibility translated chunk shape
 
 ```json
 {
@@ -100,7 +102,11 @@ Do not split one source record into multiple translated records.
 
 ## Missing translations
 
-If a source chunk has no translated file, validation reports it as missing but does not treat that as a contract error for the existing translated files. Build falls back to source text for missing translated chunks.
+If a source chunk has no accepted record in the translation store and no valid
+legacy translated chunk, validation reports it as missing but does not treat
+that as a contract error for the existing translated data. Build falls back to
+source text for missing translated records unless `booktx build --require-complete`
+is used.
 
 For production translation, treat missing chunks as incomplete work even if the validator can still inspect the project.
 

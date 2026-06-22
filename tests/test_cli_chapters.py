@@ -77,8 +77,8 @@ def test_next_chapter_prints_first_incomplete_chapter(tmp_path: Path):
     assert "context:" in res.output
     assert "chapter: 0001" in res.output
     assert "chunks:" in res.output
-    assert "0001.json" in res.output
-    assert "0002.json" in res.output
+    assert "pending chunks:" in res.output
+    assert "record range:" in res.output
 
 
 def test_next_unit_chapter_matches_next_chapter(tmp_path: Path):
@@ -87,7 +87,7 @@ def test_next_unit_chapter_matches_next_chapter(tmp_path: Path):
     res = runner.invoke(app, ["next", str(project_dir), "--unit", "chapter"])
     assert res.exit_code == 0, res.output
     assert "chapter: 0001" in res.output
-    assert "0001.json" in res.output
+    assert "pending chunks:" in res.output
 
 
 def test_next_chapter_skips_completed_chapter(tmp_path: Path):

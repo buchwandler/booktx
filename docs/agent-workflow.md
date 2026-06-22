@@ -9,12 +9,13 @@ From the project root:
 ```bash
 booktx extract .
 booktx context status .
-booktx next . --unit chapter
+booktx status .
+booktx translate next . --unit chapter --json
 ```
 
 If context is missing or not ready, stop translating and build the context first.
 
-## Before opening a chunk
+## Before opening work items
 
 Read:
 
@@ -22,17 +23,20 @@ Read:
 .booktx/context.md
 ```
 
-Then inspect the source chunk printed by:
+Then request the next task from:
 
 ```bash
-booktx next .
+booktx translate next . --json
 ```
 
-or the chapter chunk list printed by:
+or a chapter-focused task from:
 
 ```bash
-booktx next . --unit chapter
+booktx translate next . --unit chapter --json
 ```
+
+`booktx translate next` returns a task id, the exact record ids to translate, and
+a submit hint. Do not infer chunk ranges manually.
 
 ## Translate only JSON records
 
@@ -81,6 +85,15 @@ Invalid targets:
 
 The first replaces placeholders with originals. The second changes token padding. The third drops a required token.
 
+## Submit through the CLI
+
+```bash
+booktx translate insert . --task-id TASK --stdin
+```
+
+Do not edit `.booktx/translated/*.json` directly during normal work. That
+directory is compatibility output managed by `booktx translate export`.
+
 ## Validate often
 
 Run:
@@ -110,17 +123,19 @@ Use chapter mode when style continuity matters:
 
 ```bash
 booktx chapters .
-booktx next . --unit chapter
+booktx translate next . --unit chapter --json
 ```
 
-Translate all chunks listed for the chapter. After completing the chapter, add or update chapter notes in the context if new terminology, voice decisions, or open issues appeared.
+Translate the returned chapter task records. After completing the chapter, add or
+update chapter notes in the context if new terminology, voice decisions, or
+open issues appeared.
 
 ## Repair workflow
 
 If validation reports structural errors:
 
-1. Open the source chunk in `.booktx/chunks/`.
-2. Open the translated chunk in `.booktx/translated/`.
+1. Inspect the source chunk in `.booktx/chunks/`.
+2. Inspect the affected store/task payload or compatibility translated chunk.
 3. Compare `chunk_id`, record count, record order, and ids.
 4. Restore all visible placeholders from source to target.
 5. Remove commentary outside the JSON object.

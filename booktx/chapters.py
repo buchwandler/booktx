@@ -8,7 +8,7 @@ from markdown_it import MarkdownIt
 from pydantic import BaseModel, ConfigDict, Field
 
 from booktx.chunking import ProseSpan, segment_spans
-from booktx.config import find_source_file, load_manifest, load_names
+from booktx.config import find_source_file, load_manifest, load_names, project_source_sha256
 from booktx.context import chapter_map_path
 from booktx.epub_io import extract_epub
 from booktx.epub_manifest import load_epub_template_from_manifest
@@ -70,6 +70,7 @@ def write_chapter_map(project: Project, chapter_map: ChapterMap) -> None:
 def detect_chapters(project: Project) -> ChapterMap:
     """Detect chapters and write no files."""
     source = find_source_file(project)
+    source_sha256 = project_source_sha256(project)
     names = load_names(project).protected_terms
     if project.config.format == "markdown":
         from booktx.markdown_io import extract_markdown, split_front_matter
@@ -112,6 +113,7 @@ def detect_chapters(project: Project) -> ChapterMap:
         boundaries,
         record_ids,
         language=project.config.source_language,
+        source_sha256=source_sha256,
     )
 
 
@@ -140,9 +142,10 @@ def _build_chapter_map(
     record_ids: list[str],
     *,
     language: str,
+    source_sha256: str = "",
 ) -> ChapterMap:
     if not record_ids:
-        return ChapterMap(chapters=[])
+        return ChapterMap(source_sha256=source_sha256, chapters=[])
 
     starts = _span_record_starts(spans, language=language)
     candidates: list[tuple[int, str]] = []
@@ -184,7 +187,7 @@ def _build_chapter_map(
                 record_count=len(chapter_records),
             )
         )
-    return ChapterMap(chapters=chapters)
+    return ChapterMap(source_sha256=source_sha256, chapters=chapters)
 
 
 def _unique_chunk_ids(record_ids: list[str]) -> list[str]:

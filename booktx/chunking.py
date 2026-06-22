@@ -103,11 +103,11 @@ def segment_spans(spans: list[ProseSpan], *, language: str = "en") -> list[Recor
     """
     records: list[Record] = []
     counter = 0
-    for span in spans:
+    for span_index, span in enumerate(spans):
         if not span.text or not span.text.strip():
             continue
         sentences = _sentences(span.text, language=language)
-        for sentence in sentences:
+        for span_record_index, sentence in enumerate(sentences):
             cleaned = sentence.strip()
             if not cleaned:
                 continue
@@ -123,6 +123,8 @@ def segment_spans(spans: list[ProseSpan], *, language: str = "en") -> list[Recor
                     source=cleaned,
                     protected_terms=record_terms,
                     placeholders=record_placeholders,
+                    span_index=span_index,
+                    span_record_index=span_record_index,
                 )
             )
     return records
