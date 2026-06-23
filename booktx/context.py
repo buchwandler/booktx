@@ -169,10 +169,11 @@ def load_context(project: Project) -> TranslationContext | None:
 
 def write_context(project: Project, context: TranslationContext) -> None:
     """Persist ``context`` to ``.booktx/context.json``."""
-    path = context_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        context.model_dump_json(indent=2, by_alias=True) + "\n", encoding="utf-8"
+    from booktx.io_utils import write_json_text_atomic
+
+    write_json_text_atomic(
+        context_path(project),
+        context.model_dump_json(indent=2, by_alias=True),
     )
 
 
@@ -180,7 +181,7 @@ def write_context(project: Project, context: TranslationContext) -> None:
 
 
 def seed_questions() -> list[ContextQuestion]:
-    """Deterministic initial questionnaire (mirrors the handoff).
+    """Generic initial questionnaire for any translation project.
 
     The questions marked ``required=True`` gate ``ready``. Typography and units
     are left optional: they affect style but a missing answer does not block the
@@ -197,7 +198,7 @@ def seed_questions() -> list[ContextQuestion]:
         (
             "Q002",
             "overall_style",
-            "Overall style: literal, balanced, or fluent literary German?",
+            "Overall style: literal, balanced, or fluent literary?",
             True,
         ),
         (
@@ -227,35 +228,16 @@ def seed_questions() -> list[ContextQuestion]:
             True,
         ),
         (
-            "Q007",
-            "kinden",
-            "Species/culture terms: how to handle Wasp-kinden, Ant-kinden, "
-            "Spider-kinden, Fly-kinden, etc.?",
-            True,
-        ),
-        (
-            "Q008",
-            "honorifics",
-            "Honorifics: keep Sieur, translate it, or use a German equivalent?",
-            True,
-        ),
-        (
-            "Q009",
-            "place_geopolitical",
-            "Place/geopolitical terms: especially Lowlands, Lowlander, Lowland cities.",
-            True,
-        ),
-        (
             "Q010",
             "typography",
-            "Typography: German quotation marks, em dashes, italics "
+            "Typography: quotation marks, em dashes, italics, "
             "placeholders, chapter titles.",
             False,
         ),
         (
             "Q011",
             "units",
-            "Units: preserve feet/miles or convert?",
+            "Units: preserve original or convert to target locale conventions?",
             False,
         ),
         (
@@ -273,38 +255,62 @@ def seed_questions() -> list[ContextQuestion]:
 
 
 def seed_glossary() -> list[GlossaryEntry]:
-    """Deterministic book-specific glossary seeds (all ``status='open'``).
+    """Generic glossary seeds (empty by default).
 
-    No target is approved. The Lowlands/Lowlander entries pin the forbidden
-    real-world-Netherlands renderings that motivated this feature.
+    Book-specific seeds can be loaded via the ``--seed`` option on
+    ``booktx context init``. The Shadows-of-Apt template is available as
+    ``--seed shadows-of-apt``.
     """
-    return [
-        GlossaryEntry(
-            source="Lowlands",
-            target=None,
-            forbidden_targets=["Niederlande", "die Niederlande", "Holland"],
-            category="place",
-            status="open",
-            notes=(
-                "Fantasy-world geopolitical term; do not use the real-world "
-                "Netherlands meaning. Ask the user for the approved rendering."
-            ),
-            enforce="error",
-        ),
-        GlossaryEntry(
-            source="Lowlander",
-            target=None,
-            forbidden_targets=["Niederländer", "Holländer"],
-            category="demonym",
-            status="open",
-            notes=(
-                "Demonym for Lowlands. German target must avoid the "
-                "Dutch/Nederlander meaning."
-            ),
-            enforce="error",
-        ),
-    ]
+    return []
 
+
+
+def load_seed_template(name: str) -> tuple[list[ContextQuestion], list[GlossaryEntry]]:
+    """Load book-specific seeds from a packaged template.
+
+    Returns ``(extra_questions, glossary_entries)`` to merge into the default
+    context. Raises ``FileNotFoundError`` for unknown template names.
+    """
+    import json
+    from pathlib import Path
+
+    template_dir = Path(__file__).parent / "templates"
+    template_path = template_dir / f"{name}.json"
+    if not template_path.is_file():
+        raise FileNotFoundError(f"unknown seed template: {name}")
+    data = json.loads(template_path.read_text("utf-8"))
+    questions = [
+        ContextQuestion(
+            id=q["id"],
+            topic=q["topic"],
+            question=q["question"],
+            required=q.get("required", True),
+        )
+        for q in data.get("questions", [])
+    ]
+    glossary = [
+        GlossaryEntry(
+            source=g["source"],
+            target=g.get("target"),
+            forbidden_targets=g.get("forbidden_targets", []),
+            category=g.get("category", ""),
+            status=g.get("status", "open"),
+            notes=g.get("notes", ""),
+            enforce=g.get("enforce", "warn"),
+        )
+        for g in data.get("glossary", [])
+    ]
+    return questions, glossary
+
+
+def available_seed_templates() -> list[str]:
+    """Return names of packaged seed templates."""
+    from pathlib import Path
+
+    template_dir = Path(__file__).parent / "templates"
+    if not template_dir.is_dir():
+        return []
+    return sorted(p.stem for p in template_dir.glob("*.json"))
 
 def default_context(project: Project, source_sha256: str = "") -> TranslationContext:
     """Build a not-ready context pre-filled from the project config.
@@ -489,6 +495,9 @@ def render_context_markdown(context: TranslationContext) -> str:
 
 def write_context_markdown(project: Project, context: TranslationContext) -> None:
     """Render ``context`` to ``.booktx/context.md``."""
-    path = context_markdown_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_context_markdown(context), encoding="utf-8")
+    from booktx.io_utils import write_text_atomic
+
+    write_text_atomic(
+        context_markdown_path(project),
+        render_context_markdown(context),
+    )

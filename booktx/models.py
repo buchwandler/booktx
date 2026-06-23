@@ -47,7 +47,7 @@ class Placeholder(BaseModel):
 
     token: str = Field(..., description="Placeholder token, e.g. __NAME_001__")
     original: str = Field(..., description="Original text to restore verbatim")
-    kind: str = Field("tag", description="Placeholder kind: 'name' or 'tag'")
+    kind: Literal["name", "tag"] = Field("tag", description="Placeholder kind")
 
 
 class Record(BaseModel):

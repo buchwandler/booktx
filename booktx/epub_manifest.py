@@ -190,6 +190,15 @@ def assert_source_sha(path: Path | str, expected_sha: str) -> None:
         )
 
 
+
+def prose_span_from_epub_ref(span_ref: EpubSpanRef) -> ProseSpan:
+    """Convert an EPUB span reference to a ProseSpan for sentence segmentation."""
+    return ProseSpan(
+        text=span_ref.source_text,
+        placeholders=span_ref.placeholders,
+        protected_terms=span_ref.protected_terms,
+    )
+
 def build_raw_block_index(structured) -> dict[str, _RawBlock]:
     """Map epub2text block ids to raw archive offsets and fragments."""
     blocks_by_document_id: dict[str, list] = {}

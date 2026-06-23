@@ -71,7 +71,39 @@ def _make_epub_project(tmp_path: Path) -> Path:
 def test_version_flag():
     res = runner.invoke(app, ["--version"])
     assert res.exit_code == 0
-    assert "0.1.0" in res.output
+    # Version is sourced from _version.py; just assert it is non-empty and
+    # does not report the stale hardcoded 0.1.0 when a generated version exists.
+    import booktx
+
+    assert booktx.__version__
+    assert booktx.__version__ != "0.1.0"
+    assert booktx.__version__ in res.output
+
+
+def test_init_accepts_source_lang_alias(tmp_path: Path):
+    project_dir = tmp_path / "alias-book"
+    src = tmp_path / "novel.md"
+    src.write_text(MARKDOWN_DOC, encoding="utf-8")
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--target",
+            "fr",
+            "--source-file",
+            str(src),
+            "--source-lang",
+            "en",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    from booktx.config import tomllib
+
+    with (project_dir / ".booktx" / "config.toml").open("rb") as fh:
+        cfg = tomllib.load(fh)
+    assert cfg["source_language"] == "en"
+    assert cfg["target_language"] == "fr"
 
 
 def test_init_creates_layout(tmp_path: Path):
@@ -143,6 +175,52 @@ def test_extract_is_idempotent_and_preserves_translated(tmp_path: Path):
     # translated file survives
     assert (translated_dir / "0001.json").is_file()
 
+
+
+def test_extract_leaves_chunks_intact_when_write_fails(tmp_path: Path, monkeypatch):
+    """An interrupted extract must not corrupt the existing chunks dir.
+
+    The atomic chunk-dir swap writes into a sibling temp dir and only
+    replaces .booktx/chunks/ after every chunk is written. If a write fails
+    mid-extract, the previous chunks directory must survive unchanged.
+    """
+    project_dir = _make_markdown_project(tmp_path)
+    runner.invoke(app, ["extract", str(project_dir)])
+    chunks_dir = project_dir / ".booktx" / "chunks"
+    before = sorted(p.name for p in chunks_dir.glob("*.json"))
+    assert before
+    first_before = (chunks_dir / before[0]).read_text("utf-8")
+
+    # Now break the atomic writer so the next extract fails mid-write.
+    from booktx import io_utils
+
+    real_write = io_utils.write_text_atomic
+    call = {"n": 0}
+
+    def failing_write(path, text):
+        # Only fail once, and only for writes inside the temp chunks swap dir,
+        # so we target the extract phase regardless of how many chunks exist.
+        if path.parent.name.startswith(".chunks.") and not call["n"]:
+            call["n"] += 1
+            raise OSError("simulated interruption")
+        real_write(path, text)
+
+    monkeypatch.setattr(io_utils, "write_text_atomic", failing_write)
+    res = runner.invoke(app, ["extract", str(project_dir)])
+    assert res.exit_code != 0
+
+    # The public chunks dir must be untouched: same files, same content.
+    after = sorted(p.name for p in chunks_dir.glob("*.json"))
+    assert after == before
+    assert (chunks_dir / before[0]).read_text("utf-8") == first_before
+    # No leftover temp chunks dir should remain in .booktx/.
+    booktx_dir = project_dir / ".booktx"
+    leftovers = [
+        p.name
+        for p in booktx_dir.iterdir()
+        if p.name.startswith(".chunks.")
+    ]
+    assert leftovers == []
 
 def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)

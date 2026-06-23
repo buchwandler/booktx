@@ -1,0 +1,44 @@
+{
+  "name": "shadows-of-apt",
+  "description": "Seed context for Shadows of the Apt series by Adrian Tchaikovsky",
+  "questions": [
+    {
+      "id": "Q007",
+      "topic": "kinden",
+      "question": "Species/culture terms: how to handle Wasp-kinden, Ant-kinden, Spider-kinden, Fly-kinden, etc.?",
+      "required": true
+    },
+    {
+      "id": "Q008",
+      "topic": "honorifics",
+      "question": "Honorifics: keep Sieur, translate it, or use a German equivalent?",
+      "required": true
+    },
+    {
+      "id": "Q009",
+      "topic": "place_geopolitical",
+      "question": "Place/geopolitical terms: especially Lowlands, Lowlander, Lowland cities.",
+      "required": true
+    }
+  ],
+  "glossary": [
+    {
+      "source": "Lowlands",
+      "target": null,
+      "forbidden_targets": ["Niederlande", "die Niederlande", "Holland"],
+      "category": "place",
+      "status": "open",
+      "notes": "Fantasy-world geopolitical term; do not use the real-world Netherlands meaning. Ask the user for the approved rendering.",
+      "enforce": "error"
+    },
+    {
+      "source": "Lowlander",
+      "target": null,
+      "forbidden_targets": ["Niederländer", "Holländer"],
+      "category": "demonym",
+      "status": "open",
+      "notes": "Demonym for Lowlands. German target must avoid the Dutch/Nederlander meaning.",
+      "enforce": "error"
+    }
+  ]
+}

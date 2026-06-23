@@ -5,7 +5,7 @@
 Use Python 3.10 or newer.
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,docs]"
 ```
 
 The package uses Hatchling with VCS-based dynamic versioning.
@@ -25,11 +25,11 @@ The runtime dependencies include:
 - `epub2text>=0.2.4`
 - `text2epub`
 
-EPUB-related tests also use `ebooklib` fixtures. If test collection fails on `ebooklib`, add it to the appropriate dev/test dependency group.
+`ebooklib` and `mypy` are included in the `dev` extra so the documented test/type-check commands run after a single editable install. `docs/conf.py` (Sphinx, MyST, Read the Docs theme) is covered by the `docs` extra. To install everything at once:
 
-## Suggested docs dependencies
+## Docs dependencies
 
-`docs/conf.py` uses Sphinx, MyST, and the Read the Docs theme. Add a docs extra or extend the dev extra with:
+The `docs` extra installs the packages used by `docs/conf.py` (Sphinx, MyST, Read the Docs theme):
 
 ```toml
 [project.optional-dependencies]
@@ -40,15 +40,6 @@ docs = [
 ]
 ```
 
-Then build docs with:
-
-```bash
-python -m pip install -e ".[docs]"
-sphinx-build -b html docs docs/_build/html
-```
-
-If you want one install command for maintainers, include docs dependencies in `dev` too.
-
 ## Test commands
 
 ```bash
@@ -56,7 +47,7 @@ pytest -q
 ruff check .
 ```
 
-For docs:
+For docs (requires the `docs` extra):
 
 ```bash
 sphinx-build -b html docs docs/_build/html

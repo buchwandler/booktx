@@ -670,11 +670,12 @@ def _check_new_epub_source_chunk(source: Chunk) -> list[Finding]:
 
 def write_report(project: Project, report: ValidationReport) -> Path:
     """Persist the validation report to ``.booktx/reports/`` and return it."""
+    from booktx.io_utils import write_json_text_atomic
+
     project.reports_dir.mkdir(parents=True, exist_ok=True)
     out = project.reports_dir / "validation-report.json"
-    out.write_text(
-        json.dumps(report.as_dict(), indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    write_json_text_atomic(
+        out, json.dumps(report.as_dict(), indent=2, ensure_ascii=False)
     )
     return out
 

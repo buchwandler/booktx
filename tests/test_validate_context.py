@@ -51,14 +51,19 @@ def _write_project(tmp_path: Path, target: str = "die Niederlande") -> Path:
 
 
 def _write_context(proj_path: Path, enforce: str = "error") -> None:
+    from booktx.context import load_seed_template
+
     proj = load_project(proj_path)
     ctx = default_context(proj)
+    # Load Shadows-of-Apt template for these tests.
+    extra_q, extra_g = load_seed_template("shadows_of_apt")
+    ctx.questions.extend(extra_q)
+    ctx.glossary.extend(extra_g)
     for entry in ctx.glossary:
         if entry.source == "Lowlands":
             entry.enforce = enforce  # type: ignore[assignment]
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
-
 
 def test_forbidden_term_used_error_fails_report(tmp_path: Path):
     proj_path = _write_project(tmp_path)

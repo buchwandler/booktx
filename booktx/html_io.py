@@ -27,7 +27,7 @@ from bs4.formatter import XMLFormatter
 
 from booktx.chunking import ProseSpan
 from booktx.models import Placeholder
-from booktx.placeholders import protect_names
+from booktx.placeholders import SPANTX_RE, protect_names
 
 __all__ = [
     "HtmlExtraction",
@@ -90,7 +90,7 @@ def _is_inline(tag: Tag) -> bool:
     return tag.name not in _BLOCK_TAG_UNIVERSE and tag.name not in SKIP_BLOCK_TAGS
 
 
-_SPANTX_RE = re.compile(r"__SPANTX_(\d{4})__")
+_SPANTX_RE = SPANTX_RE  # backward-compatible alias
 
 
 class _RawTextFormatter(XMLFormatter):
@@ -355,6 +355,4 @@ def build_xhtml(template: str, span_replacements: list[str]) -> str:
     return str(soup)
 
 
-def span_token_ids(template: str) -> list[str]:
-    """Return ``__SPANTX_NNNN__`` tokens found in ``template`` in order."""
-    return [m.group(0) for m in _SPANTX_RE.finditer(template)]
+# span_token_ids is imported from booktx.placeholders above

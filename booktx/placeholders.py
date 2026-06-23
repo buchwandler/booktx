@@ -28,10 +28,14 @@ __all__ = [
     "NAME_TOKEN_RE",
     "TAG_TOKEN_RE",
     "TOKEN_RE",
+    "SPANTX_RE",
+    "TRANSLATABLE_INLINE_PARENTS",
+    "SKIP_BLOCK_TYPES",
     "ProtectResult",
     "protect_names",
     "protect_tags",
     "restore",
+    "span_token_ids",
 ]
 
 # Tokens look like __NAME_001__ / __TAG_001__. The id is 1-based, zero-padded
@@ -163,3 +167,30 @@ def restore(text: str, placeholders: list[Placeholder]) -> str:
 def collect_tokens(text: str) -> list[str]:
     """Return all placeholder tokens found in ``text``, in order of appearance."""
     return [m.group(0) for m in re.finditer(r"__(?:NAME|TAG)_\d+__", text)]
+
+
+# Span-token regex shared by markdown and html extraction.
+SPANTX_RE = re.compile(r"__SPANTX_(\d{4})__")
+
+
+def span_token_ids(template: str) -> list[str]:
+    """Return the ``__SPANTX_NNNN__`` tokens found in ``template``, in order."""
+    return [m.group(0) for m in SPANTX_RE.finditer(template)]
+
+
+#: Translatable container types whose ``inline`` children we extract from.
+TRANSLATABLE_INLINE_PARENTS = {
+    "paragraph",
+    "heading",
+    "list_item",
+    "blockquote",
+    "table_cell",
+    "td",
+    "th",
+    "strong",
+    "em",
+}
+
+
+#: Block types whose content must never be translated.
+SKIP_BLOCK_TYPES = {"fence", "code_block", "html_block"}

@@ -88,12 +88,12 @@ def test_context_question_required_defaults_to_true():
     assert q.answer is None
 
 
-def test_seed_questions_has_twelve_entries_and_required_marking():
+def test_seed_questions_has_nine_generic_entries_and_required_marking():
     qs = seed_questions()
-    assert len(qs) == 12
+    assert len(qs) == 9
     required_ids = {q.id for q in qs if q.required}
-    # locale, overall style, register, dialogue, names, world terms, kinden,
-    # honorifics, place/lowlands, glossary enforcement are required.
+    # locale, overall style, register, dialogue, names, world terms,
+    # glossary enforcement are required.
     assert {
         "Q001",
         "Q002",
@@ -101,9 +101,6 @@ def test_seed_questions_has_twelve_entries_and_required_marking():
         "Q004",
         "Q005",
         "Q006",
-        "Q007",
-        "Q008",
-        "Q009",
         "Q012",
     } <= required_ids
     # typography (Q010) and units (Q011) are optional.
@@ -112,18 +109,29 @@ def test_seed_questions_has_twelve_entries_and_required_marking():
     assert all(q.status == "open" for q in qs)
 
 
-def test_seed_glossary_marks_lowlands_and_lowlander_open():
+def test_seed_glossary_is_empty_by_default():
     glossary = seed_glossary()
-    by_source = {g.source: g for g in glossary}
-    assert set(by_source) == {"Lowlands", "Lowlander"}
-    low = by_source["Lowlands"]
+    assert glossary == []
+
+
+def test_load_seed_template_shadows_of_apt():
+    from booktx.context import load_seed_template
+
+    questions, glossary = load_seed_template("shadows_of_apt")
+    assert len(questions) == 3  # Q007, Q008, Q009
+    assert len(glossary) == 2  # Lowlands, Lowlander
+    q_topics = {q.topic for q in questions}
+    assert "kinden" in q_topics
+    assert "honorifics" in q_topics
+    assert "place_geopolitical" in q_topics
+    g_sources = {g.source for g in glossary}
+    assert "Lowlands" in g_sources
+    assert "Lowlander" in g_sources
+    low = next(g for g in glossary if g.source == "Lowlands")
     assert low.target is None
     assert low.status == "open"
     assert "Niederlande" in low.forbidden_targets
     assert low.enforce == "error"
-    lowr = by_source["Lowlander"]
-    assert "Niederländer" in lowr.forbidden_targets
-    assert lowr.enforce == "error"
 
 
 def test_context_json_is_valid_json_object():

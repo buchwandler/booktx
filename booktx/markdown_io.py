@@ -27,7 +27,11 @@ from markdown_it.token import Token
 
 from booktx.chunking import ProseSpan
 from booktx.models import Placeholder
-from booktx.placeholders import protect_names
+from booktx.placeholders import (
+    SKIP_BLOCK_TYPES,
+    TRANSLATABLE_INLINE_PARENTS,
+    protect_names,
+)
 
 __all__ = [
     "MarkdownExtraction",
@@ -37,23 +41,10 @@ __all__ = [
     "split_front_matter",
 ]
 
-#: Translatable container types whose ``inline`` children we extract from.
-_TRANSLATABLE_INLINE_PARENTS = {
-    "paragraph",
-    "heading",
-    "list_item",
-    "blockquote",  # blockquote wraps a paragraph; inline still flagged here
-    "table_cell",
-    "td",
-    "th",
-    "strong",
-    "em",
-}
-
-#: Block types whose content must never be translated.
-_SKIP_BLOCK_TYPES = {"fence", "code_block", "html_block"}
-
-#: Internal span placeholder used inside the markdown template.
+#: Translatable container types whose inline children we extract from.
+# (Imported from booktx.placeholders — local aliases for backward compat.)
+_TRANSLATABLE_INLINE_PARENTS = TRANSLATABLE_INLINE_PARENTS
+_SKIP_BLOCK_TYPES = SKIP_BLOCK_TYPES
 _SPANTX_RE = re.compile(r"__SPANTX_(\d{4})__")
 
 #: YAML front matter at the very start of a document.
@@ -247,6 +238,5 @@ def build_markdown(template: str, span_replacements: list[str]) -> str:
     return out
 
 
-def span_token_ids(template: str) -> list[str]:
-    """Return the ``__SPANTX_NNNN__`` tokens found in ``template``, in order."""
-    return [m.group(0) for m in _SPANTX_RE.finditer(template)]
+# span_token_ids is imported from booktx.placeholders above
+# (kept as a module-level name for backward compatibility)

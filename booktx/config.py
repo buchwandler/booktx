@@ -23,7 +23,6 @@ the single source file, and the active :class:`~booktx.models.ProjectConfig`.
 from __future__ import annotations
 
 import json
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -81,11 +80,13 @@ DEFAULT_NAMES_JSON: dict[str, Any] = {"protected_terms": []}
 class BooktxError(Exception):
     """User-facing error from booktx. Carries a stable ``code`` attribute."""
 
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
 
 def _err(code: str, message: str) -> BooktxError:
-    e = BooktxError(message)
-    e.code = code  # type: ignore[attr-defined]
-    return e
+    return BooktxError(code, message)
 
 
 @dataclass(slots=True)
@@ -204,9 +205,11 @@ def init_project(
     )
     _write_config(root / ".booktx" / "config.toml", cfg)
     # names.json: empty but present so the agent knows where to add terms.
-    (booktx_dir / "names.json").write_text(
-        json.dumps(DEFAULT_NAMES_JSON, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    from booktx.io_utils import write_json_text_atomic
+
+    write_json_text_atomic(
+        booktx_dir / "names.json",
+        json.dumps(DEFAULT_NAMES_JSON, indent=2, ensure_ascii=False),
     )
     return load_project(root)
 
@@ -253,9 +256,9 @@ def _write_config(path: Path, cfg: ProjectConfig) -> None:
 
 
 def write_manifest(project: Project, manifest: Manifest) -> None:
-    project.manifest_path.write_text(
-        manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
-    )
+    from booktx.io_utils import write_json_model_atomic
+
+    write_json_model_atomic(project.manifest_path, manifest)
 
 
 def load_manifest(project: Project) -> Manifest | None:
@@ -265,9 +268,11 @@ def load_manifest(project: Project) -> Manifest | None:
 
 
 def write_names(project: Project, names: NamesFile) -> None:
-    project.names_path.write_text(
-        json.dumps(names.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    from booktx.io_utils import write_json_text_atomic
+
+    write_json_text_atomic(
+        project.names_path,
+        json.dumps(names.model_dump(mode="json"), indent=2, ensure_ascii=False),
     )
 
 
@@ -288,6 +293,18 @@ def project_source_sha256(project: Project) -> str:
     return sha256_path(find_source_file(project))
 
 
+def current_source_sha256(project: Project) -> str:
+    """Always hash the live source file, ignoring the manifest."""
+    return sha256_path(find_source_file(project))
+
+
+def extracted_source_sha256(project: Project) -> str:
+    """Return the SHA recorded during the last extraction, or empty string."""
+    manifest = load_manifest(project)
+    if manifest is not None and manifest.source.sha256:
+        return manifest.source.sha256
+    return ""
+
 def translation_store_path(project: Project) -> Path:
     """Path to the primary record-level translation store."""
     return project.booktx_dir / "translation-store.json"
@@ -303,10 +320,9 @@ def load_translation_store(project: Project) -> TranslationStore:
 
 def write_translation_store(project: Project, store: TranslationStore) -> None:
     """Persist the translation store atomically."""
-    _write_json_atomic(
-        translation_store_path(project),
-        store.model_dump_json(indent=2) + "\n",
-    )
+    from booktx.io_utils import write_json_model_atomic
+
+    write_json_model_atomic(translation_store_path(project), store)
 
 
 def translation_task_dir(project: Project) -> Path:
@@ -363,9 +379,10 @@ def load_translation_task(project: Project, task_id: str) -> TranslationTask | N
 
 def write_translation_task(project: Project, task: TranslationTask) -> None:
     """Persist one translation task atomically."""
-    _write_json_atomic(
-        translation_task_path(project, task.task_id),
-        task.model_dump_json(indent=2) + "\n",
+    from booktx.io_utils import write_json_model_atomic
+
+    write_json_model_atomic(
+        translation_task_path(project, task.task_id), task
     )
 
 
@@ -414,21 +431,10 @@ def find_source_file(project: Project) -> Path:
 
 
 def _write_json_atomic(path: Path, text: str) -> None:
-    """Write UTF-8 text atomically into ``path``."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as fh:
-            fh.write(text)
-            tmp_path = Path(fh.name)
-        tmp_path.replace(path)
-    finally:
-        if tmp_path is not None and tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
+    """Write UTF-8 text atomically into ``path``.
+
+    Thin compatibility shim over :func:`booktx.io_utils.write_text_atomic`.
+    """
+    from booktx.io_utils import write_text_atomic
+
+    write_text_atomic(path, text)

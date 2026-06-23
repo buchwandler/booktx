@@ -47,10 +47,16 @@ output/book.<target>.<ext>
 
 | Module                 | Responsibility                                             |
 | ---------------------- | ---------------------------------------------------------- |
-| `booktx.cli`           | Typer command surface                                      |
+| `booktx.cli`           | Typer command surface (option parsing + service calls)     |
 | `booktx.config`        | Project layout, config, names, manifest IO                 |
 | `booktx.models`        | Pydantic models for chunk and manifest contracts           |
 | `booktx.context`       | Translation context models, questions, glossary, rendering |
+| `booktx.status`        | Typed StatusSnapshot, build_status_snapshot, drift check   |
+| `booktx.tasks`         | TaskPaths, make_task_id, create_translation_task           |
+| `booktx.submissions`   | Submission parsing (JSON, TSV, block) + input resolution  |
+| `booktx.acceptance`    | Record acceptance: validate, persist, report progress      |
+| `booktx.rendering`     | Rich/text/JSON output renderers                            |
+| `booktx.io_utils`      | Atomic writes, utc_timestamp                               |
 | `booktx.markdown_io`   | Markdown extraction and rebuild                            |
 | `booktx.epub_io`       | EPUB extraction and rebuild adapter                        |
 | `booktx.epub_manifest` | EPUB v2 manifest conversion and raw block mapping          |
@@ -60,7 +66,6 @@ output/book.<target>.<ext>
 | `booktx.validate`      | Contract and context validation                            |
 | `booktx.build`         | Final Markdown/EPUB rebuild                                |
 | `booktx.chapters`      | Chapter detection and chapter map persistence              |
-
 ## Project loading
 
 `booktx.config.load_project()` resolves paths and validates `.booktx/config.toml`.

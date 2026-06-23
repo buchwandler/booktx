@@ -29,7 +29,8 @@ def test_default_context_uses_config_languages(tmp_path: Path):
     assert ctx.target_language == "de"
     assert ctx.ready is False
     assert ctx.style.target_locale == "de"
-    assert any(g.source == "Lowlands" for g in ctx.glossary)
+    # Default glossary is empty (book-specific seeds loaded via --seed).
+    assert ctx.glossary == []
 
 
 def test_write_context_creates_file(tmp_path: Path):
@@ -57,13 +58,10 @@ def test_write_context_markdown_renders(tmp_path: Path):
     assert "NOT READY" in md
     # Style section
     assert "Formality: neutral" in md
-    # Glossary table with Lowlands forbidden targets
-    assert "Lowlands" in md
-    assert "Niederlande" in md
+    # Default glossary is empty (no book-specific terms).
     # Open questions section
     assert "Open questions" in md
     assert "Q001" in md
-
 
 def test_render_context_markdown_ready_status(tmp_path: Path):
     proj = _project(tmp_path)
@@ -110,19 +108,26 @@ def test_context_files_round_trip(tmp_path: Path):
     loaded = load_context(proj)
     assert loaded is not None
     sources = {g.source for g in loaded.glossary}
-    assert {"Lowlands", "Lowlander", "snapbow"} <= sources
+    # Default glossary is empty; only the custom entry persists.
+    assert {"snapbow"} <= sources
 
 
 def test_seed_glossary_entries_are_open_with_forbidden(tmp_path: Path):
+    from booktx.context import load_seed_template
+
     proj = _project(tmp_path)
     ctx = default_context(proj)
+    # Load the Shadows-of-Apt template to get the book-specific seeds.
+    extra_q, extra_g = load_seed_template("shadows_of_apt")
+    ctx.questions.extend(extra_q)
+    ctx.glossary.extend(extra_g)
     write_context(proj, ctx)
     loaded = load_context(proj)
     assert loaded is not None
     low = next(g for g in loaded.glossary if g.source == "Lowlands")
     assert low.status == "open"
     assert "Niederlande" in low.forbidden_targets
-    assert seed_glossary()  # smoke: deterministic factory callable
+    assert seed_glossary() == []  # smoke: default is empty
 
 
 def test_load_project_still_works_after_context_added(tmp_path: Path):

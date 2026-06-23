@@ -15,7 +15,7 @@ booktx never translates text; it extracts, validates, and rebuilds.
 from __future__ import annotations
 
 import json
-import re
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +26,11 @@ from rich.console import Console
 from rich.table import Table
 
 from booktx import __version__
+from booktx.acceptance import (
+    SubmissionValidationError,
+    accept_one_record,
+    accept_translation_records,
+)
 from booktx.build import BuildError, build_project
 from booktx.chapters import detect_chapters, load_chapter_map, write_chapter_map
 from booktx.chunking import spans_to_chunks
@@ -33,7 +38,6 @@ from booktx.config import (
     BooktxError,
     find_source_file,
     init_project,
-    load_manifest,
     load_project,
     load_translation_store,
     load_translation_task,
@@ -43,7 +47,6 @@ from booktx.config import (
     translation_task_path,
     translation_task_source_block_path,
     write_translation_store,
-    write_translation_task,
 )
 from booktx.context import (
     GlossaryEntry,
@@ -64,17 +67,19 @@ from booktx.models import (
     TranslatedChunk,
     TranslatedRecord,
     TranslationTask,
-    TranslationTaskRecord,
 )
 from booktx.progress import (
-    count_words,
     load_source_chunks,
-    load_source_records,
     source_record_sha256,
 )
+from booktx.status import (
+    ChapterProgress,
+    StatusBundle,
+)
+from booktx.submissions import resolve_submission
+from booktx.tasks import create_translation_task
 from booktx.validate import (
     Severity,
-    load_effective_translated_chunks,
     strict_load_translated,
     validate_chunk_pair,
     validate_project,
@@ -181,8 +186,20 @@ def context_init(
         True, "--non-interactive/--interactive", help="Create open questions or prompt."
     ),
     force: bool = typer.Option(False, "--force", help="Overwrite an existing context."),
+    seed: str | None = typer.Option(
+        None,
+        "--seed",
+        help="Packaged seed template name (e.g. 'shadows-of-apt').",
+    ),
+    seed_file: Path | None = typer.Option(
+        None,
+        "--seed-file",
+        help="Path to a JSON seed file with extra questions and glossary.",
+    ),
 ) -> None:
     """Create .booktx/context.json and rendered context.md."""
+    from booktx.context import load_seed_template
+
     proj = _load_project_or_exit(project_dir)
     existing = None if force else load_context(proj)
     if existing is not None:
@@ -191,6 +208,29 @@ def context_init(
         return
 
     ctx = default_context(proj)
+    # Load seed template if specified.
+    if seed is not None:
+        try:
+            extra_questions, extra_glossary = load_seed_template(seed)
+        except FileNotFoundError as exc:
+            _die(str(exc))
+            return
+        ctx.questions.extend(extra_questions)
+        ctx.glossary.extend(extra_glossary)
+    if seed_file is not None:
+        import json as _json
+
+        try:
+            seed_data = _json.loads(seed_file.read_text("utf-8"))
+        except (FileNotFoundError, _json.JSONDecodeError) as exc:
+            _die(f"could not read seed file: {exc}")
+            return
+        from booktx.context import ContextQuestion, GlossaryEntry
+
+        for q in seed_data.get("questions", []):
+            ctx.questions.append(ContextQuestion(**q))
+        for g in seed_data.get("glossary", []):
+            ctx.glossary.append(GlossaryEntry(**g))
     if not non_interactive:
         for q in ctx.questions:
             answer = typer.prompt(q.question, default="", show_default=False)
@@ -344,7 +384,11 @@ def init(
         ..., "--target", "-t", help="Target language code, e.g. de."
     ),
     source_lang: str = typer.Option(
-        "en", "--source", "-s", help="Source language code (default: en)."
+        "en",
+        "--source",
+        "--source-lang",
+        "-s",
+        help="Source language code (default: en).",
     ),
     source: Path | None = typer.Option(
         None,
@@ -481,18 +525,54 @@ def extract(
     if fmt == "epub":
         _assert_epub_records_are_clean(chunks)
 
-    # Idempotent rebuild of chunks/ — wipe and rewrite, keep translated/.
-    proj.chunks_dir.mkdir(parents=True, exist_ok=True)
-    for old in proj.chunks_dir.glob("*.json"):
-        old.unlink()
-    for chunk in chunks:
-        (proj.chunks_dir / f"{chunk.chunk_id}.json").write_text(
-            chunk.model_dump_json(indent=2), encoding="utf-8"
-        )
+    # Idempotent rebuild of chunks/ — write into a sibling temp dir and swap
+    # it in atomically so an interrupted extract never leaves a half-empty
+    # .booktx/chunks/.
+    import tempfile
+
+    from booktx.io_utils import write_text_atomic
+
+    proj.booktx_dir.mkdir(parents=True, exist_ok=True)
+    tmp_chunks = Path(
+        tempfile.mkdtemp(prefix=".chunks.", dir=proj.booktx_dir)
+    )
+    try:
+        for chunk in chunks:
+            write_text_atomic(
+                tmp_chunks / f"{chunk.chunk_id}.json",
+                chunk.model_dump_json(indent=2) + "\n",
+            )
+        # Remove the previous chunks dir and move the temp one into place.
+        if proj.chunks_dir.exists():
+            shutil.rmtree(proj.chunks_dir)
+        tmp_chunks.replace(proj.chunks_dir)
+    except BaseException:
+        shutil.rmtree(tmp_chunks, ignore_errors=True)
+        raise
 
     record_count = sum(len(c.records) for c in chunks)
     if fmt == "epub":
         _save_epub_manifest(proj, source, extraction, len(chunks), record_count)
+    elif fmt == "markdown":
+        from booktx.config import sha256_path as _sha256
+        from booktx.config import write_manifest
+        from booktx.models import Manifest, ManifestSource
+
+        write_manifest(
+            proj,
+            Manifest(
+                version=1,
+                source=ManifestSource(
+                    filename=source.name,
+                    format="markdown",
+                    source_language=proj.config.source_language,
+                    target_language=proj.config.target_language,
+                    sha256=_sha256(source),
+                ),
+                chunk_count=len(chunks),
+                record_count=record_count,
+            ),
+        )
     console.print(
         f"[green]Extracted[/green] {len(chunks)} chunk(s), "
         f"{record_count} record(s) into {proj.chunks_dir}"
@@ -560,22 +640,26 @@ def _require_chunks(proj) -> list[Path]:
     return chunk_paths
 
 
+def _require_no_source_drift(proj) -> None:
+    """Fail if the source file changed since the last extraction."""
+    from booktx.config import current_source_sha256, extracted_source_sha256
+
+    extracted = extracted_source_sha256(proj)
+    if extracted and extracted != current_source_sha256(proj):
+        _die(
+            "source file has changed since last extraction; "
+            "run 'booktx extract' to update chunks before translating"
+        )
 def _coverage_status(*, total: int, translated: int, has_error: bool) -> str:
-    if has_error:
-        return "invalid"
-    if translated <= 0:
-        return "pending"
-    if translated >= total:
-        return "complete"
-    return "in_progress"
+    """Backward-compatible alias for :func:`booktx.status.coverage_status`."""
+    from booktx.status import coverage_status
+
+    return coverage_status(total=total, translated=translated, has_error=has_error)
 
 
 def _format_chunk_span(chunk_ids: list[str]) -> str:
-    if not chunk_ids:
-        return "-"
-    if len(chunk_ids) == 1:
-        return chunk_ids[0]
-    return f"{chunk_ids[0]}..{chunk_ids[-1]}"
+    from booktx.rendering import format_chunk_span
+    return format_chunk_span(chunk_ids)
 
 
 def _load_context_status(proj) -> tuple[bool, bool]:
@@ -587,6 +671,7 @@ def _load_context_status(proj) -> tuple[bool, bool]:
 
 
 def _chapter_map_for_workflow(proj):
+    """Refresh-and-load helper retained for direct callers outside status.py."""
     source_sha256 = project_source_sha256(proj)
     chapter_map = load_chapter_map(proj)
     if chapter_map is None or chapter_map.source_sha256 != source_sha256:
@@ -595,228 +680,28 @@ def _chapter_map_for_workflow(proj):
     return chapter_map
 
 
-def _project_status_snapshot(proj) -> dict[str, Any]:
-    source_path = find_source_file(proj)
-    manifest = load_manifest(proj)
+def _project_status_snapshot(proj) -> StatusBundle:
+    """Build the typed status snapshot + runtime index for ``proj``.
+
+    Thin wrapper over :func:`booktx.status.build_status_snapshot`; the CLI
+    owns the invalid-context error UX here.
+    """
+    from booktx.status import build_status_snapshot
+
     context_exists, context_ready = _load_context_status(proj)
-    source_chunks = {chunk.chunk_id: chunk for chunk in load_source_chunks(proj)}
-    source_records = load_source_records(proj)
-    chapter_map = _chapter_map_for_workflow(proj)
-    effective = load_effective_translated_chunks(proj, source_chunks=source_chunks)
-
-    source_by_id = {record.record_id: record for record in source_records}
-    translated_by_id = {
-        record.id: record
-        for chunk in effective.chunks.values()
-        for record in chunk.records
-    }
-    findings = effective.findings
-    record_error_by_id = {
-        finding.record_id: finding
-        for finding in findings
-        if finding.severity == Severity.ERROR and finding.record_id
-    }
-    chunk_has_error = {
-        finding.chunk_id
-        for finding in findings
-        if finding.severity == Severity.ERROR
-        and finding.chunk_id not in {"context", "store"}
-    }
-
-    ordered_record_ids = [record.record_id for record in source_records]
-    record_index_by_id = {
-        record_id: idx for idx, record_id in enumerate(ordered_record_ids)
-    }
-    record_ids_by_chapter: dict[str, list[str]] = {}
-    record_to_chapter: dict[str, str] = {}
-
-    for chapter in chapter_map.chapters:
-        start = record_index_by_id.get(chapter.start_record_id)
-        end = record_index_by_id.get(chapter.end_record_id)
-        if start is None or end is None or end < start:
-            record_ids: list[str] = []
-        else:
-            record_ids = ordered_record_ids[start : end + 1]
-        record_ids_by_chapter[chapter.chapter_id] = record_ids
-        for record_id in record_ids:
-            record_to_chapter[record_id] = chapter.chapter_id
-
-    chunk_summaries: list[dict[str, Any]] = []
-    for chunk in source_chunks.values():
-        chunk_record_ids = [record.id for record in chunk.records]
-        translated = [
-            record_id for record_id in chunk_record_ids if record_id in translated_by_id
-        ]
-        source_words_total = sum(
-            source_by_id[record_id].source_words for record_id in chunk_record_ids
-        )
-        source_words_translated = sum(
-            source_by_id[record_id].source_words for record_id in translated
-        )
-        chunk_summaries.append(
-            {
-                "chunk_id": chunk.chunk_id,
-                "records_total": len(chunk_record_ids),
-                "records_translated": len(translated),
-                "records_remaining": len(chunk_record_ids) - len(translated),
-                "source_words_total": source_words_total,
-                "source_words_translated": source_words_translated,
-                "source_words_remaining": source_words_total - source_words_translated,
-                "status": _coverage_status(
-                    total=len(chunk_record_ids),
-                    translated=len(translated),
-                    has_error=chunk.chunk_id in chunk_has_error,
-                ),
-            }
-        )
-
-    chapter_summaries: list[dict[str, Any]] = []
-    for chapter in chapter_map.chapters:
-        chapter_record_ids = record_ids_by_chapter.get(chapter.chapter_id, [])
-        translated = [
-            record_id
-            for record_id in chapter_record_ids
-            if record_id in translated_by_id
-        ]
-        pending = [
-            record_id
-            for record_id in chapter_record_ids
-            if record_id not in translated_by_id
-        ]
-        pending_chunk_ids: list[str] = []
-        seen_pending_chunks: set[str] = set()
-        for record_id in pending:
-            chunk_id = source_by_id[record_id].chunk_id
-            if chunk_id in seen_pending_chunks:
-                continue
-            seen_pending_chunks.add(chunk_id)
-            pending_chunk_ids.append(chunk_id)
-        source_words_total = sum(
-            source_by_id[record_id].source_words for record_id in chapter_record_ids
-        )
-        source_words_translated = sum(
-            source_by_id[record_id].source_words for record_id in translated
-        )
-        chapter_summaries.append(
-            {
-                "chapter_id": chapter.chapter_id,
-                "title": chapter.title,
-                "chunk_ids": list(chapter.chunk_ids),
-                "pending_chunk_ids": pending_chunk_ids,
-                "record_range": {
-                    "start": chapter.start_record_id,
-                    "end": chapter.end_record_id,
-                },
-                "records_total": len(chapter_record_ids),
-                "records_translated": len(translated),
-                "records_remaining": len(chapter_record_ids) - len(translated),
-                "source_words_total": source_words_total,
-                "source_words_translated": source_words_translated,
-                "source_words_remaining": source_words_total - source_words_translated,
-                "status": _coverage_status(
-                    total=len(chapter_record_ids),
-                    translated=len(translated),
-                    has_error=any(
-                        chunk_id in chunk_has_error for chunk_id in chapter.chunk_ids
-                    ),
-                ),
-            }
-        )
-
-    chapters_by_id = {chapter["chapter_id"]: chapter for chapter in chapter_summaries}
-    next_chapter = next(
-        (chapter for chapter in chapter_summaries if chapter["records_remaining"] > 0),
-        None,
+    return build_status_snapshot(
+        proj, context_exists=context_exists, context_ready=context_ready
     )
 
-    total_source_words = sum(record.source_words for record in source_records)
-    translated_source_words = sum(
-        source_by_id[record_id].source_words for record_id in translated_by_id
-    )
-    chunks_complete = sum(
-        1
-        for chunk in chunk_summaries
-        if chunk["records_translated"] == chunk["records_total"]
-    )
-    chunks_partial = sum(
-        1
-        for chunk in chunk_summaries
-        if 0 < chunk["records_translated"] < chunk["records_total"]
-    )
-    chunks_pending = len(chunk_summaries) - chunks_complete - chunks_partial
-    chapters_complete = sum(
-        1
-        for chapter in chapter_summaries
-        if chapter["records_translated"] == chapter["records_total"]
-    )
-    chapters_partial = sum(
-        1
-        for chapter in chapter_summaries
-        if 0 < chapter["records_translated"] < chapter["records_total"]
-    )
-    chapters_pending = len(chapter_summaries) - chapters_complete - chapters_partial
-
-    selected_chapters: list[dict[str, Any]] = []
-    source_sha256 = (
-        manifest.source.sha256
-        if manifest is not None and manifest.source.sha256
-        else project_source_sha256(proj)
-    )
-    return {
-        "version": 1,
-        "project": str(proj.root),
-        "source": {
-            "filename": source_path.name,
-            "format": proj.config.format,
-            "source_language": proj.config.source_language,
-            "target_language": proj.config.target_language,
-            "source_sha256": source_sha256,
-        },
-        "context": {"exists": context_exists, "ready": context_ready},
-        "totals": {
-            "source_words": total_source_words,
-            "translated_words": translated_source_words,
-            "remaining_words": total_source_words - translated_source_words,
-            "records_total": len(source_records),
-            "records_translated": len(translated_by_id),
-            "records_remaining": len(source_records) - len(translated_by_id),
-            "chunks_total": len(chunk_summaries),
-            "chunks_complete": chunks_complete,
-            "chunks_partial": chunks_partial,
-            "chunks_pending": chunks_pending,
-            "chapters_total": len(chapter_summaries),
-            "chapters_complete": chapters_complete,
-            "chapters_partial": chapters_partial,
-            "chapters_pending": chapters_pending,
-            "invalid_translation_files": len(chunk_has_error),
-            "stale_translation_files": len(
-                {
-                    finding.chunk_id
-                    for finding in findings
-                    if finding.rule == "stale_translation"
-                }
-            ),
-        },
-        "next": next_chapter,
-        "chapters": selected_chapters,
-        "_source_chunks": source_chunks,
-        "_source_by_id": source_by_id,
-        "_translated_by_id": translated_by_id,
-        "_record_ids_by_chapter": record_ids_by_chapter,
-        "_record_to_chapter": record_to_chapter,
-        "_chapters_by_id": chapters_by_id,
-        "_chunk_summaries": chunk_summaries,
-        "_record_error_by_id": record_error_by_id,
-    }
 
 
 def _selected_chapter(
-    summary: dict[str, Any], chapter_id: str | None
-) -> dict[str, Any] | None:
-    if chapter_id is None:
-        return summary["next"]
-    chapter = summary["_chapters_by_id"].get(chapter_id)
-    if chapter is None:
+    bundle: StatusBundle, chapter_id: str | None
+) -> ChapterProgress | None:
+    from booktx.status import selected_chapter
+
+    chapter = selected_chapter(bundle, chapter_id)
+    if chapter is None and chapter_id is not None:
         _die(f"unknown chapter id: {chapter_id}")
     return chapter
 
@@ -838,17 +723,17 @@ def _limit_records_by_words(
 
 
 def _select_translation_record_ids(
-    summary: dict[str, Any],
-    chapter: dict[str, Any],
+    bundle: StatusBundle,
+    chapter: ChapterProgress,
     *,
     unit: str,
     max_words: int,
 ) -> tuple[str, list[str]]:
-    source_by_id = summary["_source_by_id"]
+    source_by_id = bundle.index.source_by_id
     pending = [
         record_id
-        for record_id in summary["_record_ids_by_chapter"][chapter["chapter_id"]]
-        if record_id not in summary["_translated_by_id"]
+        for record_id in bundle.index.record_ids_by_chapter[chapter.chapter_id]
+        if record_id not in bundle.index.translated_by_id
     ]
     if not pending:
         return (unit, [])
@@ -879,315 +764,41 @@ def _select_translation_record_ids(
 
 
 def _project_relative(path: Path, root: Path) -> str:
-    """Return a stable project-relative display path when possible."""
-    try:
-        return str(path.relative_to(root))
-    except ValueError:
-        return str(path)
+    """Backward-compatible alias for :func:`booktx.tasks.project_relative`."""
+    from booktx.tasks import project_relative
 
-
-def _write_ingest_template(proj, task: TranslationTask) -> Path:
-    """Create the durable submission file for a task without overwriting work."""
-    path = translation_ingest_path(proj, task.task_id)
-    if path.exists():
-        return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": 1,
-        "task_id": task.task_id,
-        "records": [{"id": record.id, "target": ""} for record in task.records],
-    }
-    path.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    return path
-
-
-def _write_block_ingest_template(proj, task: TranslationTask) -> Path:
-    """Create the durable block submission file for a task without overwriting work.
-
-    The file starts with metadata comment headers (ignored by the block parser)
-    followed by one `>>> RECORD_ID` header per record. The agent fills in the
-    target text under each header.
-    """
-    path = translation_ingest_block_path(proj, task.task_id)
-    if path.exists():
-        return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    source_display = _project_relative(
-        translation_task_source_block_path(proj, task.task_id), proj.root
-    )
-    block_display = _project_relative(path, proj.root)
-    submit_hint = (
-        f"booktx translate insert . --task-id {task.task_id} "
-        f"--file {block_display} --format block"
-    )
-    headers = [
-        "# booktx block submission",
-        f"# task: {task.task_id}",
-        f"# source: {source_display}",
-        f"# submit: {submit_hint}",
-        "",
-    ]
-    parts = [f">>> {record.id}" for record in task.records]
-    path.write_text(
-        "\n".join(headers + parts).rstrip() + "\n",
-        encoding="utf-8",
-    )
-    return path
-
-
-def _write_task_source_block(proj, task: TranslationTask) -> Path:
-    """Create the durable source-view file for a task without overwriting work.
-
-    Holds the original source text for each record in the task so a coding
-    agent can translate against a stable file instead of a large stdout dump.
-    """
-    path = translation_task_source_block_path(proj, task.task_id)
-    if path.exists():
-        return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    parts = [
-        f"# task: {task.task_id}",
-        f"# chapter: {task.chapter_id} {task.chapter_title}".rstrip(),
-        f"# unit: {task.unit}",
-        f"# records: {task.record_count}",
-        f"# source words: {task.source_words}",
-        "",
-    ]
-    for idx, record in enumerate(task.records):
-        if idx:
-            parts.append("")
-        parts.append(f">>> {record.id}")
-        parts.append(record.source)
-    path.write_text("\n".join(parts).rstrip() + "\n", encoding="utf-8")
-    return path
-
-
-def _make_task_id(chapter_id: str, first_record_id: str, record_ids: list[str]) -> str:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-    record_part = first_record_id.replace("-", "")
-    digest = str(abs(hash("|".join(record_ids))))[-6:]
-    return f"bt-task-{stamp}-{chapter_id}-{record_part}-{digest}"
+    return project_relative(path, root)
 
 
 def _create_translation_task(
     proj,
-    summary: dict[str, Any],
-    chapter: dict[str, Any],
+    bundle: StatusBundle,
+    chapter: ChapterProgress,
     *,
     unit: str,
     record_ids: list[str],
 ) -> TranslationTask:
-    source_by_id = summary["_source_by_id"]
-    task = TranslationTask(
-        task_id=_make_task_id(chapter["chapter_id"], record_ids[0], record_ids),
-        unit=unit,  # type: ignore[arg-type]
-        chapter_id=chapter["chapter_id"],
-        chapter_title=chapter["title"],
-        source_language=proj.config.source_language,
-        target_language=proj.config.target_language,
-        source_words=sum(
-            source_by_id[record_id].source_words for record_id in record_ids
-        ),
-        record_count=len(record_ids),
-        records=[
-            TranslationTaskRecord(
-                id=record_id,
-                chunk_id=source_by_id[record_id].chunk_id,
-                source=source_by_id[record_id].source,
-                protected_terms=list(source_by_id[record_id].protected_terms),
-                placeholders=list(source_by_id[record_id].placeholders),
-            )
-            for record_id in record_ids
-        ],
-    )
-    write_translation_task(proj, task)
-    _write_ingest_template(proj, task)
-    _write_block_ingest_template(proj, task)
-    _write_task_source_block(proj, task)
-    return task
-
-
-def _print_status_human(
-    summary: dict[str, Any], chapter: dict[str, Any] | None
-) -> None:
-    console.print(f"booktx status — {summary['project']}")
-    console.print()
-    console.print(f"Source: {summary['source']['filename']}")
-    console.print(f"Source language: {summary['source']['source_language']}")
-    console.print(f"Target language: {summary['source']['target_language']}")
-    console.print(f"Context: {'READY' if summary['context']['ready'] else 'NOT READY'}")
-    console.print()
-    totals = summary["totals"]
-    console.print(f"Total source words: {totals['source_words']:>10,}")
-    console.print(f"Translated words:   {totals['translated_words']:>10,}")
-    console.print(f"Remaining words:    {totals['remaining_words']:>10,}")
-    console.print()
-    console.print(
-        f"Chunks:   {totals['chunks_complete']} / {totals['chunks_total']} complete, "
-        f"{totals['chunks_partial']} partial, {totals['chunks_pending']} pending"
-    )
-    console.print(
-        f"Chapters: {totals['chapters_complete']} / "
-        f"{totals['chapters_total']} complete, "
-        f"{totals['chapters_partial']} partial, {totals['chapters_pending']} pending"
-    )
-    if totals["invalid_translation_files"] or totals["stale_translation_files"]:
-        console.print(
-            f"Translation files: {totals['invalid_translation_files']} invalid, "
-            f"{totals['stale_translation_files']} stale"
-        )
-    ready_for_final = (
-        totals["records_remaining"] == 0 and totals["invalid_translation_files"] == 0
-    )
-    console.print()
-    console.print(f"Ready for final build: {'yes' if ready_for_final else 'no'}")
-    if not ready_for_final:
-        if totals["remaining_words"] > 0:
-            console.print(
-                f"Reason: {totals['remaining_words']:,} source words remain "
-                "untranslated"
-            )
-        elif totals["invalid_translation_files"] > 0:
-            console.print(
-                "Reason: "
-                f"{totals['invalid_translation_files']} translation file(s) "
-                "are invalid"
-            )
-    detail = chapter or summary["next"]
-    if detail is None:
-        return
-    console.print()
-    console.print("Next chapter:" if chapter is None else "Chapter:")
-    console.print(f"  {detail['chapter_id']}  {detail['title']}".rstrip())
-    console.print(f"  status: {detail['status']}")
-    console.print(
-        f"  records: {detail['records_translated']} / "
-        f"{detail['records_total']} translated, "
-        f"{detail['records_remaining']} remaining"
-    )
-    console.print(
-        f"  words: {detail['source_words_translated']:,} / "
-        f"{detail['source_words_total']:,} translated, "
-        f"{detail['source_words_remaining']:,} remaining"
-    )
-    console.print(f"  chunks: {_format_chunk_span(detail['chunk_ids'])}")
-    console.print(
-        f"  pending chunks: {_format_chunk_span(detail['pending_chunk_ids'])}"
-    )
-    console.print(
-        "  record range: "
-        f"{detail['record_range']['start']}..{detail['record_range']['end']}"
+    """Backward-compatible alias for :func:`booktx.tasks.create_translation_task`."""
+    return create_translation_task(
+        proj, bundle, chapter, unit=unit, record_ids=record_ids
     )
 
+def _print_status_human(bundle, chapter):
+    from booktx.rendering import print_status_human
+    print_status_human(bundle, chapter)
 
 def _print_translate_task(
-    task: TranslationTask,
-    proj,
-    *,
-    as_json: bool,
-    output_format: str,
-    show_sources: bool = False,
-    show_template: bool = False,
-) -> None:
-    ingest_path = translation_ingest_path(proj, task.task_id)
-    ingest_display = _project_relative(ingest_path, proj.root)
-    block_ingest_path = translation_ingest_block_path(proj, task.task_id)
-    block_ingest_display = _project_relative(block_ingest_path, proj.root)
-    source_block_path = translation_task_source_block_path(proj, task.task_id)
-    source_block_display = _project_relative(source_block_path, proj.root)
-    json_submit_hint = (
-        f"booktx translate insert . --task-id {task.task_id} "
-        f"--json-file {ingest_display}"
+    task, proj, *, as_json, output_format,
+    show_sources=False, show_template=False,
+):
+    from booktx.rendering import print_translate_task
+    print_translate_task(
+        task, proj,
+        as_json=as_json,
+        output_format=output_format,
+        show_sources=show_sources,
+        show_template=show_template,
     )
-    block_submit_hint = (
-        f"booktx translate insert . --task-id {task.task_id} "
-        f"--file {block_ingest_display} --format block"
-    )
-    block_stdin_submit_hint = (
-        f"booktx translate insert . --task-id {task.task_id} "
-        "--stdin --format block <<'BOOKTX'"
-    )
-    view_sources_hint = f"cat {source_block_display}"
-    payload = {
-        "version": 1,
-        "task_id": task.task_id,
-        "unit": task.unit,
-        "chapter_id": task.chapter_id,
-        "chapter_title": task.chapter_title,
-        "source_language": task.source_language,
-        "target_language": task.target_language,
-        "source_words": task.source_words,
-        "record_count": task.record_count,
-        "records": [record.model_dump(mode="json") for record in task.records],
-        "ingest_path": ingest_display,
-        "block_ingest_path": block_ingest_display,
-        "source_block_path": source_block_display,
-        "submit_hint": json_submit_hint,
-        "block_submit_hint": block_submit_hint,
-    }
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    if output_format == "tsv":
-        console.print(f"# task: {task.task_id}")
-        console.print(f"# chapter: {task.chapter_id}\t{task.chapter_title}".rstrip())
-        for record in task.records:
-            console.print(f"{record.id}\t{record.source}")
-        console.print(f"# write translation JSON to: {ingest_display}")
-        console.print(f"# submit: {json_submit_hint}")
-        return
-    if output_format == "block":
-        console.print(f"task: {task.task_id}")
-        console.print(f"chapter: {task.chapter_id}  {task.chapter_title}".rstrip())
-        console.print(f"unit: {task.unit}")
-        console.print(f"records: {task.record_count}")
-        console.print(f"source words: {task.source_words}")
-        console.print()
-        console.print(f"Source file: {source_block_display}", soft_wrap=True)
-        console.print(f"Durable block template: {block_ingest_display}", soft_wrap=True)
-        console.print(f"Submit durable file with: {block_submit_hint}", soft_wrap=True)
-        console.print(f"View sources: {view_sources_hint}", soft_wrap=True)
-        if show_template:
-            console.print()
-            console.print("Heredoc template (optional, for tiny manual fixes):")
-            console.print()
-            console.print(block_stdin_submit_hint, soft_wrap=True)
-            for idx, record in enumerate(task.records):
-                console.print(f">>> {record.id}")
-                console.print("<target>")
-                if idx != len(task.records) - 1:
-                    console.print()
-            console.print("BOOKTX")
-        if show_sources:
-            console.print()
-            console.print("Sources:")
-            console.print()
-            for idx, record in enumerate(task.records):
-                console.print(f">>> {record.id}")
-                console.print(record.source)
-                if idx != len(task.records) - 1:
-                    console.print()
-        return
-    console.print(f"task: {task.task_id}")
-    console.print(f"chapter: {task.chapter_id}  {task.chapter_title}".rstrip())
-    console.print(f"unit: {task.unit}")
-    console.print(f"records: {task.record_count}")
-    console.print(f"source words: {task.source_words}")
-    console.print()
-    for idx, record in enumerate(task.records):
-        if idx:
-            console.print()
-        console.print(record.id)
-        console.print(record.source)
-    console.print()
-    console.print("Write translation JSON to:")
-    console.print(ingest_display)
-    console.print("Submit with:")
-    console.print(json_submit_hint)
-
 
 def _load_translation_task_or_exit(proj, task_id: str) -> TranslationTask:
     task = load_translation_task(proj, task_id)
@@ -1196,145 +807,35 @@ def _load_translation_task_or_exit(proj, task_id: str) -> TranslationTask:
     return task
 
 
-def _parse_json_submission(text: str) -> tuple[str | None, list[dict[str, str]]]:
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        _die(f"invalid JSON submission: {exc.msg} (line {exc.lineno} col {exc.colno})")
-    if not isinstance(payload, dict):
-        _die("JSON submission must be an object")
-    records = payload.get("records")
-    if not isinstance(records, list):
-        _die("JSON submission must contain a 'records' array")
-    parsed: list[dict[str, str]] = []
-    for item in records:
-        if not isinstance(item, dict):
-            _die("each submitted record must be an object")
-        record_id = str(item.get("id", "")).strip()
-        target = item.get("target")
-        if not record_id or not isinstance(target, str):
-            _die("each submitted record must contain string fields 'id' and 'target'")
-        parsed.append({"id": record_id, "target": target})
-    task_id = payload.get("task_id")
-    return (str(task_id).strip() if task_id else None, parsed)
-
-
-def _parse_tsv_submission(text: str) -> list[dict[str, str]]:
-    parsed: list[dict[str, str]] = []
-    for line_no, raw_line in enumerate(text.splitlines(), start=1):
-        line = raw_line.rstrip("\n")
-        if not line.strip():
-            continue
-        if "\t" not in line:
-            _die(f"malformed TSV line {line_no}: expected '<record-id><TAB><target>'")
-        record_id, target = line.split("\t", 1)
-        if not record_id.strip():
-            _die(f"malformed TSV line {line_no}: missing record id")
-        parsed.append({"id": record_id.strip(), "target": target})
-    return parsed
-
-
-_BLOCK_HEADER_RE = re.compile(r"^>>>\s+(?P<id>\S+)\s*$")
-
-
-def _trim_blank_edge_lines(lines: list[str]) -> str:
-    start = 0
-    end = len(lines)
-    while start < end and not lines[start].strip():
-        start += 1
-    while end > start and not lines[end - 1].strip():
-        end -= 1
-    return "\n".join(lines[start:end])
-
-
-def _parse_block_submission(text: str) -> list[dict[str, str]]:
-    parsed: list[dict[str, str]] = []
-    current_id: str | None = None
-    current_lines: list[str] = []
-    seen: set[str] = set()
-
-    def flush() -> None:
-        nonlocal current_id, current_lines
-        if current_id is None:
-            return
-        # Strip trailing separator lines (blank or comment) that sit between
-        # this record and the next header (or EOF). Internal and leading
-        # comment lines are preserved as target text.
-        lines = list(current_lines)
-        while lines and (
-            not lines[-1].strip() or lines[-1].lstrip().startswith("#")
-        ):
-            lines.pop()
-        target = _trim_blank_edge_lines(lines)
-        if not target:
-            _die(f"empty target for record {current_id}")
-        parsed.append({"id": current_id, "target": target})
-        current_id = None
-        current_lines = []
-
-    for line_no, raw_line in enumerate(text.splitlines(), start=1):
-        header = _BLOCK_HEADER_RE.match(raw_line)
-        if header:
-            flush()
-            record_id = header.group("id").strip()
-            if record_id in seen:
-                _die(f"duplicate record id in block submission: {record_id}")
-            seen.add(record_id)
-            current_id = record_id
-            current_lines = []
-            continue
-        if current_id is None:
-            stripped = raw_line.strip()
-            if stripped and not stripped.startswith("#"):
-                _die(
-                    f"malformed block submission line {line_no}: "
-                    "expected '>>> <record-id>' before target text"
-                )
-            continue
-        current_lines.append(raw_line)
-
-    flush()
-    if not parsed:
-        _die("block submission did not contain any records")
-    return parsed
-
-
-def _render_submission_failures(findings) -> None:
-    console.print("[red]error:[/red] submission rejected; no files changed")
-    console.print()
-    for finding in findings:
-        if finding.record_id:
-            console.print(f"{finding.record_id} {finding.rule}:")
-        else:
-            console.print(f"{finding.chunk_id} {finding.rule}:")
-        console.print(f"  {finding.message}")
-
+def _render_submission_failures(findings):
+    from booktx.rendering import render_submission_failures
+    render_submission_failures(findings)
 
 def _next_chapter(proj, *, print_context: bool) -> None:
     summary = _project_status_snapshot(proj)
-    chapter = summary["next"]
+    chapter = summary.snapshot.next
     if chapter is None:
         console.print("All chapter records have accepted translations.")
         raise typer.Exit(code=1)
     if print_context:
         console.print(f"context: {context_markdown_path(proj)}", soft_wrap=True)
-    console.print(f"chapter: {chapter['chapter_id']}  {chapter['title']}".rstrip())
-    console.print(f"status: {chapter['status']}")
+    console.print(f"chapter: {chapter.chapter_id}  {chapter.title}".rstrip())
+    console.print(f"status: {chapter.status}")
     console.print(
         "record range: "
-        f"{chapter['record_range']['start']}..{chapter['record_range']['end']}"
+        f"{chapter.record_range.start}..{chapter.record_range.end}"
     )
     console.print(
-        f"records: {chapter['records_translated']} / "
-        f"{chapter['records_total']} translated, "
-        f"{chapter['records_remaining']} remaining"
+        f"records: {chapter.records_translated} / "
+        f"{chapter.records_total} translated, "
+        f"{chapter.records_remaining} remaining"
     )
-    console.print(f"chunks: {_format_chunk_span(chapter['chunk_ids'])}")
-    console.print(f"pending chunks: {_format_chunk_span(chapter['pending_chunk_ids'])}")
-    console.print(f"source words remaining: {chapter['source_words_remaining']:,}")
+    console.print(f"chunks: {_format_chunk_span(chapter.chunk_ids)}")
+    console.print(f"pending chunks: {_format_chunk_span(chapter.pending_chunk_ids)}")
+    console.print(f"source words remaining: {chapter.source_words_remaining:,}")
     console.print(
         "[dim]next command:[/dim] "
-        f"booktx translate next . --chapter {chapter['chapter_id']} --unit batch "
+        f"booktx translate next . --chapter {chapter.chapter_id} --unit batch "
         "--max-words 500 --format block"
     )
     raise typer.Exit(code=0)
@@ -1361,19 +862,12 @@ def status_cmd(
     summary = _project_status_snapshot(proj)
     selected = _selected_chapter(summary, chapter)
     if selected is not None:
-        summary["chapters"] = [selected]
-        summary["next"] = selected
+        summary.snapshot.chapters = [selected]
+        summary.snapshot.next = selected
     if as_json:
-        payload = {
-            "version": summary["version"],
-            "project": summary["project"],
-            "source": summary["source"],
-            "context": summary["context"],
-            "totals": summary["totals"],
-            "next": summary["next"],
-            "chapters": summary["chapters"],
-        }
-        console.print_json(json.dumps(payload, ensure_ascii=False))
+        console.print_json(
+            json.dumps(summary.snapshot.model_dump(mode="json"), ensure_ascii=False)
+        )
         return
     _print_status_human(summary, selected)
 
@@ -1408,9 +902,9 @@ def next_cmd(
         return
     summary = _project_status_snapshot(proj)
     pending_chunks = [
-        chunk["chunk_id"]
-        for chunk in summary["_chunk_summaries"]
-        if chunk["records_remaining"] > 0
+        chunk.chunk_id
+        for chunk in summary.index.chunk_summaries
+        if chunk.records_remaining > 0
     ]
     if not pending_chunks:
         console.print("All chunk records have accepted translations.")
@@ -1420,9 +914,9 @@ def next_cmd(
     cid = pending_chunks[0]
     chunk_path = proj.chunks_dir / f"{cid}.json"
     records_remaining = next(
-        chunk["records_remaining"]
-        for chunk in summary["_chunk_summaries"]
-        if chunk["chunk_id"] == cid
+        chunk.records_remaining
+        for chunk in summary.index.chunk_summaries
+        if chunk.chunk_id == cid
     )
     console.print(f"{cid}\t{chunk_path}", soft_wrap=True)
     console.print(f"records remaining: {records_remaining}")
@@ -1527,6 +1021,7 @@ def translate_next(
     if as_json and output_format != "text":
         _die("--json cannot be combined with --format")
     _require_chunks(proj)
+    _require_no_source_drift(proj)
     _require_ready_context(proj, allow_missing_context=allow_missing_context)
     summary = _project_status_snapshot(proj)
     selected_chapter = _selected_chapter(summary, chapter)
@@ -1596,36 +1091,24 @@ def translate_insert(
     if input_format not in {"json", "tsv", "block"}:
         _die("--format must be json, tsv, or block")
     _require_chunks(proj)
+    _require_no_source_drift(proj)
     _require_ready_context(proj, allow_missing_context=allow_missing_context)
 
-    submitted: list[dict[str, str]] = []
-    payload_task_id: str | None = None
-    if record_id is not None or target is not None:
-        if not record_id or target is None:
-            _die("--record-id and --target must be supplied together")
-        submitted = [{"id": record_id, "target": target}]
-    elif json_file is not None:
-        payload_task_id, submitted = _parse_json_submission(
-            _read_submission_file_or_die(json_file)
+    try:
+        parsed = resolve_submission(
+            record_id=record_id,
+            target=target,
+            input_format=input_format,
+            stdin=stdin,
+            json_file=json_file,
+            input_file=input_file,
         )
-    elif input_file is not None:
-        raw = _read_submission_file_or_die(input_file)
-        if input_format == "json":
-            payload_task_id, submitted = _parse_json_submission(raw)
-        elif input_format == "tsv":
-            submitted = _parse_tsv_submission(raw)
-        else:
-            submitted = _parse_block_submission(raw)
-    elif stdin:
-        raw = sys.stdin.read()
-        if input_format == "json":
-            payload_task_id, submitted = _parse_json_submission(raw)
-        elif input_format == "tsv":
-            submitted = _parse_tsv_submission(raw)
-        else:
-            submitted = _parse_block_submission(raw)
-    else:
-        _die("provide one of --record-id/--target, --json-file, --file, or --stdin")
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+
+    submitted_records = parsed.records
+    payload_task_id = parsed.task_id
 
     effective_task_id = task_id or payload_task_id
     task = (
@@ -1633,79 +1116,33 @@ def translate_insert(
         if effective_task_id
         else None
     )
-    allowed_ids = {record.id for record in task.records} if task is not None else None
     summary = _project_status_snapshot(proj)
-    source_by_id = summary["_source_by_id"]
-    source_chunks = summary["_source_chunks"]
-    failures = []
-
-    seen_ids: set[str] = set()
-    for item in submitted:
-        record_id = item["id"]
-        if record_id in seen_ids:
-            _die(f"duplicate record id in submission: {record_id}")
-        seen_ids.add(record_id)
-        if record_id not in source_by_id:
-            _die(f"unknown source record id: {record_id}")
-        if allowed_ids is not None and record_id not in allowed_ids:
-            _die(f"record {record_id} is not part of task {task.task_id}")
-        source_view = source_by_id[record_id]
-        translated = TranslatedRecord(id=record_id, target=item["target"])
-        source_chunk = source_chunks[source_view.chunk_id]
-        source_record = next(
-            record for record in source_chunk.records if record.id == record_id
+    try:
+        result = accept_translation_records(
+            proj, submitted_records, bundle=summary, task=task
         )
-        failures.extend(
-            validate_record_pair(
-                source_record, translated, source_chunk.chunk_id, load_context(proj)
-            )
-        )
-
-    if any(finding.severity == Severity.ERROR for finding in failures):
-        _render_submission_failures(
-            [finding for finding in failures if finding.severity == Severity.ERROR]
-        )
-        raise typer.Exit(code=1)
-
-    store = load_translation_store(proj)
-    store.source_sha256 = summary["source"]["source_sha256"]
-    updated_at = (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-    for item in submitted:
-        source_view = source_by_id[item["id"]]
-        store.records[item["id"]] = StoredTranslationRecord(
-            chunk_id=source_view.chunk_id,
-            source_sha256=source_view.source_sha256,
-            target=item["target"],
-            updated_at=updated_at,
-        )
-    write_translation_store(proj, store)
-
-    refreshed = _project_status_snapshot(proj)
-    first_record_id = submitted[0]["id"]
-    chapter_id = refreshed["_record_to_chapter"].get(first_record_id, "")
-    chapter = refreshed["_chapters_by_id"].get(chapter_id)
-    target_words = sum(count_words(item["target"]) for item in submitted)
+    except SubmissionValidationError as exc:
+        _render_submission_failures(exc.findings)
+        raise typer.Exit(code=1) from None
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
     console.print(
-        f"accepted: {len(submitted)} record(s), {target_words} target word(s)"
+        f"accepted: {result.accepted_records} record(s), "
+        f"{result.target_words} target word(s)"
     )
-    if chapter is not None:
-        console.print(f"chapter: {chapter['chapter_id']} {chapter['title']}".rstrip())
+    if result.chapter_id:
+        console.print(f"chapter: {result.chapter_id} {result.chapter_title}".rstrip())
         console.print(
-            f"progress: {chapter['records_translated']} / "
-            f"{chapter['records_total']} records translated, "
-            f"{chapter['records_remaining']} remaining"
+            f"progress: {result.records_translated} / "
+            f"{result.records_total} records translated, "
+            f"{result.records_remaining} remaining"
         )
         console.print(
             "next: "
-            f"booktx translate next . --chapter {chapter['chapter_id']} --unit batch "
+            f"booktx translate next . --chapter {result.chapter_id} --unit batch "
             "--max-words 500 --format block"
         )
-
 
 @translate_app.command(name="import-legacy")
 def translate_import_legacy(
@@ -1789,9 +1226,10 @@ def translate_export(
             )
         if any(finding.severity == Severity.ERROR for finding in findings):
             continue
-        (proj.translated_dir / f"{chunk.chunk_id}.json").write_text(
-            translated_chunk.model_dump_json(indent=2) + "\n",
-            encoding="utf-8",
+        from booktx.io_utils import write_json_model_atomic
+
+        write_json_model_atomic(
+            proj.translated_dir / f"{chunk.chunk_id}.json", translated_chunk
         )
         exported += 1
     console.print(f"exported: {exported} chunk(s) to {proj.translated_dir}")
@@ -1936,58 +1374,24 @@ def translate_set_record(
     else:
         _die("provide the target text with --stdin or --target")
 
-    if not target_text.strip():
-        _die(f"empty target for record {record_id}")
-
     summary = _project_status_snapshot(proj)
-    source_by_id = summary["_source_by_id"]
-    source_chunks = summary["_source_chunks"]
-    if record_id not in source_by_id:
-        _die(f"unknown source record id: {record_id}")
-    source_view = source_by_id[record_id]
-    source_chunk = source_chunks[source_view.chunk_id]
-    source_record = next(
-        record for record in source_chunk.records if record.id == record_id
-    )
-    translated = TranslatedRecord(id=record_id, target=target_text)
-    failures = validate_record_pair(
-        source_record, translated, source_chunk.chunk_id, load_context(proj)
-    )
-    if any(finding.severity == Severity.ERROR for finding in failures):
-        _render_submission_failures(
-            [finding for finding in failures if finding.severity == Severity.ERROR]
+    try:
+        result = accept_one_record(
+            proj, record_id, target_text, bundle=summary, task=task
         )
-        raise typer.Exit(code=1)
-
-    store = load_translation_store(proj)
-    store.source_sha256 = summary["source"]["source_sha256"]
-    updated_at = (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-    store.records[record_id] = StoredTranslationRecord(
-        chunk_id=source_view.chunk_id,
-        source_sha256=source_view.source_sha256,
-        target=target_text,
-        updated_at=updated_at,
-    )
-    write_translation_store(proj, store)
-
-    refreshed = _project_status_snapshot(proj)
-    chapter_id = refreshed["_record_to_chapter"].get(record_id, "")
-    chapter = refreshed["_chapters_by_id"].get(chapter_id)
-    target_words = count_words(target_text)
-    console.print(
-        f"accepted: 1 record, {target_words} target word(s)"
-    )
-    if chapter is not None:
-        console.print(f"chapter: {chapter['chapter_id']} {chapter['title']}".rstrip())
+    except SubmissionValidationError as exc:
+        _render_submission_failures(exc.findings)
+        raise typer.Exit(code=1) from None
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(f"accepted: 1 record, {result.target_words} target word(s)")
+    if result.chapter_id:
+        console.print(f"chapter: {result.chapter_id} {result.chapter_title}".rstrip())
         console.print(
-            f"progress: {chapter['records_translated']} / "
-            f"{chapter['records_total']} records translated, "
-            f"{chapter['records_remaining']} remaining"
+            f"progress: {result.records_translated} / "
+            f"{result.records_total} records translated, "
+            f"{result.records_remaining} remaining"
         )
 
 

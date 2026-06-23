@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,9 +17,13 @@ from booktx.config import (
 )
 from booktx.context import chapter_map_path
 from booktx.epub_io import extract_epub
-from booktx.epub_manifest import load_epub_template_from_manifest
+from booktx.epub_manifest import (
+    load_epub_template_from_manifest,
+    prose_span_from_epub_ref,
+)
+from booktx.placeholders import TRANSLATABLE_INLINE_PARENTS
 
-if False:  # pragma: no cover
+if TYPE_CHECKING:
     from booktx.config import Project
 
 __all__ = [
@@ -67,9 +72,9 @@ def load_chapter_map(project: Project) -> ChapterMap | None:
 
 
 def write_chapter_map(project: Project, chapter_map: ChapterMap) -> None:
-    path = chapter_map_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(chapter_map.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    from booktx.io_utils import write_json_model_atomic
+
+    write_json_model_atomic(chapter_map_path(project), chapter_map)
 
 
 def detect_chapters(project: Project) -> ChapterMap:
@@ -231,28 +236,12 @@ def _markdown_boundaries(body: str) -> list[_Boundary]:
     return boundaries
 
 
-_TRANSLATABLE_MARKDOWN_PARENTS = {
-    "paragraph",
-    "heading",
-    "list_item",
-    "blockquote",
-    "table_cell",
-    "td",
-    "th",
-    "strong",
-    "em",
-}
+_TRANSLATABLE_MARKDOWN_PARENTS = TRANSLATABLE_INLINE_PARENTS
 
 _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
 
-def _prose_span_from_ref(span_ref) -> ProseSpan:
-    return ProseSpan(
-        text=span_ref.source_text,
-        placeholders=span_ref.placeholders,
-        protected_terms=span_ref.protected_terms,
-    )
-
+_prose_span_from_ref = prose_span_from_epub_ref  # backward-compatible alias
 
 def _epub_boundaries_from_refs(span_refs, navigation_refs) -> list[_Boundary]:
     boundaries = _navigation_boundaries(span_refs, navigation_refs)

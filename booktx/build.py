@@ -7,9 +7,13 @@ from pathlib import Path
 
 from booktx.chunking import ProseSpan
 from booktx.config import Project, find_source_file, load_manifest
-from booktx.epub_manifest import assert_source_sha, load_epub_template_from_manifest
+from booktx.epub_manifest import (
+    assert_source_sha,
+    load_epub_template_from_manifest,
+    prose_span_from_epub_ref,
+)
 from booktx.markdown_io import build_markdown, extract_markdown
-from booktx.models import Chunk, EpubSpanRef, TranslatedChunk
+from booktx.models import Chunk, TranslatedChunk
 from booktx.placeholders import restore
 from booktx.progress import count_words
 from booktx.validate import Severity, load_effective_translated_chunks
@@ -91,16 +95,19 @@ def _build_target_stream(
     return target_stream
 
 
-def _prose_span_from_ref(span_ref: EpubSpanRef) -> ProseSpan:
-    return ProseSpan(
-        text=span_ref.source_text,
-        placeholders=span_ref.placeholders,
-        protected_terms=span_ref.protected_terms,
-    )
-
+_prose_span_from_ref = prose_span_from_epub_ref  # backward-compatible alias
 
 def _build_markdown(project: Project, *, require_complete: bool = False) -> BuildResult:
     source = find_source_file(project)
+    from booktx.config import current_source_sha256, extracted_source_sha256
+
+    extracted = extracted_source_sha256(project)
+    if extracted and extracted != current_source_sha256(project):
+
+        raise BuildError(
+            "source file has changed since last extraction; "
+            "run 'booktx extract' to update chunks before building"
+        )
     text = source.read_text("utf-8")
     names = _load_names(project)
     extraction = extract_markdown(text, protected_terms=names)
@@ -133,8 +140,9 @@ def _build_markdown(project: Project, *, require_complete: bool = False) -> Buil
     output = build_markdown(extraction.template, replacements)
 
     out_path = _output_path(project, source, suffix=".md")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(output, encoding="utf-8")
+    from booktx.io_utils import write_text_atomic
+
+    write_text_atomic(out_path, output)
     return BuildResult(output_path=out_path, format="markdown", span_count=len(spans))
 
 

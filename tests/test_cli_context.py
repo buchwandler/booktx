@@ -41,10 +41,10 @@ def test_context_init_non_interactive_creates_files(tmp_path: Path):
     assert md_path.is_file()
     data = json.loads(ctx_path.read_text("utf-8"))
     assert data["ready"] is False
-    assert len(data["questions"]) == 12
-    assert {g["source"] for g in data["glossary"]} >= {"Lowlands", "Lowlander"}
-    assert "Niederlande" in md_path.read_text("utf-8")
-
+    # 9 generic questions (Q007-Q009 moved to --seed template)
+    assert len(data["questions"]) == 9
+    # Default glossary is empty (book-specific seeds loaded via --seed).
+    assert data["glossary"] == []
 
 def test_context_status_reports_not_ready_when_required_open(tmp_path: Path):
     project_dir = _make_project(tmp_path)
@@ -52,7 +52,7 @@ def test_context_status_reports_not_ready_when_required_open(tmp_path: Path):
     res = runner.invoke(app, ["context", "status", str(project_dir)])
     assert res.exit_code == 0, res.output
     assert "NOT READY" in res.output
-    assert "open_required=10" in res.output
+    assert "open_required=7" in res.output
 
 
 def test_context_add_term_persists_glossary_entry(tmp_path: Path):
@@ -88,6 +88,7 @@ def test_context_mark_ready_fails_until_required_answers_exist(tmp_path: Path):
     assert res.exit_code == 1
     assert "required questions" in res.output
 
+    # Only generic required questions (Q007-Q009 are in --seed template).
     required_ids = (
         "Q001",
         "Q002",
@@ -95,9 +96,6 @@ def test_context_mark_ready_fails_until_required_answers_exist(tmp_path: Path):
         "Q004",
         "Q005",
         "Q006",
-        "Q007",
-        "Q008",
-        "Q009",
         "Q012",
     )
     for qid in required_ids:

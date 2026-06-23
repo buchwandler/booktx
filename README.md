@@ -60,7 +60,7 @@ book/
 
 ```bash
 booktx init ./book --target de                 # create the project
-booktx init ./book --target de --source book.md --source-lang en
+booktx init ./book --target de --source-file book.md --source-lang en
 booktx inspect ./book                          # summarise the source
 booktx extract ./book                          # write .booktx/chunks/*.json
 booktx context init ./book --non-interactive   # create open questions/context

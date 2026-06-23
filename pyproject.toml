@@ -44,10 +44,17 @@ dependencies = [
 dev = [
     "pytest",
     "ruff",
+    "ebooklib",
+    "mypy",
+]
+docs = [
+    "sphinx",
+    "myst-parser",
+    "sphinx-rtd-theme",
 ]
 
 [project.scripts]
-booktx = "booktx.cli:app"
+booktx = "booktx.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/booktx/booktx"
