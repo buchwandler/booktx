@@ -214,7 +214,8 @@ def test_profile_migrate_current_honors_model_override_when_legacy_identity_exis
             "migrate-current",
             str(project_dir),
             "de_gpt5_5",
-            "--model", "codex-openai/gpt-5.5@low",
+            "--model",
+            "codex-openai/gpt-5.5@low",
             "--select",
         ],
     )
@@ -249,16 +250,19 @@ def test_profile_migrate_current_honors_actor_and_harness_overrides(tmp_path: Pa
             "migrate-current",
             str(project_dir),
             "de_gpt5_5",
-            "--actor", "agent:translator",
-            "--harness", "codex",
+            "--actor",
+            "agent:translator",
+            "--harness",
+            "codex",
             "--select",
         ],
     )
 
     assert res.exit_code == 0, res.output
     identity = json.loads(
-        (project_dir / "translations" / "de_gpt5_5" / "identity.json")
-        .read_text("utf-8")
+        (project_dir / "translations" / "de_gpt5_5" / "identity.json").read_text(
+            "utf-8"
+        )
     )
     assert identity["actor"] == "agent:translator"
     assert identity["harness"] == "codex"

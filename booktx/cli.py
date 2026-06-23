@@ -188,7 +188,6 @@ def _die(message: str, code: int = 1) -> None:
     raise typer.Exit(code=code)
 
 
-
 def _handle_booktx_error(exc: BooktxError) -> None:
     _die(str(exc))
 
@@ -237,8 +236,6 @@ def _resolve_project_value_args(
     if p2_is_project and not p1_is_project:
         return p2, arg1
     return p1, arg2
-
-
 
 
 def _render_identity_human(payload: dict[str, Any]) -> None:
@@ -947,7 +944,9 @@ def _drift_unsafe_message(drift: ContextMarkdownDrift) -> str:
     )
 
 
-def _guard_md_safe_or_die(proj: Project, ctx: TranslationContext, *, allow_discard_md_only: bool = False) -> None:
+def _guard_md_safe_or_die(
+    proj: Project, ctx: TranslationContext, *, allow_discard_md_only: bool = False
+) -> None:
     try:
         ensure_context_markdown_safe_to_overwrite(
             proj, ctx, allow_discard_md_only=allow_discard_md_only
@@ -1572,7 +1571,11 @@ def _count_records(
         spans = extraction.spans
         entries_raw = extraction.text2epub_manifest.get("entries", [])
         entries = entries_raw if isinstance(entries_raw, list) else []
-        block_entries = [entry for entry in entries if isinstance(entry, dict) and entry.get("blocks")]
+        block_entries = [
+            entry
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("blocks")
+        ]
         details = f"{len(block_entries)} spine document(s) with text blocks"
     else:  # pragma: no cover - config validation already guards this
         raise BooktxError("unsupported_format", f"Unsupported format {fmt!r}")
@@ -1795,12 +1798,16 @@ def _assert_epub_records_are_clean(chunks: list[Chunk]) -> None:
                 raise BooktxError(
                     "epub_placeholders_leaked",
                     "new EPUB extraction produced TAG/SPANTX placeholders; "
-                    "this is forbidden"
+                    "this is forbidden",
                 )
 
 
 def _save_epub_manifest(
-    proj: Project, source: Path, extraction: EpubExtraction, chunk_count: int, record_count: int
+    proj: Project,
+    source: Path,
+    extraction: EpubExtraction,
+    chunk_count: int,
+    record_count: int,
 ) -> None:
     """Record EPUB v2 extraction metadata in manifest.json."""
     import json
@@ -1837,7 +1844,9 @@ def _save_epub_manifest(
     _ = (json, NamesFile)  # touch imports for clarity
 
 
-def _require_ready_context(proj: Project, *, allow_missing_context: bool = False) -> bool:
+def _require_ready_context(
+    proj: Project, *, allow_missing_context: bool = False
+) -> bool:
     """Return True when context was checked and should be printed."""
     if allow_missing_context:
         return False
@@ -2592,7 +2601,9 @@ def translate_export(  # noqa: C901
 
     from booktx.io_utils import write_json_model_atomic
 
-    def _pick_candidate(stored: StoredTranslationRecordV2) -> TranslationCandidate | None:
+    def _pick_candidate(
+        stored: StoredTranslationRecordV2,
+    ) -> TranslationCandidate | None:
         if all_versions:
             return None
         if version_ref is not None:

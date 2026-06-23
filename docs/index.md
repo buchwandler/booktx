@@ -9,13 +9,13 @@ Start here:
 5. Read [context](context.md) before working on translations.
 6. Read [agent workflow](agent-workflow.md) for coding-agent operating rules.
 
-1. Initialize a source project.
-2. Extract source chunks into `.booktx/chunks/`.
-3. Create or select a translation profile.
-4. Build or approve `translations/<profile>/context.json` and `context.md`.
-5. Translate via `translations/<profile>/ingest/`.
-6. Validate the selected profile.
-7. Build the final document into `translations/<profile>/output/`.
+7. Initialize a source project.
+8. Extract source chunks into `.booktx/chunks/`.
+9. Create or select a translation profile.
+10. Build or approve `translations/<profile>/context.json` and `context.md`.
+11. Translate via `translations/<profile>/ingest/`.
+12. Validate the selected profile.
+13. Build the final document into `translations/<profile>/output/`.
 
 ```{toctree}
 :maxdepth: 2

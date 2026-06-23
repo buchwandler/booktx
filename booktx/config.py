@@ -826,7 +826,6 @@ def select_profile(root: Path | str, profile_name: str) -> Project:
     return load_profile_project(project.root, profile_name)
 
 
-
 def init_project(
     target: Path,
     *,

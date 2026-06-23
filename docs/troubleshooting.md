@@ -70,8 +70,7 @@ Then re-request tasks against the refreshed source.
 
 ## Context is not ready
 
-Translation work requires a ready context. If you see `translation context is
-missing or not ready`, initialize and mark it ready:
+Translation work requires a ready context. If you see `translation context is missing or not ready`, initialize and mark it ready:
 
 ```bash
 booktx context init ./book --profile PROFILE --non-interactive

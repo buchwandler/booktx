@@ -63,13 +63,13 @@ Rules:
 
 - Keep every `>>> RECORD_ID` header unchanged.
 - Write only the target translation under each header.
-- Preserve required placeholder tokens (for example ``__NAME_001__``) exactly.
+- Preserve required placeholder tokens (for example `__NAME_001__`) exactly.
 - Do not add commentary outside target text.
 - Do not edit `tasks/<task>.source.block.txt` as the submission.
 
 ## JSON submission schema
 
-Submissions may also be supplied as JSON (``schema_version`` 2). Example:
+Submissions may also be supplied as JSON (`schema_version` 2). Example:
 
 ```json
 {
@@ -77,9 +77,7 @@ Submissions may also be supplied as JSON (``schema_version`` 2). Example:
   "profile": "de_gpt5_5",
   "task_id": "bt-task-...",
   "translation_version": "1.2",
-  "records": [
-    {"id": "0001-000001", "target": "Translated text here."}
-  ]
+  "records": [{ "id": "0001-000001", "target": "Translated text here." }]
 }
 ```
 

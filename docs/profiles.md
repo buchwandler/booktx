@@ -41,18 +41,18 @@ booktx profile migrate-current ./book de_gpt5_5 --select
 Each profile owns its own copy of all mutable translation state under
 `translations/<profile>/`:
 
-| Path                                   | Meaning                              |
-| ------------------------------------- | ------------------------------------ |
-| `config.toml`                         | Profile config (target, output name) |
-| `identity.json`                       | Live actor/harness/model identity    |
-| `context.json` / `context.md`         | Translation context and rendered form |
-| `translation-store.json`              | Primary record-level translations    |
-| `translation-version-ledger.json`     | Version tracks and subversions       |
-| `tasks/`                              | Durable translation task files       |
-| `ingest/`                             | Submission templates (agent edits)   |
-| `translated/`                         | Generated compatibility export       |
-| `reports/`                            | Validation/build reports             |
-| `output/`                             | Final rebuilt document               |
+| Path                              | Meaning                               |
+| --------------------------------- | ------------------------------------- |
+| `config.toml`                     | Profile config (target, output name)  |
+| `identity.json`                   | Live actor/harness/model identity     |
+| `context.json` / `context.md`     | Translation context and rendered form |
+| `translation-store.json`          | Primary record-level translations     |
+| `translation-version-ledger.json` | Version tracks and subversions        |
+| `tasks/`                          | Durable translation task files        |
+| `ingest/`                         | Submission templates (agent edits)    |
+| `translated/`                     | Generated compatibility export        |
+| `reports/`                        | Validation/build reports              |
+| `output/`                         | Final rebuilt document                |
 
 Two profiles never share any of the above. Translations accepted into one
 profile are invisible to another.
@@ -61,14 +61,14 @@ profile are invisible to another.
 
 Source-derived state under `.booktx/` is shared by all profiles:
 
-| Path                  | Meaning                              |
-| -------------------- | ------------------------------------ |
-| `source-config.toml` | Source language/format/chunking      |
+| Path                   | Meaning                             |
+| ---------------------- | ----------------------------------- |
+| `source-config.toml`   | Source language/format/chunking     |
 | `source-manifest.json` | Source hash and extraction manifest |
-| `names.json`         | Protected-term glossary              |
-| `chapter-map.json`   | Cached chapter boundaries            |
-| `chunks/`            | Immutable extracted source records   |
-| `profile-state.json` | Active-profile selector              |
+| `names.json`           | Protected-term glossary             |
+| `chapter-map.json`     | Cached chapter boundaries           |
+| `chunks/`              | Immutable extracted source records  |
+| `profile-state.json`   | Active-profile selector             |
 
 Re-extracting the source updates the shared state for every profile at once.
 
@@ -83,11 +83,11 @@ Create a new profile whenever you want a hard isolation boundary:
   style rules, kept separate from a previous accepted run.
 
 Do **not** create a new profile for a routine re-translation of the same
-language/model/context; that is a *version*, not a profile.
+language/model/context; that is a _version_, not a profile.
 
 ## What stays a version?
 
-Versions live *inside* a profile. Two profiles may both contain version `1.1`;
+Versions live _inside_ a profile. Two profiles may both contain version `1.1`;
 they are unrelated.
 
 - A **model/actor/harness identity change** creates or selects a major track

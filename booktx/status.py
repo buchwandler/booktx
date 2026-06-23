@@ -602,9 +602,9 @@ def build_profiles_overview(project: Project) -> ProfilesOverview:
                 # The live identity lives in translations/<profile>/identity.json;
                 # the value embedded in config.toml is only the initial default.
                 model=resolve_identity(profile_project).model,
-                path=str(
-                    profile_project.profile_dir.relative_to(project.root)
-                ) if profile_project.profile_dir is not None else "",
+                path=str(profile_project.profile_dir.relative_to(project.root))
+                if profile_project.profile_dir is not None
+                else "",
                 translated_records=translated_records,
                 total_records=shared_total_records,
                 active=profile_name == active_profile,

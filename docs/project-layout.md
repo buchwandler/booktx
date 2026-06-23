@@ -37,14 +37,14 @@ book/
 
 `.booktx/` contains only source-derived or source-shared state.
 
-| Path | Scope | Notes |
-| --- | --- | --- |
-| `.booktx/source-config.toml` | shared | Source language, source file, format, chunk size |
-| `.booktx/source-manifest.json` | shared | Source digest and rebuild metadata |
-| `.booktx/names.json` | shared | Protected terms |
-| `.booktx/chapter-map.json` | shared | Chapter-to-record/chunk metadata |
-| `.booktx/profile-state.json` | shared | Active profile selection only |
-| `.booktx/chunks/` | shared | Extracted source chunks |
+| Path                           | Scope  | Notes                                            |
+| ------------------------------ | ------ | ------------------------------------------------ |
+| `.booktx/source-config.toml`   | shared | Source language, source file, format, chunk size |
+| `.booktx/source-manifest.json` | shared | Source digest and rebuild metadata               |
+| `.booktx/names.json`           | shared | Protected terms                                  |
+| `.booktx/chapter-map.json`     | shared | Chapter-to-record/chunk metadata                 |
+| `.booktx/profile-state.json`   | shared | Active profile selection only                    |
+| `.booktx/chunks/`              | shared | Extracted source chunks                          |
 
 Do **not** put target-language translation state under `.booktx/` in a profile
 project.
@@ -53,19 +53,19 @@ project.
 
 Every translation effort lives under `translations/<profile>/`.
 
-| Path | Scope | Notes |
-| --- | --- | --- |
-| `translations/<profile>/config.toml` | profile-local | Target language, locale, output filename, default identity |
-| `translations/<profile>/identity.json` | profile-local | Stored actor/harness/model defaults |
-| `translations/<profile>/context.json` | profile-local | Authoritative translation context |
-| `translations/<profile>/context.md` | profile-local | Rendered context for agents |
-| `translations/<profile>/translation-store.json` | profile-local | Primary record-level translation state |
-| `translations/<profile>/translation-version-ledger.json` | profile-local | Version history inside this profile |
-| `translations/<profile>/tasks/` | profile-local | Persisted translation tasks |
-| `translations/<profile>/ingest/` | profile-local | Durable submission files |
-| `translations/<profile>/translated/` | profile-local | Generated compatibility/export chunk JSON (rebuildable; not primary state) |
-| `translations/<profile>/reports/` | profile-local | Validation reports |
-| `translations/<profile>/output/` | profile-local | Rebuilt translated documents (rebuildable from the store) |
+| Path                                                     | Scope         | Notes                                                                      |
+| -------------------------------------------------------- | ------------- | -------------------------------------------------------------------------- |
+| `translations/<profile>/config.toml`                     | profile-local | Target language, locale, output filename, default identity                 |
+| `translations/<profile>/identity.json`                   | profile-local | Stored actor/harness/model defaults                                        |
+| `translations/<profile>/context.json`                    | profile-local | Authoritative translation context                                          |
+| `translations/<profile>/context.md`                      | profile-local | Rendered context for agents                                                |
+| `translations/<profile>/translation-store.json`          | profile-local | Primary record-level translation state                                     |
+| `translations/<profile>/translation-version-ledger.json` | profile-local | Version history inside this profile                                        |
+| `translations/<profile>/tasks/`                          | profile-local | Persisted translation tasks                                                |
+| `translations/<profile>/ingest/`                         | profile-local | Durable submission files                                                   |
+| `translations/<profile>/translated/`                     | profile-local | Generated compatibility/export chunk JSON (rebuildable; not primary state) |
+| `translations/<profile>/reports/`                        | profile-local | Validation reports                                                         |
+| `translations/<profile>/output/`                         | profile-local | Rebuilt translated documents (rebuildable from the store)                  |
 
 ## Safety rules
 
