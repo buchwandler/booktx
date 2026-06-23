@@ -38,6 +38,7 @@ from booktx.config import (
 from booktx.context import (
     GlossaryEntry,
     TranslationContext,
+    analyze_context_markdown_drift,
     context_markdown_path,
     load_context,
     render_context_markdown,
@@ -46,7 +47,7 @@ from booktx.epub_manifest import load_epub_template_from_manifest
 from booktx.models import Chunk, Placeholder, TranslatedChunk, TranslatedRecord
 from booktx.placeholders import TOKEN_RE, collect_tokens
 from booktx.progress import source_record_sha256
-from booktx.translation_store import active_candidate, find_candidate
+from booktx.translation_store import active_candidate
 from booktx.versioning import lookup_version
 
 __all__ = [
@@ -768,6 +769,55 @@ def load_effective_translated_chunks(
     return EffectiveTranslations(chunks=merged, findings=findings)
 
 
+
+def _context_render_drift_finding(
+    project: Project, context: TranslationContext
+) -> Finding | None:
+    """Return a context_render_drift finding, or None when Markdown matches.
+
+    Line endings are normalized before comparing. Unsafe Markdown-only or
+    conflicting chapter notes point the user at ``context import-md``; only a
+    safe (non chapter-note) render drift suggests ``context render --write``.
+    """
+    if not context_markdown_path(project).is_file():
+        return None
+    rendered = render_context_markdown(context)
+    current_markdown = context_markdown_path(project).read_text("utf-8")
+    if current_markdown.replace("\r\n", "\n") == rendered.replace("\r\n", "\n"):
+        return None
+    drift = analyze_context_markdown_drift(project, context)
+    if drift.parse_errors:
+        detail = "; ".join(drift.parse_errors)
+        message = (
+            "context.md chapter notes could not be parsed: "
+            f"{detail}. Fix .booktx/context.md, then run "
+            "`booktx context import-md . --write`."
+        )
+    elif drift.unsafe_to_overwrite:
+        parts = []
+        if drift.missing_in_json:
+            parts.append(f"missing_in_json={','.join(drift.missing_in_json)}")
+        if drift.conflicting:
+            parts.append(f"conflicting={','.join(drift.conflicting)}")
+        message = (
+            "context.md has chapter notes not safely represented "
+            "in context.json. " + " ".join(parts) + ". Run `booktx "
+            "context import-md . --write` before rendering, or `booktx "
+            "context render . --write --force-discard-md-only` to discard "
+            "Markdown-only notes."
+        )
+    else:
+        message = (
+            "context.md differs from the current context.json render; "
+            "run `booktx context render . --write`"
+        )
+    return Finding(
+        chunk_id="context",
+        severity=Severity.WARN,
+        rule="context_render_drift",
+        message=message,
+    )
+
 def validate_project(
     project: Project, *, all_versions_strict: bool = False
 ) -> ValidationReport:
@@ -875,21 +925,10 @@ def validate_project(
     )
     report.findings.extend(effective.findings)
 
-    if context is not None and context_markdown_path(project).is_file():
-        rendered = render_context_markdown(context)
-        current_markdown = context_markdown_path(project).read_text("utf-8")
-        if current_markdown != rendered:
-            report.findings.append(
-                Finding(
-                    chunk_id="context",
-                    severity=Severity.WARN,
-                    rule="context_render_drift",
-                    message=(
-                        "context.md differs from the current context.json render; "
-                        "run `booktx context render . --write`"
-                    ),
-                )
-            )
+    if context is not None:
+        drift_finding = _context_render_drift_finding(project, context)
+        if drift_finding is not None:
+            report.findings.append(drift_finding)
 
     for chunk_id in sorted(source_chunks):
         source = source_chunks[chunk_id]

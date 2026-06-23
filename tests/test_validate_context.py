@@ -9,7 +9,13 @@ from typer.testing import CliRunner
 
 from booktx.cli import app
 from booktx.config import init_project, load_project
-from booktx.context import default_context, write_context, write_context_markdown
+from booktx.context import (
+    ChapterContext,
+    context_markdown_path,
+    default_context,
+    write_context,
+    write_context_markdown,
+)
 from booktx.models import Chunk, Record
 from booktx.validate import validate_project
 
@@ -134,3 +140,89 @@ def test_validate_cli_passes_with_warning_for_warn_enforcement(tmp_path: Path):
     assert res.exit_code == 0, res.output
     assert "forbidden_term_used" in res.output
     assert "warnings=2" in res.output
+
+
+# --- context render drift diagnostics --------------------------------------
+
+_MD_WITH_0006 = (
+    "## Chapter notes\n\n"
+    "### 0006 — TWO\n"
+    "- Decision: keep Apt\n"
+)
+
+
+def _drift_project(
+    tmp_path: Path,
+    *,
+    json_chapters: list[ChapterContext] | None = None,
+    md_text: str | None = None,
+) -> Path:
+    proj = init_project(tmp_path / "book", target_language="de")
+    ctx = default_context(proj)
+    if json_chapters is not None:
+        ctx.chapter_contexts = list(json_chapters)
+    write_context(proj, ctx)
+    if md_text is not None:
+        context_markdown_path(proj).write_text(md_text, encoding="utf-8")
+    else:
+        write_context_markdown(proj, ctx)
+    return proj.root
+
+
+def _drift_finding(report):
+    return next(
+        (f for f in report.findings if f.rule == "context_render_drift"), None
+    )
+
+
+def test_validate_reports_missing_markdown_only_chapter(tmp_path: Path):
+    proj_path = _drift_project(tmp_path, json_chapters=[], md_text=_MD_WITH_0006)
+    report = validate_project(load_project(proj_path))
+    finding = _drift_finding(report)
+    assert finding is not None
+    assert "missing_in_json=0006" in finding.message
+    assert "import-md" in finding.message
+
+
+def test_validate_reports_conflicting_existing_chapter(tmp_path: Path):
+    proj_path = _drift_project(
+        tmp_path,
+        json_chapters=[ChapterContext(chapter_id="0006", title="TWO")],
+        md_text=_MD_WITH_0006,
+    )
+    report = validate_project(load_project(proj_path))
+    finding = _drift_finding(report)
+    assert finding is not None
+    assert "conflicting=0006" in finding.message
+    assert "import-md" in finding.message
+
+
+def test_validate_safe_render_drift_suggests_render_write(tmp_path: Path):
+    proj_path = _drift_project(tmp_path)
+    proj = load_project(proj_path)
+    # Change rendered Markdown outside the chapter notes section.
+    md = context_markdown_path(proj).read_text("utf-8") + "\norphan line\n"
+    context_markdown_path(proj).write_text(md, encoding="utf-8")
+    report = validate_project(proj)
+    finding = _drift_finding(report)
+    assert finding is not None
+    assert "context render . --write" in finding.message
+    assert "import-md" not in finding.message
+
+
+def test_validate_unsafe_drift_does_not_suggest_bare_render_write(tmp_path: Path):
+    proj_path = _drift_project(tmp_path, json_chapters=[], md_text=_MD_WITH_0006)
+    report = validate_project(load_project(proj_path))
+    finding = _drift_finding(report)
+    assert finding is not None
+    # The bare safe suggestion must not appear for unsafe drift.
+    assert "context render . --write`" not in finding.message
+
+
+def test_validate_ignores_crlf_vs_lf_drift(tmp_path: Path):
+    proj_path = _drift_project(tmp_path)
+    proj = load_project(proj_path)
+    md = context_markdown_path(proj).read_text("utf-8").replace("\n", "\r\n")
+    context_markdown_path(proj).write_text(md, encoding="utf-8")
+    report = validate_project(proj)
+    assert _drift_finding(report) is None

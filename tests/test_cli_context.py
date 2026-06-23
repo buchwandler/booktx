@@ -125,7 +125,7 @@ def test_context_render_regenerates_markdown(tmp_path: Path):
     runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     md_path = project_dir / ".booktx" / "context.md"
     md_path.write_text("stale", encoding="utf-8")
-    res = runner.invoke(app, ["context", "render", str(project_dir)])
+    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
     assert res.exit_code == 0, res.output
     assert "booktx translation context" in md_path.read_text("utf-8")
 
@@ -149,7 +149,9 @@ def test_context_answers_hydrate_style_profile_in_markdown(tmp_path: Path):
         )
         assert res.exit_code == 0, res.output
 
-    render = runner.invoke(app, ["context", "render", str(project_dir)])
+    render = runner.invoke(
+        app, ["context", "render", str(project_dir), "--write"]
+    )
     assert render.exit_code == 0, render.output
 
     markdown = (project_dir / ".booktx" / "context.md").read_text("utf-8")
@@ -161,3 +163,405 @@ def test_context_answers_hydrate_style_profile_in_markdown(tmp_path: Path):
         "- Punctuation: German quotation marks; preserve dashes and italics" in markdown
     )
     assert "- Units: feet -> Fuß, miles -> Meilen" in markdown
+
+
+# --- context render (dry run / --stdout / guarded --write) ------------------
+
+def _stale_markdown(project_dir: Path) -> None:
+    _ctx_md(project_dir).write_text("stale content", encoding="utf-8")
+
+
+def _inject_md_only_note(
+    project_dir: Path,
+    chapter_id: str,
+    *,
+    title: str = "",
+    decisions: list[str] | None = None,
+    issues: list[str] | None = None,
+) -> None:
+    md_path = project_dir / ".booktx" / "context.md"
+    md = md_path.read_text("utf-8")
+    heading = f"### {chapter_id}"
+    if title:
+        heading += f" \u2014 {title}"
+    block_lines = [heading]
+    for dec in decisions or []:
+        block_lines.append(f"- Decision: {dec}")
+    for issue in issues or []:
+        block_lines.append(f"- Open issue: {issue}")
+    block = "\n".join(block_lines) + "\n"
+    if "## Chapter notes" in md:
+        # Insert before the next level-2 heading that ends the section.
+        idx = md.index("## Chapter notes")
+        tail = md[idx:]
+        next_heading = tail.find("\n## ", 1)
+        insert_at = idx + next_heading + 1 if next_heading != -1 else len(md)
+        md = md[:insert_at] + "\n" + block + md[insert_at:]
+    else:
+        section = "## Chapter notes\n\n" + block + "\n"
+        md = md.replace("## Rules for agents", section + "## Rules for agents", 1)
+    md_path.write_text(md, encoding="utf-8")
+
+
+def test_context_render_help_includes_write_flag():
+    res = runner.invoke(app, ["context", "render", "--help"])
+    assert res.exit_code == 0, res.output
+    assert "--write" in res.output
+    assert "--stdout" in res.output
+    assert "--force-discard-md-only" in res.output
+
+
+def test_context_render_dry_run_does_not_overwrite_stale(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _stale_markdown(project_dir)
+    res = runner.invoke(app, ["context", "render", str(project_dir)])
+    assert res.exit_code == 0, res.output
+    assert _ctx_md(project_dir).read_text("utf-8") == "stale content"
+
+
+def test_context_render_stdout_does_not_overwrite(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _stale_markdown(project_dir)
+    res = runner.invoke(app, ["context", "render", str(project_dir), "--stdout"])
+    assert res.exit_code == 0, res.output
+    assert "booktx translation context" in res.output
+    assert _ctx_md(project_dir).read_text("utf-8") == "stale content"
+
+
+def test_context_render_write_updates_when_safe(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _stale_markdown(project_dir)
+    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    assert res.exit_code == 0, res.output
+    assert "booktx translation context" in (
+        project_dir / ".booktx" / "context.md"
+    ).read_text("utf-8")
+
+
+def test_context_render_write_refuses_missing_md_only_note(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
+    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    assert res.exit_code == 1, res.output
+    assert "0099" in res.output
+    # Markdown-only note survives the refusal.
+    assert "0099" in (project_dir / ".booktx" / "context.md").read_text("utf-8")
+
+
+def test_context_render_write_refuses_conflicting_chapter(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _chapter_note(project_dir, "0006", "json-only")
+    _inject_md_only_note(project_dir, "0006", title="TWO", decisions=["md-extra"])
+    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    assert res.exit_code == 1, res.output
+    assert "0006" in res.output
+
+
+def test_context_render_write_force_discard_overwrites(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "render",
+            str(project_dir),
+            "--write",
+            "--force-discard-md-only",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert "0099" not in (project_dir / ".booktx" / "context.md").read_text("utf-8")
+
+
+# --- context import-md ------------------------------------------------------
+
+def _load_chapters(project_dir: Path) -> list:
+    data = json.loads((project_dir / ".booktx" / "context.json").read_text("utf-8"))
+    return data["chapter_contexts"]
+
+
+def _ctx_md(project_dir: Path) -> Path:
+    return project_dir / ".booktx" / "context.md"
+
+
+def _chapter_note(project_dir: Path, chapter_id: str, *decisions: str):
+    args = ["context", "chapter-note", str(project_dir), chapter_id]
+    for dec in decisions:
+        args += ["--decision", dec]
+    return runner.invoke(app, args)
+
+
+def test_import_md_dry_run_reports_and_does_not_write(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
+    before = (project_dir / ".booktx" / "context.json").read_text("utf-8")
+    res = runner.invoke(app, ["context", "import-md", str(project_dir)])
+    assert res.exit_code == 0, res.output
+    assert "0099" in res.output
+    assert (project_dir / ".booktx" / "context.json").read_text("utf-8") == before
+
+
+def test_import_md_write_adds_missing_chapter(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _inject_md_only_note(project_dir, "0099", title="Rogue", decisions=["md-only"])
+    res = runner.invoke(app, ["context", "import-md", str(project_dir), "--write"])
+    assert res.exit_code == 0, res.output
+    chapters = _load_chapters(project_dir)
+    note = next(c for c in chapters if c["chapter_id"] == "0099")
+    assert note["title"] == "Rogue"
+    assert note["decisions_added"] == ["md-only"]
+
+
+def test_import_md_hydrates_from_chapter_map(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _inject_md_only_note(project_dir, "0006", decisions=["d"])
+    (project_dir / ".booktx" / "chapter-map.json").write_text(
+        '{"version": 1, "source_sha256": "", '
+        '"chapters": [{"chapter_id": "0006", "title": "Mapped", '
+        '"chunk_ids": ["0006"]}]}',
+        encoding="utf-8",
+    )
+    res = runner.invoke(app, ["context", "import-md", str(project_dir), "--write"])
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["title"] == "Mapped"
+    assert note["chunk_ids"] == ["0006"]
+
+
+def test_import_md_refuses_conflicting_default(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _chapter_note(project_dir, "0006", "json-only")
+    _inject_md_only_note(project_dir, "0006", title="TWO", decisions=["md-extra"])
+    res = runner.invoke(app, ["context", "import-md", str(project_dir), "--write"])
+    assert res.exit_code == 1, res.output
+    assert "0006" in res.output
+
+
+def test_import_md_replace_existing_replaces_durable(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _chapter_note(project_dir, "0006", "json-only")
+    _inject_md_only_note(project_dir, "0006", title="TWO", decisions=["md-extra"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "import-md",
+            str(project_dir),
+            "--write",
+            "--replace-existing",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["title"] == "TWO"
+    assert note["decisions_added"] == ["md-extra"]
+
+
+def test_import_md_append_existing_lists_appends(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--decision", "keep"],
+    )
+    _inject_md_only_note(project_dir, "0006", decisions=["keep", "new"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "import-md",
+            str(project_dir),
+            "--write",
+            "--append-existing-lists",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["decisions_added"] == ["keep", "new"]
+
+
+def test_import_md_modes_are_mutually_exclusive(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "import-md",
+            str(project_dir),
+            "--replace-existing",
+            "--append-existing-lists",
+        ],
+    )
+    assert res.exit_code == 1, res.output
+    assert "mutually exclusive" in res.output
+
+
+# --- context chapter-note ---------------------------------------------------
+
+def test_chapter_note_creates_and_renders(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--title",
+            "TWO",
+            "--decision",
+            "keep Apt",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["title"] == "TWO"
+    assert note["decisions_added"] == ["keep Apt"]
+    assert "### 0006" in (project_dir / ".booktx" / "context.md").read_text("utf-8")
+
+
+def test_chapter_note_repeated_decisions_append_in_order(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--decision",
+            "first",
+            "--decision",
+            "second",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["decisions_added"] == ["first", "second"]
+
+
+def test_chapter_note_duplicate_decisions_not_duplicated(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--decision", "same"],
+    )
+    res = runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--decision", "same"],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["decisions_added"] == ["same"]
+
+
+def test_chapter_note_preserves_decisions_by_default(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--decision", "first"],
+    )
+    res = runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--decision", "second"],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["decisions_added"] == ["first", "second"]
+
+
+def test_chapter_note_replace_decisions(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--decision", "first"],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--decision",
+            "only",
+            "--replace-decisions",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["decisions_added"] == ["only"]
+
+
+def test_chapter_note_preserves_open_issues_by_default(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--open-issue", "one"],
+    )
+    res = runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--open-issue", "two"],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["open_issues"] == ["one", "two"]
+
+
+def test_chapter_note_replace_open_issues(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--open-issue", "one"],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--open-issue",
+            "only",
+            "--replace-open-issues",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["open_issues"] == ["only"]
+
+
+def test_chapter_note_refuses_unsafe_markdown_drift(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
+    res = runner.invoke(
+        app,
+        ["context", "chapter-note", str(project_dir), "0006", "--decision", "x"],
+    )
+    assert res.exit_code == 1, res.output
+    assert "0099" in res.output
+    # context.json must not have been written.
+    assert not any(
+        c["chapter_id"] == "0006" for c in _load_chapters(project_dir)
+    )

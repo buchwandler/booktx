@@ -17,6 +17,7 @@ the CLI on the user's behalf) must answer the required questions first.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -40,6 +41,14 @@ __all__ = [
     "default_context",
     "render_context_markdown",
     "write_context_markdown",
+    "parse_context_markdown_chapter_notes",
+    "chapter_contexts_equivalent",
+    "ContextMarkdownDrift",
+    "analyze_context_markdown_drift",
+    "hydrate_chapter_contexts_from_chapter_map",
+    "merge_chapter_contexts",
+    "upsert_chapter_context",
+    "ensure_context_markdown_safe_to_overwrite",
     "seed_questions",
     "seed_glossary",
 ]
@@ -500,4 +509,303 @@ def write_context_markdown(project: Project, context: TranslationContext) -> Non
     write_text_atomic(
         context_markdown_path(project),
         render_context_markdown(context),
+    )
+
+
+# --- chapter note parsing and markdown drift --------------------------------
+
+
+_CHAPTER_NOTE_HEADING_RE = re.compile(
+    r"^(?P<id>\S+)(?:\s+(?P<sep>[\u2014\u2013-])\s+(?P<title>.+))?$"
+)
+
+_CHAPTER_NOTE_BULLETS: tuple[tuple[str, str], ...] = (
+    ("- Source summary: ", "source_summary"),
+    ("- Translation summary: ", "translation_summary"),
+    ("- Decision: ", "decisions_added"),
+    ("- Open issue: ", "open_issues"),
+)
+
+_CHAPTER_NOTES_HEADING = "## Chapter notes"
+
+
+def parse_context_markdown_chapter_notes(markdown: str) -> list[ChapterContext]:
+    """Parse the rendered ``## Chapter notes`` section from ``context.md``.
+
+    Only the ``## Chapter notes`` section is parsed; parsing stops at the next
+    level-2 heading. Chapter headings must match the rendered shape
+    ``### 0006`` or ``### 0006 <separator> Title`` where ``<separator>`` is an
+    em dash, en dash, or ASCII hyphen. The four bullet prefixes
+    ``- Source summary:``, ``- Translation summary:``, ``- Decision:``, and
+    ``- Open issue:`` are parsed exactly. Unknown non-empty content inside a
+    chapter note raises :class:`ValueError`; nothing is silently mapped to
+    open issues.
+    """
+    lines = markdown.split("\n")
+    start: int | None = None
+    for i, line in enumerate(lines):
+        if line.strip() == _CHAPTER_NOTES_HEADING:
+            start = i + 1
+            break
+    if start is None:
+        return []
+    end = len(lines)
+    for j in range(start, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+    chapters: list[ChapterContext] = []
+    current: ChapterContext | None = None
+    for raw in lines[start:end]:
+        line = raw.rstrip("\r")
+        if not line.strip():
+            continue
+        if line.startswith("### "):
+            match = _CHAPTER_NOTE_HEADING_RE.match(line[4:])
+            if match is None:
+                raise ValueError(f"unparsable chapter note heading: {line!r}")
+            current = ChapterContext(
+                chapter_id=match.group("id"),
+                title=(match.group("title") or "").strip(),
+            )
+            chapters.append(current)
+            continue
+        if current is None:
+            raise ValueError(
+                f"unexpected content before first chapter note: {line!r}"
+            )
+        matched = False
+        for prefix, field_name in _CHAPTER_NOTE_BULLETS:
+            if line.startswith(prefix):
+                value = line[len(prefix) :]
+                if field_name in ("decisions_added", "open_issues"):
+                    getattr(current, field_name).append(value)
+                else:
+                    setattr(current, field_name, value)
+                matched = True
+                break
+        if not matched:
+            raise ValueError(
+                f"unknown chapter note line for {current.chapter_id}: {line!r}"
+            )
+    return chapters
+
+
+def chapter_contexts_equivalent(left: ChapterContext, right: ChapterContext) -> bool:
+    """Return True when two chapter notes have the same durable content.
+
+    ``chunk_ids`` is ignored because rendered Markdown does not include chunk
+    ids; they are hydrated from ``chapter-map.json`` on import or upsert.
+    """
+    return (
+        left.chapter_id == right.chapter_id
+        and left.title == right.title
+        and left.source_summary == right.source_summary
+        and left.translation_summary == right.translation_summary
+        and left.decisions_added == right.decisions_added
+        and left.open_issues == right.open_issues
+    )
+
+
+class ContextMarkdownDrift(BaseModel):
+    """Drift between rendered ``context.md`` chapter notes and ``context.json``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    missing_in_json: list[str] = Field(default_factory=list)
+    conflicting: list[str] = Field(default_factory=list)
+    parse_errors: list[str] = Field(default_factory=list)
+
+    @property
+    def unsafe_to_overwrite(self) -> bool:
+        """True when overwriting ``context.md`` would discard Markdown-only notes."""
+        return bool(self.missing_in_json or self.conflicting or self.parse_errors)
+
+
+def analyze_context_markdown_drift(
+    project: Project, context: TranslationContext
+) -> ContextMarkdownDrift:
+    """Compare existing ``context.md`` chapter notes with ``context.json``.
+
+    If ``context.md`` is missing, no drift is reported. Parser failures populate
+    ``parse_errors`` and make the overwrite unsafe.
+    """
+    md_path = context_markdown_path(project)
+    if not md_path.is_file():
+        return ContextMarkdownDrift()
+    markdown = md_path.read_text("utf-8")
+    try:
+        parsed = parse_context_markdown_chapter_notes(markdown)
+    except ValueError as exc:
+        return ContextMarkdownDrift(parse_errors=[str(exc)])
+    json_by_id = {ch.chapter_id: ch for ch in context.chapter_contexts}
+    missing: list[str] = []
+    conflicting: list[str] = []
+    for note in parsed:
+        existing = json_by_id.get(note.chapter_id)
+        if existing is None:
+            missing.append(note.chapter_id)
+        elif not chapter_contexts_equivalent(note, existing):
+            conflicting.append(note.chapter_id)
+    return ContextMarkdownDrift(missing_in_json=missing, conflicting=conflicting)
+
+
+def hydrate_chapter_contexts_from_chapter_map(
+    project: Project, chapters: list[ChapterContext]
+) -> None:
+    """Fill ``title`` and ``chunk_ids`` from ``chapter-map.json`` where absent.
+
+    Existing non-empty titles or chunk ids are never overwritten.
+    """
+    from booktx.chapters import load_chapter_map
+
+    chapter_map = load_chapter_map(project)
+    if chapter_map is None:
+        return
+    by_id = {ch.chapter_id: ch for ch in chapter_map.chapters}
+    for note in chapters:
+        mapped = by_id.get(note.chapter_id)
+        if mapped is None:
+            continue
+        if not note.title and mapped.title:
+            note.title = mapped.title
+        if not note.chunk_ids and mapped.chunk_ids:
+            note.chunk_ids = list(mapped.chunk_ids)
+
+
+def merge_chapter_contexts(
+    context: TranslationContext,
+    imported: list[ChapterContext],
+    *,
+    replace_existing: bool = False,
+    append_existing_lists: bool = False,
+) -> list[str]:
+    """Merge imported chapter notes into ``context`` and return changed ids.
+
+    Default behavior adds notes whose chapter ids are absent, treats
+    equivalent notes as no-ops, and refuses differing existing notes. Pass
+    ``replace_existing`` to replace durable fields (preserving or hydrating
+    ``chunk_ids``), or ``append_existing_lists`` to keep existing summaries
+    unless empty and append non-duplicate decisions and open issues in order.
+    The two modes are mutually exclusive.
+    """
+    if replace_existing and append_existing_lists:
+        raise ValueError(
+            "replace_existing and append_existing_lists are mutually exclusive"
+        )
+    existing_by_id = {ch.chapter_id: ch for ch in context.chapter_contexts}
+    changed: list[str] = []
+    for note in imported:
+        current = existing_by_id.get(note.chapter_id)
+        if current is None:
+            context.chapter_contexts.append(note)
+            existing_by_id[note.chapter_id] = note
+            changed.append(note.chapter_id)
+            continue
+        if chapter_contexts_equivalent(note, current):
+            continue
+        if replace_existing:
+            chunk_ids = current.chunk_ids or list(note.chunk_ids)
+            current.title = note.title
+            current.source_summary = note.source_summary
+            current.translation_summary = note.translation_summary
+            current.decisions_added = list(note.decisions_added)
+            current.open_issues = list(note.open_issues)
+            current.chunk_ids = chunk_ids
+            changed.append(note.chapter_id)
+        elif append_existing_lists:
+            modified = False
+            if not current.title and note.title:
+                current.title = note.title
+                modified = True
+            if not current.source_summary and note.source_summary:
+                current.source_summary = note.source_summary
+                modified = True
+            if not current.translation_summary and note.translation_summary:
+                current.translation_summary = note.translation_summary
+                modified = True
+            for dec in note.decisions_added:
+                if dec not in current.decisions_added:
+                    current.decisions_added.append(dec)
+                    modified = True
+            for issue in note.open_issues:
+                if issue not in current.open_issues:
+                    current.open_issues.append(issue)
+                    modified = True
+            if modified:
+                changed.append(note.chapter_id)
+        else:
+            raise ValueError(
+                f"chapter {note.chapter_id} differs from context.json; "
+                "pass --replace-existing or --append-existing-lists"
+            )
+    return changed
+
+
+def upsert_chapter_context(
+    context: TranslationContext,
+    note: ChapterContext,
+    *,
+    replace_decisions: bool = False,
+    replace_open_issues: bool = False,
+) -> None:
+    """Create or update one chapter note.
+
+    Title and summaries update only when provided. Decisions and open issues
+    append by default (avoiding exact duplicates) and replace only when the
+    matching replace flag is true.
+    """
+    existing: ChapterContext | None = None
+    for ch in context.chapter_contexts:
+        if ch.chapter_id == note.chapter_id:
+            existing = ch
+            break
+    if existing is None:
+        context.chapter_contexts.append(note)
+        return
+    if note.title:
+        existing.title = note.title
+    if note.source_summary:
+        existing.source_summary = note.source_summary
+    if note.translation_summary:
+        existing.translation_summary = note.translation_summary
+    if replace_decisions:
+        existing.decisions_added = list(note.decisions_added)
+    else:
+        for dec in note.decisions_added:
+            if dec not in existing.decisions_added:
+                existing.decisions_added.append(dec)
+    if replace_open_issues:
+        existing.open_issues = list(note.open_issues)
+    else:
+        for issue in note.open_issues:
+            if issue not in existing.open_issues:
+                existing.open_issues.append(issue)
+
+
+def ensure_context_markdown_safe_to_overwrite(
+    project: Project,
+    context: TranslationContext,
+    *,
+    allow_discard_md_only: bool = False,
+) -> None:
+    """Raise ``ValueError`` if writing ``context.md`` would discard notes.
+
+    Runs drift analysis against the existing ``context.md``. Pass
+    "allow_discard_md_only=True`` for commands whose purpose is to overwrite
+    Markdown despite unsafe drift.
+    """
+    drift = analyze_context_markdown_drift(project, context)
+    if not drift.unsafe_to_overwrite or allow_discard_md_only:
+        return
+    parts: list[str] = []
+    if drift.missing_in_json:
+        parts.append(f"missing_in_json: {', '.join(drift.missing_in_json)}")
+    if drift.conflicting:
+        parts.append(f"conflicting: {', '.join(drift.conflicting)}")
+    if drift.parse_errors:
+        parts.append(f"parse_errors: {'; '.join(drift.parse_errors)}")
+    raise ValueError(
+        "context.md contains chapter notes that are not safely represented "
+        "in context.json. " + "; ".join(parts)
     )

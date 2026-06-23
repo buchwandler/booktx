@@ -14,7 +14,7 @@ The agent-readable rendered file is:
 .booktx/context.md
 ```
 
-`context.md` is generated from `context.json`.
+`context.md` is always regenerated from `context.json`; it must never be the only durable place for chapter notes. Persist chapter notes through `booktx context chapter-note` (which writes `context.json`) instead of editing `context.md` by hand.
 
 ## Why context exists
 
@@ -116,6 +116,42 @@ booktx context add-term ./book "Lowlands" \
   --enforce error
 ```
 
+
+## Chapter notes
+
+Chapter notes capture per-chapter terminology, voice decisions, and open issues. They live in `context.json` under `chapter_contexts` and are rendered into the `## Chapter notes` section of `context.md`.
+
+Add or update a note after completing a chapter:
+
+```bash
+booktx context chapter-note ./book 0006 \
+  --title "TWO" \
+  --source-summary "..." \
+  --translation-summary "..." \
+  --decision "keep Apt untranslated" \
+  --open-issue "register for Beetle"
+```
+
+`--decision` and `--open-issue` are repeatable and append in order without duplicating existing values. Pass `--replace-decisions` or `--replace-open-issues` to replace a list instead of appending.
+
+If chapter notes exist only in `context.md` (for example from a manual edit), recover them into `context.json`:
+
+```bash
+booktx context import-md ./book --write
+```
+
+`--replace-existing` replaces conflicting durable fields; `--append-existing-lists` appends decisions and open issues. The two are mutually exclusive.
+
+## Rendering context.md
+
+`booktx context render` is a dry run by default: it reports whether `context.md` matches the render and whether writing would be unsafe. Use `--stdout` to print the rendered Markdown, or `--write` to persist it:
+
+```bash
+booktx context render ./book --write
+```
+
+`--write` refuses to overwrite when `context.md` has chapter notes not safely represented in `context.json`. Run `booktx context import-md ./book --write` first, or pass `--write --force-discard-md-only` to discard Markdown-only notes.
+
 ## Agent obligations
 
 Before translating every chapter or chunk, an agent must:
@@ -123,5 +159,5 @@ Before translating every chapter or chunk, an agent must:
 1. Read `.booktx/context.md`.
 2. Follow approved style and glossary decisions.
 3. Avoid every `forbidden_targets` value.
-4. Update chapter notes after completing a chapter when the workflow calls for chapter-level continuity.
+4. After each completed chapter, persist new terminology, voice decisions, and open issues with `booktx context chapter-note ./book CHAPTER_ID ...`, never by editing `.booktx/context.md` directly.
 5. Run `booktx validate` and fix context findings as well as contract findings.

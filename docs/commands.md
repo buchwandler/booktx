@@ -167,6 +167,37 @@ booktx context mark-ready PROJECT_DIR --force
 
 Without `--force`, this fails while required questions are open.
 
+### Render context
+
+```bash
+booktx context render PROJECT_DIR
+booktx context render PROJECT_DIR --stdout
+booktx context render PROJECT_DIR --write
+```
+
+Dry run by default: reports whether `context.md` matches the render and whether writing would be unsafe. `--stdout` prints the rendered Markdown without writing. `--write` regenerates `context.md`, but refuses when `context.md` contains chapter notes not safely represented in `context.json`; pass `--write --force-discard-md-only` to discard Markdown-only notes.
+
+### Import chapter notes from Markdown
+
+```bash
+booktx context import-md PROJECT_DIR
+booktx context import-md PROJECT_DIR --write
+booktx context import-md PROJECT_DIR --write --replace-existing
+booktx context import-md PROJECT_DIR --write --append-existing-lists
+```
+
+Recovery path for chapter notes that exist only in `context.md`. Without `--write`, prints the chapter ids that would change. Default mode refuses conflicting existing chapters; `--replace-existing` replaces durable fields and `--append-existing-lists` appends decisions and open issues (mutually exclusive).
+
+### Add or update a chapter note
+
+```bash
+booktx context chapter-note PROJECT_DIR CHAPTER_ID --title "TWO" \
+  --source-summary "..." --translation-summary "..." \
+  --decision "..." --open-issue "..."
+```
+
+Creates or updates one chapter note in `context.json` and regenerates `context.md`. `--decision` and `--open-issue` are repeatable and append without duplicates; `--replace-decisions` and `--replace-open-issues` replace the lists. Pass `--force-discard-md-only` to overwrite despite unsafe Markdown drift. Use this instead of editing `context.md` by hand.
+
 ## Status
 
 ```bash

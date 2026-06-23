@@ -112,6 +112,24 @@ The translation used a term listed under `forbidden_targets` in context.
 
 Fix: replace the forbidden target with the approved glossary target or ask the user for a decision.
 
+## Validation: context render drift
+
+`context.md` differs from the current `context.json` render, or it has chapter notes not safely represented in `context.json`.
+
+If the warning lists `missing_in_json` or `conflicting` chapter ids, recover the Markdown-only notes first:
+
+```bash
+booktx context import-md . --write
+```
+
+Use `--replace-existing` or `--append-existing-lists` if the import reports conflicting chapters. Once `context.json` holds every chapter note, refresh the rendered file:
+
+```bash
+booktx context render . --write
+```
+
+If you intentionally want to discard Markdown-only notes, pass `--write --force-discard-md-only`. To avoid this drift, persist chapter notes with `booktx context chapter-note . CHAPTER_ID ...` instead of editing `context.md` by hand.
+
 ## EPUB: legacy manifest
 
 The project was extracted with an old EPUB pipeline.

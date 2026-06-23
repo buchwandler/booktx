@@ -39,29 +39,38 @@ from booktx.config import (
     find_source_file,
     identity_path,
     init_project,
-    load_manifest,
     load_identity,
+    load_manifest,
     load_project,
     load_translation_store,
-    load_translation_version_ledger,
     load_translation_task,
-    protected_terms_sha256,
+    load_translation_version_ledger,
     project_source_sha256,
-    translation_store_path,
+    protected_terms_sha256,
     translation_ingest_block_path,
     translation_ingest_path,
+    translation_store_path,
     translation_task_path,
     translation_task_source_block_path,
     write_identity,
     write_translation_store,
 )
 from booktx.context import (
+    ChapterContext,
+    ContextMarkdownDrift,
     GlossaryEntry,
+    analyze_context_markdown_drift,
     apply_answer_to_context,
-    context_path,
     context_markdown_path,
+    context_path,
     default_context,
+    ensure_context_markdown_safe_to_overwrite,
+    hydrate_chapter_contexts_from_chapter_map,
     load_context,
+    merge_chapter_contexts,
+    parse_context_markdown_chapter_notes,
+    render_context_markdown,
+    upsert_chapter_context,
     write_context,
     write_context_markdown,
 )
@@ -71,10 +80,10 @@ from booktx.html_io import build_xhtml  # noqa: F401  (kept for downstream use)
 from booktx.markdown_io import extract_markdown
 from booktx.models import (
     NamesFile,
-    TranslationIdentity,
-    TranslationStore,
     TranslatedChunk,
     TranslatedRecord,
+    TranslationIdentity,
+    TranslationStore,
     TranslationTask,
 )
 from booktx.progress import (
@@ -105,12 +114,12 @@ from booktx.validate import (
     validate_record_pair,
     write_report,
 )
-from booktx.versioning import resolve_current_version
 from booktx.versioning import (
     canonical_json_sha256,
     default_identity,
     fork_current_context,
     lookup_version,
+    resolve_current_version,
     resolve_identity,
     select_active_version,
     set_track_label,
@@ -624,6 +633,32 @@ def _load_context_or_exit(proj):
     return ctx
 
 
+def _drift_unsafe_message(drift: ContextMarkdownDrift) -> str:
+    parts: list[str] = []
+    if drift.missing_in_json:
+        parts.append(f"missing_in_json: {', '.join(drift.missing_in_json)}")
+    if drift.conflicting:
+        parts.append(f"conflicting: {', '.join(drift.conflicting)}")
+    if drift.parse_errors:
+        parts.append(f"parse_errors: {'; '.join(drift.parse_errors)}")
+    return (
+        "context.md contains chapter notes that are not safely represented "
+        "in context.json. " + "; ".join(parts)
+    )
+
+
+def _guard_md_safe_or_die(proj, ctx, *, allow_discard_md_only: bool = False) -> None:
+    try:
+        ensure_context_markdown_safe_to_overwrite(
+            proj, ctx, allow_discard_md_only=allow_discard_md_only
+        )
+    except ValueError as exc:
+        _die(
+            f"{exc} Run `booktx context import-md . --write` first to recover "
+            "Markdown-only notes."
+        )
+
+
 def _open_required_questions(ctx) -> list:
     return [q for q in ctx.questions if q.required and q.status == "open"]
 
@@ -748,6 +783,7 @@ def context_init(
     proj = _load_project_or_exit(project_dir)
     existing = None if force else load_context(proj)
     if existing is not None:
+        _guard_md_safe_or_die(proj, existing)
         write_context_markdown(proj, existing)
         console.print(f"context exists: {context_markdown_path(proj)}")
         return
@@ -783,6 +819,7 @@ def context_init(
                 q.answer = answer.strip()
                 q.status = "answered"
         ctx.ready = not _open_required_questions(ctx)
+    _guard_md_safe_or_die(proj, ctx, allow_discard_md_only=force)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
     console.print(f"wrote {proj.booktx_dir / 'context.json'}")
@@ -821,12 +858,54 @@ def context_status(
 @context_app.command(name="render")
 def context_render(
     project_dir: Path = typer.Argument(..., help="Project directory."),
+    write: bool = typer.Option(False, "--write", help="Write .booktx/context.md."),
+    stdout: bool = typer.Option(
+        False, "--stdout", help="Print rendered Markdown without writing."
+    ),
+    force_discard_md_only: bool = typer.Option(
+        False,
+        "--force-discard-md-only",
+        help="Allow --write to overwrite despite unsafe Markdown-only notes.",
+    ),
 ) -> None:
-    """Render context.md from context.json."""
+    """Render context.md from context.json (dry run by default).
+
+    Without flags, reports whether ``context.md`` matches the render and
+    whether writing would be unsafe. ``--stdout`` prints rendered Markdown.
+    ``--write`` persists, but refuses when drift analysis says the write is
+    unsafe unless ``--force-discard-md-only`` is also passed.
+    """
     proj = _load_project_or_exit(project_dir)
     ctx = _load_context_or_exit(proj)
-    write_context_markdown(proj, ctx)
-    console.print(f"rendered {context_markdown_path(proj)}")
+    rendered = render_context_markdown(ctx)
+    if stdout:
+        typer.echo(rendered)
+        return
+    md_path = context_markdown_path(proj)
+    drift = analyze_context_markdown_drift(proj, ctx)
+    matches = bool(
+        md_path.is_file()
+        and md_path.read_text("utf-8").replace("\r\n", "\n")
+        == rendered.replace("\r\n", "\n")
+    )
+    if write:
+        if drift.unsafe_to_overwrite and not force_discard_md_only:
+            _die(_drift_unsafe_message(drift))
+        write_context_markdown(proj, ctx)
+        console.print(f"rendered {md_path}")
+        return
+    if matches:
+        console.print(f"{md_path} is up to date")
+    else:
+        console.print(f"{md_path} is out of date")
+        if drift.unsafe_to_overwrite:
+            console.print(_drift_unsafe_message(drift))
+            console.print(
+                "Run `booktx context import-md . --write` first, or pass "
+                "`--write --force-discard-md-only` to discard Markdown-only notes."
+            )
+        else:
+            console.print("Run `booktx context render . --write` to update Markdown.")
 
 
 @context_app.command(name="answer")
@@ -843,6 +922,7 @@ def context_answer(
             q.answer = text
             q.status = "answered" if text.strip() else "open"
             apply_answer_to_context(ctx, question_id, text)
+            _guard_md_safe_or_die(proj, ctx)
             write_context(proj, ctx)
             write_context_markdown(proj, ctx)
             console.print(f"answered {question_id}")
@@ -894,6 +974,7 @@ def context_add_term(
                 enforce=enforce,  # type: ignore[arg-type]
             )
         )
+    _guard_md_safe_or_die(proj, ctx)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
     console.print(f"updated term: {source}")
@@ -914,9 +995,139 @@ def context_mark_ready(
         ids = ", ".join(q.id for q in open_required)
         _die(f"required questions are still open: {ids}")
     ctx.ready = True
+    _guard_md_safe_or_die(proj, ctx)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
     console.print(f"context ready: {context_markdown_path(proj)}")
+
+
+@context_app.command(name="import-md")
+def context_import_md(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    write: bool = typer.Option(
+        False, "--write", help="Write context.json and regenerate context.md."
+    ),
+    replace_existing: bool = typer.Option(
+        False,
+        "--replace-existing",
+        help="Replace durable fields for conflicting chapters.",
+    ),
+    append_existing_lists: bool = typer.Option(
+        False,
+        "--append-existing-lists",
+        help="Append decisions and open issues for conflicting chapters.",
+    ),
+) -> None:
+    """Import chapter notes from context.md into context.json.
+
+    The recovery path for chapter notes that exist only in rendered
+    Markdown. Without ``--write``, prints the chapter ids that would be
+    added or changed. Default mode refuses conflicting existing chapters;
+    pass ``--replace-existing`` or ``--append-existing-lists`` (mutually
+    exclusive) to resolve them.
+    """
+    if replace_existing and append_existing_lists:
+        _die("--replace-existing and --append-existing-lists are mutually exclusive")
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    md_path = context_markdown_path(proj)
+    if not md_path.is_file():
+        _die("context.md is missing; nothing to import")
+    try:
+        imported = parse_context_markdown_chapter_notes(md_path.read_text("utf-8"))
+    except ValueError as exc:
+        _die(f"could not parse context.md chapter notes: {exc}")
+        return
+    hydrate_chapter_contexts_from_chapter_map(proj, imported)
+    try:
+        changed = merge_chapter_contexts(
+            ctx,
+            imported,
+            replace_existing=replace_existing,
+            append_existing_lists=append_existing_lists,
+        )
+    except ValueError as exc:
+        _die(str(exc))
+        return
+    if write:
+        write_context(proj, ctx)
+        write_context_markdown(proj, ctx)
+        if changed:
+            console.print(f"updated chapters: {', '.join(changed)}")
+        else:
+            console.print("no chapter changes")
+        console.print(f"wrote {context_path(proj)}")
+    else:
+        if changed:
+            console.print(f"would add or change chapters: {', '.join(changed)}")
+        else:
+            console.print("no chapter changes")
+        console.print("Pass --write to update context.json.")
+
+
+@context_app.command(name="chapter-note")
+def context_chapter_note(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    chapter_id: str = typer.Argument(..., help="Chapter id, e.g. 0006."),
+    title: str = typer.Option("", "--title", help="Chapter title."),
+    source_summary: str = typer.Option("", "--source-summary", help="Source summary."),
+    translation_summary: str = typer.Option(
+        "", "--translation-summary", help="Translation summary."
+    ),
+    decision: list[str] | None = typer.Option(
+        None, "--decision", help="Decision added (repeatable)."
+    ),
+    open_issue: list[str] | None = typer.Option(
+        None, "--open-issue", help="Open issue (repeatable)."
+    ),
+    replace_decisions: bool = typer.Option(
+        False, "--replace-decisions", help="Replace the decision list."
+    ),
+    replace_open_issues: bool = typer.Option(
+        False, "--replace-open-issues", help="Replace the open issue list."
+    ),
+    force_discard_md_only: bool = typer.Option(
+        False,
+        "--force-discard-md-only",
+        help="Overwrite despite unsafe Markdown-only notes.",
+    ),
+) -> None:
+    """Create or update one chapter note in context.json.
+
+    Durable replacement for manually editing ``context.md`` after each
+    completed chapter. Decisions and open issues append by default; pass
+    ``--replace-decisions`` or ``--replace-open-issues`` to replace a list.
+    """
+    proj = _load_project_or_exit(project_dir)
+    ctx = _load_context_or_exit(proj)
+    try:
+        ensure_context_markdown_safe_to_overwrite(
+            proj, ctx, allow_discard_md_only=force_discard_md_only
+        )
+    except ValueError as exc:
+        _die(
+            f"{exc} Pass --force-discard-md-only to overwrite anyway, or run "
+            "`booktx context import-md . --write` first."
+        )
+        return
+    note = ChapterContext(
+        chapter_id=chapter_id,
+        title=title,
+        source_summary=source_summary,
+        translation_summary=translation_summary,
+        decisions_added=list(decision or []),
+        open_issues=list(open_issue or []),
+    )
+    hydrate_chapter_contexts_from_chapter_map(proj, [note])
+    upsert_chapter_context(
+        ctx,
+        note,
+        replace_decisions=replace_decisions,
+        replace_open_issues=replace_open_issues,
+    )
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+    console.print(f"updated chapter note: {chapter_id}")
 
 
 # --- init --------------------------------------------------------------------

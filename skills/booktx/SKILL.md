@@ -79,7 +79,7 @@ Compatibility translated chunk files still look like this when exported:
 
 ## Required context gate
 
-Before translating any chunk or chapter, read `.booktx/context.md`. If it does not exist, or `.booktx/context.json` has `ready: false`, do not translate. Ask the user the context questionnaire first and write the answers to `.booktx/context.json`, then render `.booktx/context.md`.
+Before translating any chunk or chapter, read `.booktx/context.md`. If it does not exist, or `.booktx/context.json` has `ready: false`, do not translate. Ask the user the context questionnaire first and write the answers to `.booktx/context.json`, then render `.booktx/context.md` (`booktx context render . --write`). `.booktx/context.json` is authoritative; `.booktx/context.md` is always rendered from it, so never persist chapter notes only by editing `context.md`.
 
 Glossary entries in the context override ordinary dictionary translations. Do not use a target listed under `forbidden_targets`. For this book, do not translate `Lowlands` / `Lowlander` as `Niederlande` / `Niederländer` unless the user explicitly approves it in context.
 
@@ -91,7 +91,7 @@ Required sequence:
 4. Before translating a new chapter, read context again.
 5. Use the glossary as stronger than general dictionary intuition.
 6. Never use any `forbidden_targets` listed in the context.
-7. After each completed chapter, update the chapter summary/open issues in context.
+7. After each completed chapter, persist the chapter summary/open issues with `booktx context chapter-note . CHAPTER_ID ...` (writes `context.json`), never by editing `.booktx/context.md` by hand.
 8. Run `booktx validate` and fix both contract errors and context terminology errors.
 
 ## Translation workflow

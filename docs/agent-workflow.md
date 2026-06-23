@@ -203,7 +203,7 @@ booktx status . --chapter 0010
 booktx translate next . --chapter 0010 --unit batch --max-words 500 --format block
 ```
 
-Repeat batch requests until `booktx status . --chapter 0010` reports zero remaining records. After completing the chapter, add or update chapter notes in the context if new terminology, voice decisions, or open issues appeared.
+Repeat batch requests until `booktx status . --chapter 0010` reports zero remaining records. After completing the chapter, persist new terminology, voice decisions, and open issues with `booktx context chapter-note . CHAPTER_ID ...`, which writes `context.json` and regenerates `context.md`. Do not append persistent chapter notes to `context.md` by hand; `context.md` is rendered from `context.json`.
 
 ## Repair workflow
 
