@@ -9,8 +9,6 @@ Start here:
 5. Read [context](context.md) before working on translations.
 6. Read [agent workflow](agent-workflow.md) for coding-agent operating rules.
 
-High-level workflow:
-
 1. Initialize a source project.
 2. Extract source chunks into `.booktx/chunks/`.
 3. Create or select a translation profile.
@@ -18,3 +16,22 @@ High-level workflow:
 5. Translate via `translations/<profile>/ingest/`.
 6. Validate the selected profile.
 7. Build the final document into `translations/<profile>/output/`.
+
+```{toctree}
+:maxdepth: 2
+
+quickstart
+project-layout
+profiles
+concepts
+commands
+context
+agent-workflow
+translation-contract
+markdown
+epub
+architecture
+api
+development
+troubleshooting
+```

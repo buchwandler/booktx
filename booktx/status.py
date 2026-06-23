@@ -29,9 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from booktx.chapters import (
     ChapterMap,
-    detect_chapters,
-    load_chapter_map,
-    write_chapter_map,
+    ensure_chapter_map,
 )
 from booktx.config import (
     Project,
@@ -47,13 +45,13 @@ from booktx.config import (
     load_translation_version_ledger,
     project_source_sha256,
 )
-from booktx.context import load_context
 from booktx.models import Chunk, TranslatedRecord
 from booktx.progress import SourceRecordView, load_source_chunks, load_source_records
 from booktx.validate import (
     Severity,
     load_effective_translated_chunks,
 )
+from booktx.versioning import resolve_identity
 
 if TYPE_CHECKING:
     from booktx.validate import Finding
@@ -259,12 +257,7 @@ class StatusBundle:
 
 
 def _chapter_map_for_workflow(proj: Project) -> ChapterMap:
-    source_sha256 = project_source_sha256(proj)
-    chapter_map = load_chapter_map(proj)
-    if chapter_map is None or chapter_map.source_sha256 != source_sha256:
-        chapter_map = detect_chapters(proj)
-        write_chapter_map(proj, chapter_map)
-    return chapter_map
+    return ensure_chapter_map(proj)
 
 
 def build_status_snapshot(
@@ -567,7 +560,7 @@ def build_profiles_overview(project: Project) -> ProfilesOverview:
     source = ""
     source_records = 0
     try:
-        source = find_source_file(project).name
+        source = find_source_file(project, persist_discovery=False).name
     except Exception:  # noqa: BLE001
         source = project.config.source_file
 
@@ -575,24 +568,43 @@ def build_profiles_overview(project: Project) -> ProfilesOverview:
         source_records = len(load_source_records(project))
 
     items: list[ProfileOverview] = []
+    # Build the shared source runtime index once: source chunks and records are
+    # shared across profiles, so avoid reloading them (and rewriting
+    # chapter-map.json) once per profile. Each profile only contributes its
+    # own effective translations.
+    shared_chunks = (
+        {chunk.chunk_id: chunk for chunk in load_source_chunks(project)}
+        if project.chunks()
+        else {}
+    )
+    shared_total_records = len(load_source_records(project)) if project.chunks() else 0
+
     for profile_name in profiles:
         profile_project = load_profile_project(project.root, profile_name)
         profile_cfg = load_profile_config(project.root, profile_name)
-        context = load_context(profile_project)
-        snapshot = build_status_snapshot(
-            profile_project,
-            context_exists=context is not None,
-            context_ready=bool(context and context.ready),
-        )
+        translated_records = 0
+        if shared_chunks:
+            effective = load_effective_translated_chunks(
+                profile_project, source_chunks=shared_chunks
+            )
+            translated_records = len(
+                {
+                    record.id
+                    for chunk in effective.chunks.values()
+                    for record in chunk.records
+                }
+            )
         items.append(
             ProfileOverview(
                 profile=profile_name,
                 target_language=profile_cfg.target_language,
                 target_locale=profile_cfg.target_locale or profile_cfg.target_language,
-                model=profile_cfg.identity.model,
+                # The live identity lives in translations/<profile>/identity.json;
+                # the value embedded in config.toml is only the initial default.
+                model=resolve_identity(profile_project).model,
                 path=str(profile_project.profile_dir.relative_to(project.root)),
-                translated_records=snapshot.snapshot.totals.records_translated,
-                total_records=snapshot.snapshot.totals.records_total,
+                translated_records=translated_records,
+                total_records=shared_total_records,
                 active=profile_name == active_profile,
             )
         )

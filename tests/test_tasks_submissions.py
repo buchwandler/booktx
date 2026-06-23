@@ -152,3 +152,81 @@ def test_make_task_id_idempotent_for_same_ids():
     # Timestamps may differ by second; the digest suffix must be identical.
     assert a.rsplit("-", 1)[0].startswith("bt-task-")
     assert a.rsplit("-", 1)[1] == b.rsplit("-", 1)[1]
+
+
+def _make_source_only_project(tmp_path: Path) -> Path:
+    src = tmp_path / "book.md"
+    src.write_text(DOC, encoding="utf-8")
+    project_dir = tmp_path / "source-only"
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--source-file",
+            str(src),
+            "--source-lang",
+            "en",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
+    return project_dir
+
+
+def test_task_paths_requires_selected_profile_for_source_only_project(tmp_path: Path):
+    project_dir = _make_source_only_project(tmp_path)
+    proj = load_project(project_dir)
+    assert proj.profile is None
+    assert proj.tasks_dir is None
+
+    # Source-only projects must hit the profile-required guard rather than
+    # silently assuming legacy .booktx/tasks paths (which would raise a
+    # confusing NoneType AttributeError).
+    from booktx.config import BooktxError
+
+    try:
+        task_paths(proj, "bt-task-x")
+    except BooktxError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("expected BooktxError: profile required for task access")
+
+
+def test_missing_submission_file_hint_points_at_profile_local_ingest(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    # Request a translation task so a profile-local ingest file exists.
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--unit",
+            "paragraph",
+            "--json",
+            "--allow-missing-context",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = json.loads(next_res.output)["task_id"]
+
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--task-id",
+            task_id,
+            "--file",
+            str(tmp_path / "does-not-exist.txt"),
+            "--format",
+            "block",
+            "--allow-missing-context",
+        ],
+    )
+    assert res.exit_code != 0
+    assert "submission file not found" in res.output
+    assert "translations/de_default/ingest/" in res.output
+    assert ".booktx/ingest" not in res.output

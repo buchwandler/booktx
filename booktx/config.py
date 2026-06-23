@@ -1,8 +1,8 @@
 """Project configuration and path resolution for legacy and profile layouts.
 
-booktx now supports two project shapes:
+booktx now supports two project shapes.
 
-Legacy single-layout projects:
+Legacy single-layout projects::
 
     book/
       source/
@@ -20,9 +20,9 @@ Legacy single-layout projects:
         ingest/
         translated/
         reports/
-      output/
+        output/
 
-Profile-layout projects:
+Profile-layout projects::
 
     book/
       source/
@@ -57,9 +57,7 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal
@@ -67,9 +65,9 @@ from typing import Any, Literal
 import tomli_w
 
 try:
-    import tomllib  # Python 3.11+ stdlib
+    import tomllib  # type: ignore[import-not-found]  # Python 3.11+ stdlib
 except ModuleNotFoundError:  # Python 3.10
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 from booktx.epub_manifest import sha256_path
 from booktx.models import (
@@ -828,214 +826,6 @@ def select_profile(root: Path | str, profile_name: str) -> Project:
     return load_profile_project(project.root, profile_name)
 
 
-def _migration_manifest_entries(
-    paths: list[tuple[Path, Path]],
-) -> list[dict[str, object]]:
-    entries: list[dict[str, object]] = []
-    for src, dst in paths:
-        entry: dict[str, object] = {
-            "source": str(src),
-            "destination": str(dst),
-            "exists": src.exists(),
-        }
-        if src.is_file():
-            entry["sha256"] = sha256_path(src)
-        elif src.is_dir():
-            entry["entry_count"] = sum(1 for _ in src.rglob("*"))
-        entries.append(entry)
-    return entries
-
-
-def _write_migration_manifest(root: Path, paths: list[tuple[Path, Path]]) -> Path:
-    from booktx.io_utils import write_json_text_atomic
-
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    manifest_path = _booktx_dir(root) / "migrations" / f"{stamp}-profile-migration.json"
-    payload = {
-        "version": 1,
-        "timestamp": stamp,
-        "moves": _migration_manifest_entries(paths),
-    }
-    write_json_text_atomic(
-        manifest_path,
-        json.dumps(payload, indent=2, ensure_ascii=False),
-    )
-    return manifest_path
-
-
-def migrate_current_project(
-    root: Path | str,
-    profile_name: str,
-    *,
-    target_language: str | None = None,
-    target_locale: str | None = None,
-    actor: str | None = None,
-    harness: str | None = None,
-    model: str | None = None,
-    select: bool = False,
-    dry_run: bool = False,
-) -> dict[str, object]:
-    validate_profile_name(profile_name)
-    project_root = Path(root).expanduser().resolve()
-    if _is_profile_layout(project_root):
-        raise _err(
-            "already_profile_project",
-            "project already uses translation profiles; use `booktx profile create` instead",
-        )
-    if not _is_legacy_layout(project_root):
-        raise _err(
-            "legacy_project_required",
-            "project does not use the legacy single-layout format",
-        )
-
-    legacy_project = load_project(project_root)
-    legacy_target = target_language or legacy_project.config.target_language
-    if not legacy_target:
-        raise _err(
-            "profile_config_invalid",
-            "legacy project has no target language; pass --target to migrate-current",
-        )
-    profile_root = profile_dir(project_root, profile_name)
-    if profile_root.exists() and any(profile_root.iterdir()):
-        raise _err(
-            "migration_target_exists",
-            f"migration target already exists and is not empty: {profile_root}",
-        )
-
-    legacy_identity = load_identity(legacy_project)
-    identity_cfg = ProfileIdentityConfig(
-        actor=actor
-        or (legacy_identity.actor if legacy_identity is not None else "user:unknown"),
-        harness=harness
-        or (legacy_identity.harness if legacy_identity is not None else "booktx"),
-        model=model
-        or (legacy_identity.model if legacy_identity is not None else "human"),
-    )
-    source_cfg = SourceConfig(
-        source_language=legacy_project.config.source_language,
-        source_file=legacy_project.config.source_file,
-        format=legacy_project.config.format,
-        chunk_size=legacy_project.config.chunk_size,
-    )
-    profile_cfg = ProfileConfig(
-        profile=profile_name,
-        source_language=source_cfg.source_language,
-        target_language=legacy_target,
-        target_locale=target_locale or legacy_target,
-        output_filename=_default_output_filename(source_cfg, legacy_target),
-        identity=identity_cfg,
-    )
-
-    moves: list[tuple[Path, Path]] = [
-        (_legacy_manifest_path(project_root), _source_manifest_path(project_root)),
-        (
-            _booktx_dir(project_root) / "context.json",
-            _profile_context_json_path(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "context.md",
-            _profile_context_md_path(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "identity.json",
-            _profile_identity_path(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "translation-store.json",
-            _profile_store_path(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "translation-version-ledger.json",
-            _profile_ledger_path(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "tasks",
-            _profile_tasks_dir(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "ingest",
-            _profile_ingest_dir(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "translated",
-            _profile_translated_dir(project_root, profile_name),
-        ),
-        (
-            _booktx_dir(project_root) / "reports",
-            _profile_reports_dir(project_root, profile_name),
-        ),
-        (project_root / "output", _profile_output_dir(project_root, profile_name)),
-    ]
-    summary = {
-        "project": str(project_root),
-        "profile": profile_name,
-        "target_language": legacy_target,
-        "target_locale": profile_cfg.target_locale or legacy_target,
-        "dry_run": dry_run,
-        "moves": [
-            {
-                "source": str(src.relative_to(project_root)),
-                "destination": str(dst.relative_to(project_root)),
-                "exists": src.exists(),
-            }
-            for src, dst in moves
-        ],
-    }
-    if dry_run:
-        return summary
-
-    profile_root.mkdir(parents=True, exist_ok=True)
-    for path in (
-        _profile_tasks_dir(project_root, profile_name),
-        _profile_ingest_dir(project_root, profile_name),
-        _profile_translated_dir(project_root, profile_name),
-        _profile_reports_dir(project_root, profile_name),
-        _profile_output_dir(project_root, profile_name),
-    ):
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-    migration_manifest = _write_migration_manifest(project_root, moves)
-    _write_source_config(source_config_path(project_root), source_cfg)
-    write_profile_config(project_root, profile_cfg)
-    from booktx.io_utils import write_json_model_atomic
-
-    write_json_model_atomic(
-        _profile_identity_path(project_root, profile_name),
-        TranslationIdentity(
-            actor=identity_cfg.actor,
-            harness=identity_cfg.harness,
-            model=identity_cfg.model,
-        ),
-    )
-    for src, dst in moves:
-        if not src.exists():
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if dst.exists():
-            if dst.is_dir():
-                shutil.rmtree(dst)
-            else:
-                dst.unlink()
-        shutil.move(str(src), str(dst))
-    legacy_config = _legacy_config_path(project_root)
-    if legacy_config.exists():
-        legacy_config.unlink()
-    if select:
-        write_profile_state(project_root, ProfileState(active_profile=profile_name))
-
-    tasks_root = _profile_tasks_dir(project_root, profile_name)
-    if tasks_root.is_dir():
-        for task_path in tasks_root.glob("*.json"):
-            task = TranslationTask.model_validate_json(task_path.read_text("utf-8"))
-            if not task.profile:
-                task.profile = profile_name
-            if not task.target_locale:
-                task.target_locale = profile_cfg.target_locale or legacy_target
-            write_json_model_atomic(task_path, task)
-
-    summary["migration_manifest"] = str(migration_manifest.relative_to(project_root))
-    return summary
-
 
 def init_project(
     target: Path,
@@ -1122,7 +912,7 @@ def project_source_sha256(project: Project) -> str:
 
 
 def current_source_sha256(project: Project) -> str:
-    return sha256_path(find_source_file(project))
+    return sha256_path(find_source_file(project, persist_discovery=False))
 
 
 def extracted_source_sha256(project: Project) -> str:
@@ -1280,7 +1070,14 @@ def _persist_source_config(project: Project) -> None:
         _write_source_config(project.source_config_path, project.source_config)
 
 
-def find_source_file(project: Project) -> Path:
+def find_source_file(project: Project, *, persist_discovery: bool = True) -> Path:
+    """Resolve the project source file.
+
+    By default this **persists** a newly discovered source file/format back into
+    the source config (a write side effect). Pass ``persist_discovery=False``
+    for read-only lookups such as status overviews and hashing, so a getter no
+    longer mutates project state.
+    """
     configured = project.config.source_file.strip()
     if configured:
         candidate = project.source_dir / configured
@@ -1305,7 +1102,7 @@ def find_source_file(project: Project) -> Path:
         )
     chosen = candidates[0]
     chosen_format = detect_format(chosen.name)
-    if (
+    if persist_discovery and (
         project.config.source_file != chosen.name
         or project.config.format != chosen_format
     ):
@@ -1315,3 +1112,15 @@ def find_source_file(project: Project) -> Path:
         project.source_config.format = chosen_format
         _persist_source_config(project)
     return chosen
+    return chosen
+
+
+# Legacy single-layout -> profile migration lives in its own module to
+# quarantine the compatibility surface. Re-exported here for import
+# compatibility (``from booktx.config import migrate_current_project``).
+from booktx.profile_migration import (  # noqa: E402,F401
+    MigrationMove,
+    ProfileMigrationPlan,
+    build_profile_migration_plan,
+    migrate_current_project,
+)

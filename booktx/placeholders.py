@@ -74,7 +74,7 @@ def _next_token(prefix: str, taken: set[str], idx: int) -> str:
 def protect_names(
     text: str, terms: list[str], *, start_index: int = 1
 ) -> ProtectResult:
-    """Replace each protected term in ``text`` with a ``__NAME_NNN__" token.
+    """Replace each protected term in ``text`` with a ``__NAME_NNN__`` token.
 
     Matching is case-sensitive and whole-term (no word-boundary tricks) so
     multi-word names like ``Mr. Smith`` win over ``Mr.``. Tokens are numbered

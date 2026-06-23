@@ -242,14 +242,27 @@ def parse_block_submission(text: str) -> ParsedSubmission:
     )
 
 
-def read_submission_file(path: Path) -> str:
-    """Read a submission file, raising BooktxError (never a traceback) on failure."""
+def read_submission_file(path: Path, *, ingest_hint: str | None = None) -> str:
+    """Read a submission file, raising BooktxError (never a traceback) on failure.
+
+    ``ingest_hint`` is a project-relative path to the canonical profile-local
+    ingest file (e.g. ``translations/<profile>/ingest/<task>.block.txt``). When
+    the requested file is missing and differs from the hint, the error message
+    points the agent at the generated ingest location instead of ``/tmp`` or
+    other temporary paths.
+    """
     try:
         return path.read_text("utf-8")
     except FileNotFoundError as exc:
+        message = f"submission file not found: {path}"
+        if ingest_hint:
+            message += (
+                f"\nhint: submit the generated profile-local ingest file "
+                f"{ingest_hint} (created by `booktx translate next`)"
+            )
         raise _err(
             "submission_file_not_found",
-            f"submission file not found: {path}",
+            message,
         ) from exc
     except OSError as exc:
         raise _err(
@@ -266,6 +279,7 @@ def resolve_submission(
     stdin: bool,
     json_file: Path | None,
     input_file: Path | None,
+    ingest_hint: str | None = None,
 ) -> ParsedSubmission:
     """Select the input source and parse it into a :class:`ParsedSubmission`.
 
@@ -282,9 +296,11 @@ def resolve_submission(
             )
         return ParsedSubmission([SubmittedRecord(id=record_id, target=target)])
     if json_file is not None:
-        return parse_json_submission(read_submission_file(json_file))
+        return parse_json_submission(
+            read_submission_file(json_file, ingest_hint=ingest_hint)
+        )
     if input_file is not None:
-        raw = read_submission_file(input_file)
+        raw = read_submission_file(input_file, ingest_hint=ingest_hint)
         if input_format == "json":
             return parse_json_submission(raw)
         if input_format == "tsv":

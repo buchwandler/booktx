@@ -281,7 +281,7 @@ def _check_placeholders_preserved(
 
 
 def _check_protected_names_preserved(
-    source_rec, target_rec, chunk_id: str
+    source_rec: TranslatedRecord, target_rec: TranslatedRecord, chunk_id: str
 ) -> list[Finding]:
     """Ensure each protected name (NAME placeholder) survives verbatim.
 
@@ -320,8 +320,8 @@ def _check_protected_names_preserved(
 
 
 def validate_record_pair(
-    source_rec,
-    target_rec,
+    source_rec: TranslatedRecord,
+    target_rec: TranslatedRecord,
     chunk_id: str,
     context: TranslationContext | None = None,
 ) -> list[Finding]:
@@ -375,7 +375,7 @@ def _check_forbidden_terms(
 
 def _forbidden_target_findings(
     entry: GlossaryEntry,
-    target_rec,
+    target_rec: TranslatedRecord,
     chunk_id: str,
     severity: str,
 ) -> list[Finding]:

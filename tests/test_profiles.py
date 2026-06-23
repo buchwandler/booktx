@@ -302,3 +302,104 @@ def test_profile_compare_reads_profile_local_store_targets(tmp_path: Path):
     assert "de_glm_5_2" in res.output
     assert "A" in res.output
     assert "B" in res.output
+
+
+def test_profile_show_uses_identity_json_after_model_set(tmp_path: Path):
+    project_dir = _make_source_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "profile",
+            "create",
+            str(project_dir),
+            "de_gpt5_5",
+            "--target",
+            "de",
+            "--model",
+            "human",
+            "--select",
+        ],
+    )
+
+    set_res = runner.invoke(
+        app,
+        [
+            "model",
+            "set",
+            str(project_dir),
+            "codex-openai/gpt-5.5@low",
+            "--profile",
+            "de_gpt5_5",
+        ],
+    )
+    assert set_res.exit_code == 0, set_res.output
+
+    show = runner.invoke(
+        app, ["profile", "show", str(project_dir), "de_gpt5_5", "--json"]
+    )
+    assert show.exit_code == 0, show.output
+    payload = json.loads(show.output)
+    assert payload["model"] == "codex-openai/gpt-5.5@low"
+    assert payload["actor"] == "user:unknown"
+
+    who = runner.invoke(
+        app, ["whoami", str(project_dir), "--profile", "de_gpt5_5", "--json"]
+    )
+    assert who.exit_code == 0, who.output
+    assert json.loads(who.output)["model"] == "codex-openai/gpt-5.5@low"
+
+
+def test_profile_list_uses_identity_json_after_model_set(tmp_path: Path):
+    project_dir = _make_source_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "profile",
+            "create",
+            str(project_dir),
+            "de_gpt5_5",
+            "--target",
+            "de",
+            "--model",
+            "human",
+            "--select",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "model",
+            "set",
+            str(project_dir),
+            "glm-5.2",
+            "--profile",
+            "de_gpt5_5",
+        ],
+    )
+
+    res = runner.invoke(app, ["profile", "list", str(project_dir), "--json"])
+    assert res.exit_code == 0, res.output
+    overview = json.loads(res.output)
+    assert overview["profiles"]
+    item = next(p for p in overview["profiles"] if p["profile"] == "de_gpt5_5")
+    assert item["model"] == "glm-5.2"
+
+
+def test_profile_create_still_initializes_all_standard_dirs(tmp_path: Path):
+    project_dir = _make_source_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "profile",
+            "create",
+            str(project_dir),
+            "de_gpt5_5",
+            "--target",
+            "de",
+            "--select",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    profile_dir = project_dir / "translations" / "de_gpt5_5"
+    for name in ("tasks", "ingest", "translated", "reports", "output"):
+        assert (profile_dir / name).is_dir(), f"missing profile dir: {name}"

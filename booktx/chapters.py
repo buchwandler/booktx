@@ -25,7 +25,7 @@ from booktx.placeholders import TRANSLATABLE_INLINE_PARENTS
 
 if TYPE_CHECKING:
     from booktx.config import Project
-
+    from booktx.models import EpubNavigationRef, EpubSpanRef
 __all__ = [
     "Chapter",
     "ChapterMap",
@@ -75,6 +75,31 @@ def write_chapter_map(project: Project, chapter_map: ChapterMap) -> None:
     from booktx.io_utils import write_json_model_atomic
 
     write_json_model_atomic(chapter_map_path(project), chapter_map)
+
+
+def load_chapter_map_only(project: Project) -> ChapterMap | None:
+    """Return the cached chapter map without any detection or writes.
+
+    Pure read counterpart to :func:`ensure_chapter_map`. Returns ``None`` when
+    no chapter map has been cached yet.
+    """
+    return load_chapter_map(project)
+
+
+def ensure_chapter_map(project: Project) -> ChapterMap:
+    """Return a chapter map, detecting and persisting it if stale.
+
+    Unlike :func:`load_chapter_map_only`, this may write
+    ``.booktx/chapter-map.json`` when the cache is missing or records a
+    different source hash. Use it in workflows that need an up-to-date map;
+    use ``load_chapter_map_only`` for read-only status rendering.
+    """
+    source_sha256 = project_source_sha256(project)
+    chapter_map = load_chapter_map(project)
+    if chapter_map is None or chapter_map.source_sha256 != source_sha256:
+        chapter_map = detect_chapters(project)
+        write_chapter_map(project, chapter_map)
+    return chapter_map
 
 
 def detect_chapters(project: Project) -> ChapterMap:
@@ -257,7 +282,7 @@ def _epub_boundaries_from_refs(span_refs, navigation_refs) -> list[_Boundary]:
     return heading_boundaries
 
 
-def _navigation_boundaries(span_refs, navigation_refs) -> list[_Boundary]:
+def _navigation_boundaries(span_refs: list[EpubSpanRef], navigation_refs: list[EpubNavigationRef]) -> list[_Boundary]:
     boundaries: list[_Boundary] = []
     for entry in sorted(navigation_refs, key=lambda item: (item.order, item.level)):
         if not entry.title.strip():
@@ -269,7 +294,7 @@ def _navigation_boundaries(span_refs, navigation_refs) -> list[_Boundary]:
     return boundaries
 
 
-def _navigation_span_index(entry, span_refs) -> int | None:
+def _navigation_span_index(entry: EpubNavigationRef, span_refs: list[EpubSpanRef]) -> int | None:
     matches = [
         span_ref
         for span_ref in span_refs

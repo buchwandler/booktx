@@ -34,10 +34,16 @@ from booktx.acceptance import (
     accept_translation_records,
 )
 from booktx.build import BuildError, build_project
-from booktx.chapters import detect_chapters, load_chapter_map, write_chapter_map
+from booktx.chapters import (
+    ChapterMap,
+    detect_chapters,
+    load_chapter_map,
+    write_chapter_map,
+)
 from booktx.chunking import RECORD_ID_SCHEME, segmenter_metadata, spans_to_chunks
 from booktx.config import (
     BooktxError,
+    Project,
     _err,
     create_profile,
     find_source_file,
@@ -68,6 +74,7 @@ from booktx.context import (
     ChapterContext,
     ContextMarkdownDrift,
     GlossaryEntry,
+    TranslationContext,
     analyze_context_markdown_drift,
     apply_answer_to_context,
     context_markdown_path,
@@ -86,16 +93,21 @@ from booktx.context import (
 from booktx.epub_io import extract_epub
 from booktx.epub_manifest import EPUB2TEXT_SCHEMA, EPUB_TEMPLATE_PIPELINE
 from booktx.html_io import build_xhtml  # noqa: F401  (kept for downstream use)
+from booktx.identity import identity_payload
 from booktx.markdown_io import extract_markdown
 from booktx.models import (
+    Manifest,
     NamesFile,
+    StoredTranslationRecordV2,
     TranslatedChunk,
     TranslatedRecord,
+    TranslationCandidate,
     TranslationIdentity,
     TranslationStore,
     TranslationTask,
 )
 from booktx.progress import (
+    SourceRecordView,
     load_source_chunks,
     load_source_records,
     source_record_sha256,
@@ -118,6 +130,7 @@ from booktx.translation_store import (
     upsert_translation_version,
 )
 from booktx.validate import (
+    Finding,
     Severity,
     strict_load_translated,
     validate_chunk_pair,
@@ -126,7 +139,6 @@ from booktx.validate import (
     write_report,
 )
 from booktx.versioning import (
-    canonical_json_sha256,
     default_identity,
     fork_current_context,
     lookup_version,
@@ -174,38 +186,23 @@ def _die(message: str, code: int = 1) -> None:
     raise typer.Exit(code=code)
 
 
-def _read_submission_file_or_die(path: Path) -> str:
-    """Read a submission file, dying with a concise CLI error on failure.
-
-    Missing/unreadable files produce a short error message (never a Python
-    traceback). When the path looks like it lives outside ``.booktx/ingest``
-    we add a hint pointing the agent at the generated durable ingest file,
-    since that is the recommended submission location.
-    """
-    try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        message = f"submission file not found: {path}"
-    except PermissionError:
-        message = f"submission file is not readable: {path}"
-    except OSError as exc:
-        message = f"could not read submission file {path}: {exc}"
-    resolved = path.expanduser().resolve()
-    parts = resolved.parts
-    ingest_parts = (".booktx", "ingest")
-    looks_outside_ingest = bool(parts) and not any(
-        parts[i : i + 2] == ingest_parts for i in range(len(parts) - 1)
-    )
-    if looks_outside_ingest:
-        message += (
-            "\nhint: use the generated .booktx/ingest/<task>.block.txt file "
-            "instead of /tmp or other temporary locations"
-        )
-    _die(message)
-
 
 def _handle_booktx_error(exc: BooktxError) -> None:
     _die(str(exc))
+
+
+def _submission_ingest_hint(proj: Project, task_id: str | None) -> str | None:
+    """Project-relative path to the canonical profile-local ingest file.
+
+    Used to point agents at the generated submission location when a
+    ``--file``/``--json-file`` path is missing. Returns ``None`` when no
+    profile is selected or the task id is unknown.
+    """
+    if proj.profile is None or not task_id:
+        return None
+    from booktx.config import translation_ingest_block_path
+
+    return _project_relative(translation_ingest_block_path(proj, task_id), proj.root)
 
 
 def _resolve_project_value_args(
@@ -240,100 +237,6 @@ def _resolve_project_value_args(
     return p1, arg2
 
 
-def _context_identity_payload(proj) -> dict[str, Any]:
-    path = context_path(proj)
-    rel_path = _project_relative(path, proj.root)
-    if not path.is_file():
-        return {
-            "path": rel_path,
-            "exists": False,
-            "ready": None,
-            "sha256": None,
-            "status": "missing",
-        }
-    try:
-        context = load_context(proj)
-    except Exception:
-        return {
-            "path": rel_path,
-            "exists": True,
-            "ready": None,
-            "sha256": None,
-            "status": "invalid",
-        }
-    if context is None:  # pragma: no cover - guarded by is_file() above
-        return {
-            "path": rel_path,
-            "exists": False,
-            "ready": None,
-            "sha256": None,
-            "status": "missing",
-        }
-    return {
-        "path": rel_path,
-        "exists": True,
-        "ready": context.ready,
-        "sha256": canonical_json_sha256(context.model_dump(mode="json", by_alias=True)),
-        "status": "ready" if context.ready else "not_ready",
-    }
-
-
-def _store_identity_payload(proj) -> dict[str, Any]:
-    path = translation_store_path(proj)
-    if not path.is_file():
-        return {
-            "exists": False,
-            "version": None,
-            "record_count": None,
-            "status": "missing",
-        }
-    try:
-        store = load_translation_store(proj)
-    except Exception:
-        version = None
-        try:
-            raw = json.loads(path.read_text("utf-8"))
-        except Exception:  # noqa: BLE001
-            raw = {}
-        if isinstance(raw, dict) and isinstance(raw.get("version"), int):
-            version = raw["version"]
-        return {
-            "exists": True,
-            "version": version,
-            "record_count": None,
-            "status": "invalid",
-        }
-    return {
-        "exists": True,
-        "version": store.version,
-        "record_count": len(store.records),
-        "status": "ok",
-    }
-
-
-def _identity_payload(proj) -> dict[str, Any]:
-    identity = resolve_identity(proj)
-    active_version = None
-    try:
-        active_version = load_translation_version_ledger(proj).active_version
-    except Exception:  # noqa: BLE001
-        active_version = None
-
-    try:
-        source_sha256 = project_source_sha256(proj)
-    except Exception:  # noqa: BLE001
-        source_sha256 = None
-
-    return {
-        "project_dir": str(proj.root),
-        "actor": identity.actor,
-        "harness": identity.harness,
-        "model": identity.model,
-        "active_version": active_version,
-        "context": _context_identity_payload(proj),
-        "source_sha256": source_sha256,
-        "store": _store_identity_payload(proj),
-    }
 
 
 def _render_identity_human(payload: dict[str, Any]) -> None:
@@ -374,7 +277,7 @@ def _render_identity_human(payload: dict[str, Any]) -> None:
 
 def _print_identity(project_dir: Path, *, profile: str | None, as_json: bool) -> None:
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    payload = _identity_payload(proj)
+    payload = identity_payload(proj)
     if as_json:
         console.print_json(json.dumps(payload, ensure_ascii=False))
         return
@@ -741,6 +644,7 @@ def _render_profiles_overview_human(overview: ProfilesOverview) -> None:
 def _profile_detail_payload(project_dir: Path, profile_name: str) -> dict[str, Any]:
     profile_project = load_profile_project(project_dir, profile_name)
     profile_cfg = load_profile_config(project_dir, profile_name)
+    resolved_identity = resolve_identity(profile_project)
     context = load_context(profile_project)
     active_version = load_translation_version_ledger(profile_project).active_version
     records_translated = 0
@@ -765,9 +669,11 @@ def _profile_detail_payload(project_dir: Path, profile_name: str) -> dict[str, A
         "target_language": profile_cfg.target_language,
         "target_locale": profile_cfg.target_locale or profile_cfg.target_language,
         "output_filename": profile_cfg.output_filename,
-        "actor": profile_cfg.identity.actor,
-        "harness": profile_cfg.identity.harness,
-        "model": profile_cfg.identity.model,
+        # Live identity comes from translations/<profile>/identity.json;
+        # profile_cfg.identity is only the initial default captured at creation.
+        "actor": resolved_identity.actor,
+        "harness": resolved_identity.harness,
+        "model": resolved_identity.model,
         "context_ready": bool(context and context.ready),
         "active_version": active_version,
         "records_translated": records_translated,
@@ -1002,7 +908,7 @@ def _load_project_or_exit(
     *,
     profile: str | None = None,
     require_profile: bool = False,
-):
+) -> Project:
     try:
         return load_project(
             project_dir, profile=profile, require_profile=require_profile
@@ -1012,7 +918,7 @@ def _load_project_or_exit(
         raise typer.Exit(code=1) from exc
 
 
-def _load_context_or_exit(proj):
+def _load_context_or_exit(proj: Project) -> TranslationContext:
     try:
         ctx = load_context(proj)
     except Exception as exc:  # noqa: BLE001 - surface as user-facing CLI error
@@ -1037,7 +943,7 @@ def _drift_unsafe_message(drift: ContextMarkdownDrift) -> str:
     )
 
 
-def _guard_md_safe_or_die(proj, ctx, *, allow_discard_md_only: bool = False) -> None:
+def _guard_md_safe_or_die(proj: Project, ctx: TranslationContext, *, allow_discard_md_only: bool = False) -> None:
     try:
         ensure_context_markdown_safe_to_overwrite(
             proj, ctx, allow_discard_md_only=allow_discard_md_only
@@ -1049,16 +955,16 @@ def _guard_md_safe_or_die(proj, ctx, *, allow_discard_md_only: bool = False) -> 
         )
 
 
-def _open_required_questions(ctx) -> list:
+def _open_required_questions(ctx: TranslationContext) -> list[GlossaryEntry]:
     return [q for q in ctx.questions if q.required and q.status == "open"]
 
 
-def _resolved_identity(proj) -> TranslationIdentity:
+def _resolved_identity(proj: Project) -> TranslationIdentity:
     return resolve_identity(proj)
 
 
 def _write_identity_defaults(
-    proj,
+    proj: Project,
     *,
     actor: str | None = None,
     harness: str | None = None,
@@ -1069,7 +975,7 @@ def _write_identity_defaults(
     return identity
 
 
-def _clear_identity_field(proj, field_name: str) -> TranslationIdentity:
+def _clear_identity_field(proj: Project, field_name: str) -> TranslationIdentity:
     current = load_identity(proj)
     fallback = default_identity()
     identity = TranslationIdentity(
@@ -1085,12 +991,12 @@ def _clear_identity_field(proj, field_name: str) -> TranslationIdentity:
     return identity
 
 
-def _ordered_source_records(proj):
+def _ordered_source_records(proj: Project) -> list[SourceRecordView]:
     return load_source_records(proj)
 
 
 def _ledger_metadata_for_version(
-    proj, version_ref: str | None
+    proj: Project, version_ref: str | None
 ) -> dict[str, Any] | None:
     if not version_ref:
         return None
@@ -1114,7 +1020,7 @@ def _ledger_metadata_for_version(
 
 
 def _store_record_payload(
-    proj, record_id: str
+    proj: Project, record_id: str
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     ordered = _ordered_source_records(proj)
     by_id = {record.record_id: record for record in ordered}
@@ -1643,7 +1549,7 @@ def inspect(
     console.print(table)
 
 
-def _load_names_list(proj) -> list[str]:
+def _load_names_list(proj: Project) -> list[str]:
     from booktx.config import load_names
 
     return load_names(proj).protected_terms
@@ -1672,14 +1578,14 @@ def _count_records(
     return len(records), details
 
 
-def _chunk_json_texts(chunks) -> dict[str, str]:
+def _chunk_json_texts(chunks: list[TranslatedChunk]) -> dict[str, str]:
     return {
         f"{chunk.chunk_id}.json": chunk.model_dump_json(indent=2) + "\n"
         for chunk in chunks
     }
 
 
-def _has_accepted_store_records(proj) -> bool:
+def _has_accepted_store_records(proj: Project) -> bool:
     path = translation_store_path(proj)
     if not path.is_file():
         return False
@@ -1691,7 +1597,7 @@ def _has_accepted_store_records(proj) -> bool:
 
 
 def _same_extract_settings(
-    manifest,
+    manifest: Manifest,
     *,
     chunk_size: int,
     source_language: str,
@@ -1706,7 +1612,7 @@ def _same_extract_settings(
 
 
 def _guard_extract_repeatability_and_rechunk(
-    proj,
+    proj: Project,
     *,
     current_source_sha256: str,
     chunk_texts: dict[str, str],
@@ -1877,7 +1783,7 @@ def extract(
         console.print(f"[yellow]warning:[/yellow] {warning_message}", soft_wrap=True)
 
 
-def _assert_epub_records_are_clean(chunks) -> None:
+def _assert_epub_records_are_clean(chunks: list[TranslatedChunk]) -> None:
     for chunk in chunks:
         for record in chunk.records:
             if "__TAG_" in record.source or "__SPANTX_" in record.source:
@@ -1888,7 +1794,7 @@ def _assert_epub_records_are_clean(chunks) -> None:
 
 
 def _save_epub_manifest(
-    proj, source, extraction, chunk_count: int, record_count: int
+    proj: Project, source: Path, extraction: object, chunk_count: int, record_count: int
 ) -> None:
     """Record EPUB v2 extraction metadata in manifest.json."""
     import json
@@ -1925,7 +1831,7 @@ def _save_epub_manifest(
     _ = (json, NamesFile)  # touch imports for clarity
 
 
-def _require_ready_context(proj, *, allow_missing_context: bool = False) -> bool:
+def _require_ready_context(proj: Project, *, allow_missing_context: bool = False) -> bool:
     """Return True when context was checked and should be printed."""
     if allow_missing_context:
         return False
@@ -1935,14 +1841,14 @@ def _require_ready_context(proj, *, allow_missing_context: bool = False) -> bool
     return True
 
 
-def _require_chunks(proj) -> list[Path]:
+def _require_chunks(proj: Project) -> list[Path]:
     chunk_paths = proj.chunks()
     if not chunk_paths:
         _die("No source chunks found. Run: booktx extract .")
     return chunk_paths
 
 
-def _require_no_source_drift(proj) -> None:
+def _require_no_source_drift(proj: Project) -> None:
     """Fail if the source file changed since the last extraction."""
     from booktx.config import current_source_sha256, extracted_source_sha256
 
@@ -1967,7 +1873,7 @@ def _format_chunk_span(chunk_ids: list[str]) -> str:
     return format_chunk_span(chunk_ids)
 
 
-def _load_context_status(proj) -> tuple[bool, bool]:
+def _load_context_status(proj: Project) -> tuple[bool, bool]:
     try:
         ctx = load_context(proj)
     except Exception as exc:  # noqa: BLE001
@@ -1975,7 +1881,7 @@ def _load_context_status(proj) -> tuple[bool, bool]:
     return (ctx is not None, bool(ctx and ctx.ready))
 
 
-def _chapter_map_for_workflow(proj):
+def _chapter_map_for_workflow(proj: Project) -> ChapterMap:
     """Refresh-and-load helper retained for direct callers outside status.py."""
     source_sha256 = project_source_sha256(proj)
     chapter_map = load_chapter_map(proj)
@@ -1985,7 +1891,7 @@ def _chapter_map_for_workflow(proj):
     return chapter_map
 
 
-def _project_status_snapshot(proj) -> StatusBundle:
+def _project_status_snapshot(proj: Project) -> StatusBundle:
     """Build the typed status snapshot + runtime index for ``proj``.
 
     Thin wrapper over :func:`booktx.status.build_status_snapshot`; the CLI
@@ -2075,7 +1981,7 @@ def _project_relative(path: Path, root: Path) -> str:
 
 
 def _create_translation_task(
-    proj,
+    proj: Project,
     bundle: StatusBundle,
     chapter: ChapterProgress,
     *,
@@ -2088,21 +1994,21 @@ def _create_translation_task(
     )
 
 
-def _print_status_human(bundle, chapter):
+def _print_status_human(bundle: StatusBundle, chapter: ChapterProgress | None) -> None:
     from booktx.rendering import print_status_human
 
     print_status_human(bundle, chapter)
 
 
 def _print_translate_task(
-    task,
-    proj,
+    task: TranslationTask,
+    proj: Project,
     *,
-    as_json,
-    output_format,
-    show_sources=False,
-    show_template=False,
-):
+    as_json: bool,
+    output_format: str,
+    show_sources: bool = False,
+    show_template: bool = False,
+) -> None:
     from booktx.rendering import print_translate_task
 
     print_translate_task(
@@ -2115,20 +2021,20 @@ def _print_translate_task(
     )
 
 
-def _load_translation_task_or_exit(proj, task_id: str) -> TranslationTask:
+def _load_translation_task_or_exit(proj: Project, task_id: str) -> TranslationTask:
     task = load_translation_task(proj, task_id)
     if task is None:
         _die(f"unknown task id: {task_id} ({translation_task_path(proj, task_id)})")
     return task
 
 
-def _render_submission_failures(findings):
+def _render_submission_failures(findings: list[Finding]) -> None:
     from booktx.rendering import render_submission_failures
 
     render_submission_failures(findings)
 
 
-def _next_chapter(proj, *, print_context: bool) -> None:
+def _next_chapter(proj: Project, *, print_context: bool) -> None:
     summary = _project_status_snapshot(proj)
     chapter = summary.snapshot.next
     if chapter is None:
@@ -2430,6 +2336,7 @@ def translate_insert(
             stdin=stdin,
             json_file=json_file,
             input_file=input_file,
+            ingest_hint=_submission_ingest_hint(proj, task_id),
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
@@ -2676,7 +2583,7 @@ def translate_export(  # noqa: C901
 
     from booktx.io_utils import write_json_model_atomic
 
-    def _pick_candidate(stored):
+    def _pick_candidate(stored: StoredTranslationRecordV2) -> TranslationCandidate | None:
         if all_versions:
             return None
         if version_ref is not None:
@@ -2898,7 +2805,7 @@ def translation_get_record(
 
     store = details["store"]
 
-    def _record_payload(source_record) -> dict[str, Any]:
+    def _record_payload(source_record: SourceRecordView) -> dict[str, Any]:
         payload = {
             "id": source_record.record_id,
             "chunk_id": source_record.chunk_id,
@@ -3276,7 +3183,7 @@ def build(
         )
 
 
-def _changed_entry_count(changed_entries) -> object:
+def _changed_entry_count(changed_entries: object) -> int | object:
     if isinstance(changed_entries, list):
         return len(changed_entries)
     return changed_entries

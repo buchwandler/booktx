@@ -63,9 +63,9 @@ Every translation effort lives under `translations/<profile>/`.
 | `translations/<profile>/translation-version-ledger.json` | profile-local | Version history inside this profile |
 | `translations/<profile>/tasks/` | profile-local | Persisted translation tasks |
 | `translations/<profile>/ingest/` | profile-local | Durable submission files |
-| `translations/<profile>/translated/` | profile-local | Compatibility/export chunk JSON |
+| `translations/<profile>/translated/` | profile-local | Generated compatibility/export chunk JSON (rebuildable; not primary state) |
 | `translations/<profile>/reports/` | profile-local | Validation reports |
-| `translations/<profile>/output/` | profile-local | Rebuilt translated documents |
+| `translations/<profile>/output/` | profile-local | Rebuilt translated documents (rebuildable from the store) |
 
 ## Safety rules
 
@@ -74,3 +74,32 @@ Every translation effort lives under `translations/<profile>/`.
 3. Model experiments should usually be separate profiles, even for the same target language.
 4. When multiple profiles exist, pass `--profile` or select one with `booktx profile select`.
 5. Legacy single-layout projects should be migrated with `booktx profile migrate-current`.
+6. `translations/<profile>/translated/` and `translations/<profile>/output/` are
+   generated artifacts. They can be deleted and regenerated; do not treat them
+   as primary state (the store and ledger are).
+
+## Legacy layout and migration
+
+Legacy single-layout projects keep all state under `.booktx/`:
+
+```text
+book/.booktx/
+  config.toml              # source + target config
+  manifest.json
+  names.json
+  chunks/
+  context.json
+  identity.json
+  translation-store.json
+  translation-version-ledger.json
+  tasks/
+  ingest/
+  translated/
+  reports/
+book/output/               # build output lived at the project root
+```
+
+After `booktx profile migrate-current ./book PROFILE --select`, mutable state
+moves under `translations/PROFILE/`, shared source state stays under
+`.booktx/`, and build output moves under `translations/PROFILE/output/`. The
+legacy `config.toml` is removed once migration completes.

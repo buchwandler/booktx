@@ -94,3 +94,19 @@ Outputs land under:
 translations/<profile>/reports/
 translations/<profile>/output/
 ```
+
+## JSON output for machine consumers
+
+Most read commands accept `--json`. Examples:
+
+```bash
+booktx profile list ./book --json
+booktx profile show ./book de_gpt5_5 --json
+booktx whoami ./book --profile de_gpt5_5 --json
+booktx status ./book --profile de_gpt5_5 --json
+booktx version show ./book --profile de_gpt5_5 1.2 --json
+```
+
+`profile list`/`profile show`/`whoami` report the live identity from
+`translations/<profile>/identity.json`, so they stay consistent after
+`booktx model set`, `actor set`, or `harness set`.

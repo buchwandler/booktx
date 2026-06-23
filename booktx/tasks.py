@@ -1,11 +1,26 @@
 """Translation-task creation, durable task paths, and submission hints.
 
-Centralizes the durable-file layout and id derivation for translation tasks so
-the command layer stops reconstructing paths and submit-hints inline. The
-``TaskPaths`` value object bundles the four per-task files
-(``.booktx/tasks/<id>.json``, ``.booktx/tasks/<id>.source.block.txt``,
-``.booktx/ingest/<id>.json``, ``.booktx/ingest/<id>.block.txt``) and renders
-the project-relative display strings and submit commands the CLI prints.
+Centralizes the durable-file layout and id derivation for translation tasks
+so the command layer stops reconstructing paths and submit-hints inline.
+
+Profile-layout projects (primary):
+
+    translations/<profile>/tasks/<id>.json
+    translations/<profile>/tasks/<id>.source.block.txt
+    translations/<profile>/ingest/<id>.json
+    translations/<profile>/ingest/<id>.block.txt
+
+Legacy single-layout projects (compatibility only):
+
+    .booktx/tasks/<id>.json
+    .booktx/tasks/<id>.source.block.txt
+    .booktx/ingest/<id>.json
+    .booktx/ingest/<id>.block.txt
+
+All task-path access goes through ``translation_task_dir(project)`` which
+enforces the profile-required guard for source-only projects. The
+``TaskPaths`` value object bundles the four per-task files and renders the
+project-relative display strings and submit commands the CLI prints.
 """
 
 # ruff: noqa: E501
@@ -130,9 +145,16 @@ class TaskPathDisplay:
 
 
 def task_paths(project: Project, task_id: str) -> TaskPaths:
-    """Return the :class:`TaskPaths` bundle for ``task_id``."""
+    """Return the :class:`TaskPaths` bundle for ``task_id``.
+
+    Routes through ``translation_task_dir(project)`` so a source-only
+    project (no selected profile) hits the profile-required guard instead of
+    silently assuming legacy ``.booktx/tasks`` paths.
+    """
+    from booktx.config import translation_task_dir
+
     return TaskPaths(
-        task_json=project.tasks_dir / f"{task_id}.json",
+        task_json=translation_task_dir(project) / f"{task_id}.json",
         source_block=translation_task_source_block_path(project, task_id),
         ingest_json=translation_ingest_path(project, task_id),
         ingest_block=translation_ingest_block_path(project, task_id),

@@ -67,7 +67,7 @@ Changelog = "https://github.com/holgern/booktx/blob/main/CHANGELOG.md"
 packages = ["booktx"]
 
 [tool.hatch.build.targets.sdist]
-include = ["booktx", "tests", "README.md", "LICENSE", "pyproject.toml"]
+include = ["booktx", "tests", "docs", "skills", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.hatch.version]
 source = "vcs"

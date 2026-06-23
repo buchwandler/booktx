@@ -1,48 +1,131 @@
 ---
 name: booktx
-description: Use this skill when working with booktx projects
+description: Use this skill when working in a booktx project or when the user asks to translate, validate, build, migrate, or inspect booktx state.
 ---
 
 # booktx Skill
 
-## Primary goal
+## Purpose
 
-Work safely with `booktx`, a deterministic local CLI that prepares Markdown and
-EPUB documents for translation. Source extraction is shared; mutable
-translation work is profile-local.
+Use `booktx` to prepare Markdown or EPUB books for translation by an agent or
+human translator. `booktx` does not translate by itself. It extracts source
+records, creates durable translation tasks, accepts submissions, validates
+translation state, and rebuilds output.
 
-## Core profile rule
+## Core invariants
 
 ```text
 Profile = hard isolation boundary
 Version = history/candidate boundary inside that profile
 ```
 
-## Required profile gate
+Shared source state lives under `.booktx/`.
+Mutable translation state lives under `translations/<profile>/`.
 
-Before translating:
+## First commands in any existing project
 
-1. Run `booktx status .` or `booktx profile list .`.
-2. Identify the selected or active profile.
-3. If multiple profiles exist, always pass `--profile`.
-4. Read `translations/<profile>/context.md`.
-5. Stop if `translations/<profile>/context.json` is missing or not ready.
+Run:
+
+```bash
+booktx status .
+booktx profile list .
+```
+
+Then determine the target profile.
+
+Resolution rules:
+
+1. Explicit `--profile PROFILE` wins.
+2. Otherwise `.booktx/profile-state.json` active profile is used.
+3. Otherwise exactly one existing profile may be auto-resolved.
+4. If multiple profiles exist, always pass `--profile`.
+
+Never mix ingest files, context, stores, ledgers, translated exports, reports,
+or output between profiles.
+
+## Source setup
+
+For a new source-only project:
+
+```bash
+booktx init ./book --source-file book.epub --source-lang en
+booktx extract ./book
+```
+
+Create a profile before translating:
+
+```bash
+booktx profile create ./book PROFILE \
+  --target de \
+  --target-locale de-DE \
+  --model MODEL_LABEL \
+  --select
+```
+
+Use a new profile for each target language, model experiment, or hard-isolated
+context experiment.
+
+## Context gate
+
+Before requesting translation work:
+
+```bash
+booktx context status . --profile PROFILE
+```
+
+Read:
+
+```text
+translations/PROFILE/context.md
+```
+
+Stop before translating if `context.json` is missing or not ready. Initialize or
+update context with `booktx context ...` commands, not by directly editing
+`context.json`.
+
+Typical context initialization:
+
+```bash
+booktx context init . --profile PROFILE --non-interactive
+booktx context questions . --profile PROFILE
+booktx context answer . --profile PROFILE Q001 --text "..."
+booktx context render . --profile PROFILE --write
+booktx context mark-ready . --profile PROFILE
+```
 
 ## Translation workflow
 
+Request a durable block task:
+
 ```bash
-booktx extract .
-booktx status .
 booktx translate next . --profile PROFILE --unit batch --max-words 500 --format block
 ```
 
-The durable workflow writes:
+This creates:
 
-- `translations/<profile>/tasks/TASK.source.block.txt`
-- `translations/<profile>/ingest/TASK.block.txt`
-- `translations/<profile>/ingest/TASK.json`
+```text
+translations/PROFILE/tasks/TASK.json
+translations/PROFILE/tasks/TASK.source.block.txt
+translations/PROFILE/ingest/TASK.block.txt
+translations/PROFILE/ingest/TASK.json
+```
 
-Submit with:
+Translate by editing only the generated ingest file:
+
+```text
+translations/PROFILE/ingest/TASK.block.txt
+```
+
+In block files:
+
+- Keep every `>>> RECORD_ID` header unchanged.
+- Write only the target translation under each header.
+- Preserve required placeholder tokens exactly.
+- Do not translate protected names unless context explicitly allows it.
+- Do not add commentary outside target text.
+- Do not edit `tasks/TASK.source.block.txt` as the submission.
+
+Submit:
 
 ```bash
 booktx translate insert . \
@@ -52,30 +135,83 @@ booktx translate insert . \
   --format block
 ```
 
-Validate and build with:
+If insertion reports a stale task version, request a fresh task with
+`booktx translate next` for the same profile. Do not force old task files into
+the current profile/version.
+
+## Validate and build
+
+After accepting translations:
 
 ```bash
 booktx validate . --profile PROFILE
 booktx build . --profile PROFILE
 ```
 
-## Non-negotiable rules
+Output is written under:
 
-- Never edit `.booktx/chunks/*.json` directly.
-- Never edit `translations/<profile>/translation-store.json` directly.
-- Never mix files between profiles.
-- Never treat `.booktx/context.md` or `.booktx/ingest/` as the primary workflow in a profile project.
-- Treat versions as profile-local.
+```text
+translations/PROFILE/output/
+```
 
-## Compatibility files
+For a complete final build, use the project option that requires complete
+translations if available in the current CLI help.
 
-`translations/<profile>/translated/*.json` remains compatibility/export output.
-Do not edit it directly; use `booktx translate export`.
+## Versions
+
+Versions are profile-local. Two profiles may both contain version `1.1`; these
+are unrelated.
+
+Use:
+
+```bash
+booktx version current . --profile PROFILE
+booktx version list . --profile PROFILE
+booktx translation compare . --profile PROFILE RECORD --versions 1.1,1.2
+booktx translation activate . --profile PROFILE RECORD 1.2
+```
+
+A model/actor/harness change creates or selects a major track. A context change
+creates or selects a subversion inside the track.
+
+## Guardrails
+
+Never edit these directly:
+
+```text
+.booktx/chunks/*.json
+translations/PROFILE/translation-store.json
+translations/PROFILE/translation-version-ledger.json
+translations/PROFILE/translated/*.json
+```
+
+Use commands instead:
+
+```bash
+booktx translate insert ...
+booktx translation activate ...
+booktx translate export ...
+booktx validate ...
+```
+
+Do not use old profile-state paths in a profile project:
+
+```text
+.booktx/context.json
+.booktx/context.md
+.booktx/tasks/
+.booktx/ingest/
+.booktx/translated/
+.booktx/translation-store.json
+```
 
 ## Migration
 
-Legacy single-layout projects can be migrated with:
+For a legacy single-layout project:
 
 ```bash
 booktx profile migrate-current ./book PROFILE --select
 ```
+
+After migration, use only `translations/PROFILE/...` for translation work.
+Run `booktx status ./book --profile PROFILE` before continuing.

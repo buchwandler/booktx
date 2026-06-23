@@ -185,3 +185,162 @@ def test_profile_migrate_current_requires_target_when_legacy_target_missing(
 
     assert res.exit_code != 0
     assert "legacy project has no target language" in res.output
+
+
+def _write_legacy_identity(
+    booktx_dir: Path, *, actor: str, harness: str, model: str
+) -> None:
+    """Write a legacy .booktx/identity.json that migration must supersede."""
+    from booktx.models import TranslationIdentity
+
+    identity = TranslationIdentity(actor=actor, harness=harness, model=model)
+    (booktx_dir / "identity.json").write_text(
+        identity.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+
+def test_profile_migrate_current_honors_model_override_when_legacy_identity_exists(
+    tmp_path: Path,
+):
+    project_dir = _write_legacy_project(tmp_path)
+    _write_legacy_identity(
+        project_dir / ".booktx", actor="user:human", harness="booktx", model="human"
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "profile",
+            "migrate-current",
+            str(project_dir),
+            "de_gpt5_5",
+            "--model", "codex-openai/gpt-5.5@low",
+            "--select",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    identity_path = project_dir / "translations" / "de_gpt5_5" / "identity.json"
+    assert identity_path.is_file()
+    identity = json.loads(identity_path.read_text("utf-8"))
+    assert identity["model"] == "codex-openai/gpt-5.5@low"
+
+    who = runner.invoke(
+        app, ["whoami", str(project_dir), "--profile", "de_gpt5_5", "--json"]
+    )
+    assert who.exit_code == 0, who.output
+    payload = json.loads(who.output)
+    assert payload["model"] == "codex-openai/gpt-5.5@low"
+
+
+def test_profile_migrate_current_honors_actor_and_harness_overrides(tmp_path: Path):
+    project_dir = _write_legacy_project(tmp_path)
+    _write_legacy_identity(
+        project_dir / ".booktx",
+        actor="user:human",
+        harness="booktx",
+        model="human",
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "profile",
+            "migrate-current",
+            str(project_dir),
+            "de_gpt5_5",
+            "--actor", "agent:translator",
+            "--harness", "codex",
+            "--select",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    identity = json.loads(
+        (project_dir / "translations" / "de_gpt5_5" / "identity.json")
+        .read_text("utf-8")
+    )
+    assert identity["actor"] == "agent:translator"
+    assert identity["harness"] == "codex"
+
+
+def test_profile_migrate_current_creates_empty_profile_dirs_when_legacy_dirs_missing(
+    tmp_path: Path,
+):
+    project_dir = _write_legacy_project(tmp_path)
+    # Remove the optional mutable directories so the legacy project lacks them.
+    import shutil as _shutil
+
+    for name in ("tasks", "ingest", "translated", "reports"):
+        target = project_dir / ".booktx" / name
+        if target.exists():
+            _shutil.rmtree(target)
+    output_dir = project_dir / "output"
+    if output_dir.exists():
+        _shutil.rmtree(output_dir)
+
+    res = runner.invoke(
+        app,
+        ["profile", "migrate-current", str(project_dir), "de_gpt5_5", "--select"],
+    )
+
+    assert res.exit_code == 0, res.output
+    profile_dir = project_dir / "translations" / "de_gpt5_5"
+    for name in ("tasks", "ingest", "translated", "reports", "output"):
+        assert (profile_dir / name).is_dir(), f"missing profile dir: {name}"
+
+
+def test_profile_migration_manifest_uses_project_relative_paths(tmp_path: Path):
+    project_dir = _write_legacy_project(tmp_path)
+
+    res = runner.invoke(
+        app,
+        ["profile", "migrate-current", str(project_dir), "de_gpt5_5", "--select"],
+    )
+
+    assert res.exit_code == 0, res.output
+    migrations_dir = project_dir / ".booktx" / "migrations"
+    manifest_path = next(migrations_dir.glob("*.json"))
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    assert manifest["moves"]
+    for entry in manifest["moves"]:
+        for key in ("source", "destination"):
+            value = entry[key]
+            assert not Path(value).is_absolute(), (
+                f"manifest {key} must be project-relative, got: {value}"
+            )
+            assert str(project_dir.resolve()) not in value
+
+
+def test_profile_migrate_current_does_not_remove_legacy_config_if_move_fails(
+    tmp_path: Path, monkeypatch
+):
+    project_dir = _write_legacy_project(tmp_path)
+    legacy_config = project_dir / ".booktx" / "config.toml"
+    assert legacy_config.is_file()
+
+    import shutil as _shutil
+
+    import booktx.profile_migration as migration_module
+
+    real_move = _shutil.move
+    call_count = {"n": 0}
+
+    def failing_move(src, dst):
+        call_count["n"] += 1
+        # Let at least one move happen, then fail to simulate a mid-migration error.
+        if call_count["n"] >= 2:
+            raise OSError("simulated migration failure")
+        return real_move(str(src), str(dst))
+
+    monkeypatch.setattr(migration_module.shutil, "move", failing_move)
+    res = runner.invoke(
+        app,
+        ["profile", "migrate-current", str(project_dir), "de_gpt5_5"],
+    )
+
+    assert res.exit_code != 0
+    # The legacy config.toml must survive a mid-migration failure so the
+    # project is still loadable as a legacy project and the migration can be
+    # retried.
+    assert legacy_config.is_file(), "legacy config.toml must be preserved on failure"

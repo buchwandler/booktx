@@ -47,10 +47,16 @@ pytest -q
 ruff check .
 ```
 
-For docs (requires the `docs` extra):
+```bash
+pytest -q
+ruff check .
+mypy booktx
+```
+
+For docs (requires the `docs` extra), build with warnings as errors:
 
 ```bash
-sphinx-build -b html docs docs/_build/html
+sphinx-build -W -b html docs docs/_build/html
 ```
 
 ## Current test clusters
@@ -71,6 +77,14 @@ sphinx-build -b html docs docs/_build/html
 | `tests/test_markdown_io.py`      | Markdown extraction/rebuild         |
 | `tests/test_models.py`           | Pydantic contract models            |
 | `tests/test_placeholders.py`     | Placeholder protection/restoration  |
+| `tests/test_acceptance.py`       | Record-level acceptance gates       |
+| `tests/test_cli_translate.py`    | Translate/insert CLI workflows      |
+| `tests/test_profile_migration.py`| Legacy -> profile migration         |
+| `tests/test_profiles.py`         | Profile create/list/show/select     |
+| `tests/test_progress.py`         | Progress snapshots                  |
+| `tests/test_status.py`           | Status bundles and overviews        |
+| `tests/test_tasks_submissions.py`| Task paths and submission parsing   |
+| `tests/test_version.py`          | Translation version ledgers         |
 | `tests/test_validate.py`         | Translation contract validation     |
 | `tests/test_validate_context.py` | Glossary/context validation         |
 

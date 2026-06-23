@@ -6,7 +6,7 @@ the final translated document. See :mod:`booktx.cli` for the command surface.
 """
 
 try:
-    from booktx._version import __version__  # type: ignore[assignment]
+    from booktx._version import __version__
 except Exception:  # pragma: no cover - source tree without generated version file
     __version__ = "0+unknown"
 

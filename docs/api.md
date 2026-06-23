@@ -54,4 +54,40 @@ This page exposes the internal modules through Sphinx autodoc. The public comman
 .. automodule:: booktx.build
    :members:
    :undoc-members:
+
+.. automodule:: booktx.status
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.tasks
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.submissions
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.acceptance
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.rendering
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.io_utils
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.record_refs
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.translation_store
+   :members:
+   :undoc-members:
+
+.. automodule:: booktx.versioning
+   :members:
+   :undoc-members:
 ```

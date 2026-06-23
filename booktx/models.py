@@ -128,7 +128,7 @@ class TranslatedRecord(BaseModel):
         return parse_version_ref(value).version_ref
 
     @model_serializer(mode="wrap")
-    def _omit_none_version(self, handler):
+    def _omit_none_version(self, handler: Any) -> dict[str, Any]:
         payload = handler(self)
         if payload.get("version") is None:
             payload.pop("version", None)
@@ -458,7 +458,13 @@ class SourceConfig(BaseModel):
 
 
 class ProfileIdentityConfig(BaseModel):
-    """Identity defaults embedded in a profile config."""
+    """Initial identity defaults captured when a profile is created.
+
+    This is **not** the live identity. After creation, the authoritative
+    identity lives in ``translations/<profile>/identity.json`` and is updated
+    by ``booktx model set`` / ``actor set`` / ``harness set``. Profile list
+    and show render the resolved ``identity.json`` value, not this field.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -479,6 +485,7 @@ class ProfileConfig(BaseModel):
     target_locale: str | None = None
     output_filename: str | None = None
     identity: ProfileIdentityConfig = Field(default_factory=ProfileIdentityConfig)
+    """Initial identity defaults; the live identity is identity.json (see above)."""
 
 
 class ProfileState(BaseModel):

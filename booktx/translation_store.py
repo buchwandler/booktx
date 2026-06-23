@@ -1,4 +1,11 @@
-"""Helpers for working with nested translation stores."""
+"""Helpers for working with nested translation stores.
+
+This module also hosts the **legacy compatibility surface** for the old
+flat (v1) ``TranslationStore``: :func:`legacy_store_to_v2` and
+:func:`migrate_legacy_store` convert legacy stores into the nested v2 shape.
+They are kept here, clearly named, so legacy import/export stays quarantined
+from the active v2 store logic.
+"""
 
 from __future__ import annotations
 

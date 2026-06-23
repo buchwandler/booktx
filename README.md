@@ -22,6 +22,14 @@ It:
 pip install -e .
 ```
 
+For development and docs:
+
+```bash
+python -m pip install -e ".[dev,docs]"
+```
+
+Python 3.10+ is supported.
+
 Python 3.10+ is supported.
 
 ## Core model
@@ -96,6 +104,36 @@ booktx validate ./demo --profile de_gpt5_5
 booktx build ./demo --profile de_gpt5_5
 ```
 
+## Multiple profiles
+
+Create one profile per target language, model experiment, or hard-isolated
+context experiment. Two profiles can target the same language with different
+models, or the same model with different languages:
+
+```bash
+booktx profile create ./demo de_gpt5_5 --target de --model codex-openai/gpt-5.5@low
+booktx profile create ./demo de_glm_5_2 --target de --model glm-5.2
+booktx profile create ./demo fr_gpt5_5 --target fr --model codex-openai/gpt-5.5@low
+```
+
+### Profile resolution
+
+When a command needs a single profile, booktx resolves it in this order:
+
+```text
+--profile wins; otherwise the active profile; otherwise exactly one profile;
+otherwise fail for target-state commands.
+```
+
+If a project has more than one profile, always pass `--profile`.
+
+### Live identity
+
+`profile list` and `profile show` render the **current** identity from
+`translations/<profile>/identity.json`, which is updated by
+`booktx model set`, `actor set`, and `harness set`. The identity embedded in
+`config.toml` is only the initial default captured at creation.
+
 ## Legacy projects
 
 Old single-layout projects can be migrated in place:
@@ -103,6 +141,9 @@ Old single-layout projects can be migrated in place:
 ```bash
 booktx profile migrate-current ./demo de_gpt5_5 --select
 ```
+
+CLI identity overrides (`--model`, `--actor`, `--harness`) are honored over any
+legacy `.booktx/identity.json`.
 
 ## Common commands
 
