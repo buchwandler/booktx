@@ -13,6 +13,9 @@ Covers:
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -1015,4 +1018,135 @@ def test_insert_hint_stops_when_todo_goal_is_complete(tmp_path: Path):
     assert insert_res.exit_code == 0, insert_res.output
     assert f"todo complete: {todo['todo_id']}" in insert_res.output
     assert "next: stop - todo goal complete" in insert_res.output
+    assert "translate next ." not in insert_res.output
+
+
+# ---------------------------------------------------------------------------
+# Fresh-process regression tests
+# ---------------------------------------------------------------------------
+
+
+def _run_booktx_subprocess(
+    repo_root: Path, *args: str
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{repo_root}{os.pathsep}" + env.get("PYTHONPATH", "")
+    return subprocess.run(
+        [sys.executable, "-c", "from booktx.cli import main; main()", *args],
+        cwd=repo_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_todo_commands_work_across_fresh_python_processes(tmp_path: Path):
+    """Regression: todo-status and todo-resume must work in fresh processes.
+
+    This catches exactly the real-world failure where todo-next writes a todo
+    but a fresh CLI invocation for todo-status/todo-resume fails because
+    TranslationTodo has an unresolved forward reference.
+    """
+    project_dir = _make_three_chapter_project(tmp_path)
+    repo_root = Path(__file__).resolve().parents[1]
+
+    # Step 1: create a todo in a fresh process.
+    create = _run_booktx_subprocess(
+        repo_root,
+        "translate",
+        "todo-next",
+        str(project_dir),
+        "--chapters",
+        "2",
+        "--batch-words",
+        "800",
+        "--write",
+        "--json",
+    )
+    assert create.returncode == 0, create.stderr + create.stdout
+    payload = json.loads(create.stdout)
+    todo_id = payload["todo_id"]
+
+    # Step 2: run todo-status in a fresh process.
+    status = _run_booktx_subprocess(
+        repo_root,
+        "translate",
+        "todo-status",
+        str(project_dir),
+        "--todo-id",
+        todo_id,
+        "--json",
+    )
+    assert status.returncode == 0, status.stderr + status.stdout
+    assert json.loads(status.stdout)["todo_id"] == todo_id
+
+    # Step 3: run todo-resume in a fresh process.
+    resume = _run_booktx_subprocess(
+        repo_root,
+        "translate",
+        "todo-resume",
+        str(project_dir),
+        "--todo-id",
+        todo_id,
+        "--format",
+        "text",
+        "--json",
+    )
+    assert resume.returncode == 0, resume.stderr + resume.stdout
+    task = json.loads(resume.stdout)
+    assert task["todo_id"] == todo_id
+
+
+def test_insert_prints_todo_resume_command(tmp_path: Path):
+    """Regression: insert output for a todo-created task must print todo-resume."""
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=2, batch_words=900)
+
+    # Resume to create the next task.
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--todo-id",
+            todo["todo_id"],
+            "--format",
+            "text",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+
+    # Fill and insert.
+    ingest_path = project_dir / task["ingest_path"]
+    ingest_json = {
+        "schema_version": 2,
+        "profile": _proj(project_dir).profile,
+        "task_id": task["task_id"],
+        "translation_version": task["translation_version"],
+        "records": [
+            {"id": r["id"], "target": f"Translated {r['id']}"} for r in task["records"]
+        ],
+    }
+    ingest_path.write_text(json.dumps(ingest_json), encoding="utf-8")
+
+    insert_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--json-file",
+            str(ingest_path),
+        ],
+    )
+
+    assert insert_res.exit_code == 0, insert_res.output
+    assert "booktx translate todo-resume ." in insert_res.output
+    assert f"--todo-id {todo['todo_id']}" in insert_res.output
     assert "translate next ." not in insert_res.output

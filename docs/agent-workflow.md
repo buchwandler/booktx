@@ -81,3 +81,9 @@ budget runs low. `--max-run-words` is advisory only.
 - Never edit `translations/<profile>/translation-store.json` directly.
 - Never edit `translations/<profile>/translated/*.json` directly; use `booktx translate export`.
 - Use `booktx profile compare` for cross-profile review instead of mixing store files manually.
+- If a `todo-status`, `todo-resume`, or `todo-next` command fails with an internal
+  booktx error, stop and report the tool failure. Do not silently switch to a
+  large unbounded `translate next --unit chapter` task. Bounded todos exist to
+  keep agent runs within budget; bypassing them defeats that purpose.
+  Only use `translate next --unit chapter` for small chapters or when the user
+  explicitly requests a whole-chapter task.

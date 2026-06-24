@@ -2541,6 +2541,10 @@ def translate_todo_next(
     md_path: Path | None = None
     if write:
         json_path, md_path = write_translation_todo(proj, todo)
+        # Verify the written file is loadable before printing success.
+        loaded = load_translation_todo(proj, todo.todo_id)
+        if loaded is None:
+            _die(f"internal error: wrote todo {todo.todo_id} but could not reload it")
 
     if as_json:
         payload: dict[str, object] = {

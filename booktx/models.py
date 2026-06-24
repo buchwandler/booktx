@@ -13,13 +13,7 @@ Both must round-trip through JSON with stable field names and ordering.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
-
-if TYPE_CHECKING:
-    # Avoid a circular import: status.py imports from models.py.
-    # The forward-ref "StatusTotals" on TranslationTodo is resolved via
-    # model_rebuild() after status is importable.
-    from booktx.status import StatusTotals
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -53,6 +47,7 @@ __all__ = [
     "TranslationIdentity",
     "TranslationTaskRecord",
     "TranslationTask",
+    "StatusTotals",
     "TranslationTodoChapter",
     "TranslationTodo",
     "NamesFile",
@@ -499,6 +494,34 @@ class TranslationTodoChapter(BaseModel):
     pending_chunk_ids: list[str] = Field(default_factory=list)
 
 
+class StatusTotals(BaseModel):
+    """Aggregate translation coverage totals.
+
+    Used by ``status --json`` and persisted in ``TranslationTodo.start_totals``.
+    Keep this model in ``models.py`` so durable todo validation never depends on
+    a late Pydantic forward-reference rebuild.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_words: int = 0
+    translated_words: int = 0
+    remaining_words: int = 0
+    records_total: int = 0
+    records_translated: int = 0
+    records_remaining: int = 0
+    chunks_total: int = 0
+    chunks_complete: int = 0
+    chunks_partial: int = 0
+    chunks_pending: int = 0
+    chapters_total: int = 0
+    chapters_complete: int = 0
+    chapters_partial: int = 0
+    chapters_pending: int = 0
+    invalid_translation_files: int = 0
+    stale_translation_files: int = 0
+
+
 class TranslationTodo(BaseModel):
     """A durable run-control artifact for a bounded multi-chapter agent run.
 
@@ -703,14 +726,3 @@ class Manifest(BaseModel):
     # Mapping of record id -> placeholder-preserving template location. For
     # markdown this is enough to rebuild; epub rebuilds walk spine docs.
     template: dict[str, Any] = Field(default_factory=dict)
-
-
-def _rebuild_translation_todo() -> None:
-    """Resolve the StatusTotals forward reference on TranslationTodo.
-
-    Must be called once before instantiating :class:`TranslationTodo`, by any
-    module that imports both ``booktx.models`` and ``booktx.status``.
-    """
-    from booktx.status import StatusTotals as _ST
-
-    TranslationTodo.model_rebuild(_types_namespace={"StatusTotals": _ST})

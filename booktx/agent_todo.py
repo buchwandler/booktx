@@ -5,13 +5,9 @@ This module builds and persists the durable run-control artifacts written by
 ingest files — that is the responsibility of ``booktx.tasks`` and the existing
 ``translate next`` command.
 
-Design note: ``TranslationTodo`` uses ``StatusTotals`` from
-:mod:`booktx.status` (a one-way import from status → models).
-``_rebuild_translation_todo`` must be called before instantiating
-``TranslationTodo`` if the pydantic forward reference has not yet been
-resolved.  In practice, by the time ``agent_todo`` is imported both
-``booktx.models`` and ``booktx.status`` are fully loaded, so the rebuild
-succeeds without a circular-import issue.
+Design note: ``TranslationTodo`` stores only durable run-control data. It must
+remain loadable in a fresh CLI process without command-specific import side
+effects.
 """
 
 from __future__ import annotations
@@ -24,7 +20,6 @@ from typing import TYPE_CHECKING
 from booktx.models import (
     TranslationTodo,
     TranslationTodoChapter,
-    _rebuild_translation_todo,
 )
 
 if TYPE_CHECKING:
@@ -41,11 +36,6 @@ __all__ = [
     "select_todo_chapters",
     "write_translation_todo",
 ]
-
-# Resolve the StatusTotals forward reference on TranslationTodo at import time.
-# By the time this module is imported, both models and status are fully loaded
-# (agent_todo depends on models; models does NOT depend on agent_todo).
-_rebuild_translation_todo()
 
 
 # ---------------------------------------------------------------------------

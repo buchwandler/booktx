@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import PydanticUserError, ValidationError
+
 from booktx.command_hints import (
     translate_todo_resume_command,
     validate_command,
@@ -125,6 +127,16 @@ def load_translation_todo(project: Project, todo_id: str) -> TranslationTodo | N
         return None
     try:
         return TranslationTodo.model_validate_json(path.read_text("utf-8"))
+    except PydanticUserError as exc:
+        raise _err(
+            "todo_model_init_failed",
+            f"internal todo model initialization failed for {todo_id}: {exc}",
+        ) from exc
+    except ValidationError as exc:
+        raise _err(
+            "invalid_todo",
+            f"todo file {todo_id} is invalid: {exc}",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         raise _err("invalid_todo", f"todo {todo_id} is invalid: {exc}") from exc
 
@@ -138,6 +150,16 @@ def list_translation_todos(project: Project) -> list[TranslationTodo]:
     for path in sorted(todo_dir.glob("*.json")):
         try:
             todos.append(TranslationTodo.model_validate_json(path.read_text("utf-8")))
+        except PydanticUserError as exc:
+            raise _err(
+                "todo_model_init_failed",
+                f"internal todo model initialization failed for {path.name}: {exc}",
+            ) from exc
+        except ValidationError as exc:
+            raise _err(
+                "invalid_todo",
+                f"todo file {path.name} is invalid: {exc}",
+            ) from exc
         except Exception as exc:  # noqa: BLE001
             raise _err(
                 "invalid_todo",

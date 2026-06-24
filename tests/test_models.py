@@ -495,3 +495,41 @@ def test_epub_template_data_roundtrip():
     assert dumped["pipeline"] == "epub2text+text2epub"
     assert dumped["spans"][0]["block_id"] == "spine-0001:block-000001"
     assert dumped["navigation"][0]["title"] == "Chapter One"
+
+
+def test_translation_todo_model_validates_without_rebuild_side_effects():
+    """Regression: TranslationTodo must validate without importing agent_todo."""
+    from booktx.models import TranslationTodo
+
+    payload = {
+        "version": 1,
+        "todo_id": "bt-todo-test",
+        "profile": "de_gpt5_5",
+        "target_language": "de",
+        "target_locale": "de-DE",
+        "chapters_requested": 1,
+        "batch_words": 800,
+        "created_at": "2026-06-24T10:16:39Z",
+        "start_totals": {
+            "source_words": 10,
+            "translated_words": 0,
+            "remaining_words": 10,
+            "records_total": 2,
+            "records_translated": 0,
+            "records_remaining": 2,
+            "chunks_total": 1,
+            "chunks_complete": 0,
+            "chunks_partial": 0,
+            "chunks_pending": 1,
+            "chapters_total": 1,
+            "chapters_complete": 0,
+            "chapters_partial": 0,
+            "chapters_pending": 1,
+            "invalid_translation_files": 0,
+            "stale_translation_files": 0,
+        },
+        "chapters": [],
+    }
+
+    todo = TranslationTodo.model_validate(payload)
+    assert todo.start_totals.records_total == 2

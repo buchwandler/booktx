@@ -45,7 +45,7 @@ from booktx.config import (
     load_translation_version_ledger,
     project_source_sha256,
 )
-from booktx.models import Chunk, TranslatedRecord
+from booktx.models import Chunk, StatusTotals, TranslatedRecord
 from booktx.progress import SourceRecordView, load_source_chunks, load_source_records
 from booktx.validate import (
     Severity,
@@ -148,27 +148,6 @@ class ContextStatus(BaseModel):
 
     exists: bool
     ready: bool
-
-
-class StatusTotals(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    source_words: int = 0
-    translated_words: int = 0
-    remaining_words: int = 0
-    records_total: int = 0
-    records_translated: int = 0
-    records_remaining: int = 0
-    chunks_total: int = 0
-    chunks_complete: int = 0
-    chunks_partial: int = 0
-    chunks_pending: int = 0
-    chapters_total: int = 0
-    chapters_complete: int = 0
-    chapters_partial: int = 0
-    chapters_pending: int = 0
-    invalid_translation_files: int = 0
-    stale_translation_files: int = 0
 
 
 class VersionCoverage(BaseModel):

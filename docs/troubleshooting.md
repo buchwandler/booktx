@@ -154,3 +154,21 @@ After `booktx profile migrate-current`, submissions belong under
 `translations/<profile>/ingest/`, never `.booktx/ingest/`. If a missing-file
 error hints at the profile-local ingest path, switch to that file. Re-running
 `booktx translate next` regenerates the correct ingest file.
+
+## `TranslationTodo` is not fully defined
+
+This indicates an internal booktx model initialization bug, not a translation
+error. The message looks like:
+
+```text
+`TranslationTodo` is not fully defined; you should define `StatusTotals`,
+then call `TranslationTodo.model_rebuild()`.
+```
+
+Do not edit todo JSON manually. Upgrade booktx or run the fixed version where
+`StatusTotals` is defined in `booktx.models` and `TranslationTodo` no longer
+requires a late Pydantic `model_rebuild()`.
+
+If you see `internal todo model initialization failed` instead, the error
+classifier detected a schema/program error rather than a data validation error.
+Report this as a booktx bug with the full error message.
