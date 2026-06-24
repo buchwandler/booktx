@@ -226,7 +226,8 @@ def test_validate_unsafe_drift_does_not_suggest_bare_render_write(tmp_path: Path
 def test_validate_ignores_crlf_vs_lf_drift(tmp_path: Path):
     proj_path = _drift_project(tmp_path)
     proj = load_project(proj_path)
-    md = context_markdown_path(proj).read_text("utf-8").replace("\n", "\r\n")
-    context_markdown_path(proj).write_text(md, encoding="utf-8")
+    raw = context_markdown_path(proj).read_bytes()
+    md = raw.decode("utf-8").replace("\n", "\r\n")
+    context_markdown_path(proj).write_bytes(md.encode("utf-8"))
     report = validate_project(proj)
     assert _drift_finding(report) is None

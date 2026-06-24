@@ -69,7 +69,7 @@ def test_task_paths_bundles_four_durable_files(tmp_path: Path):
 
 def test_project_relative_falls_back_to_absolute(tmp_path: Path):
     a = tmp_path / "a.txt"
-    assert project_relative(a, tmp_path / "other") == str(a)
+    assert project_relative(a, tmp_path / "other") == a.as_posix()
 
 
 def test_parse_json_submission_returns_submitted_records():
