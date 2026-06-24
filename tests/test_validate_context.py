@@ -227,7 +227,8 @@ def test_validate_ignores_crlf_vs_lf_drift(tmp_path: Path):
     proj_path = _drift_project(tmp_path)
     proj = load_project(proj_path)
     raw = context_markdown_path(proj).read_bytes()
-    md = raw.decode("utf-8").replace("\n", "\r\n")
+    md = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    md = md.replace("\n", "\r\n")
     context_markdown_path(proj).write_bytes(md.encode("utf-8"))
     report = validate_project(proj)
     assert _drift_finding(report) is None
