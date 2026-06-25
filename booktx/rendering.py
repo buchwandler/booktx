@@ -133,6 +133,8 @@ def _print_task_header(
     console.print(f"chapter: {task.chapter_id}  {task.chapter_title}".rstrip())
     console.print(f"unit: {task.unit}")
     console.print(f"records: {task.record_count}")
+    record_chunks = sorted({record.chunk_id for record in task.records})
+    console.print("record chunks: " + ", ".join(record_chunks))
     console.print(f"source words: {task.source_words}")
     if task.translation_version:
         console.print(f"translation version: {task.translation_version}")
@@ -200,6 +202,12 @@ def _render_block_output(
         markup=False,
     )
     console.print(f"View sources: {view_sources}", soft_wrap=True, markup=False)
+    console.print(
+        "Submit only the template you filled. The JSON template targets "
+        "are intentionally empty unless you choose JSON mode.",
+        soft_wrap=True,
+        markup=False,
+    )
     if show_template:
         console.print()
         console.print("Heredoc template (optional, for tiny manual fixes):")
@@ -312,6 +320,7 @@ def print_translate_task(
         "source_sha256": task.source_sha256,
         "source_words": task.source_words,
         "record_count": task.record_count,
+        "record_chunks": sorted({record.chunk_id for record in task.records}),
         "requested_max_words": task.requested_max_words,
         "todo_id": task.todo_id,
         "records": [record.model_dump(mode="json") for record in task.records],

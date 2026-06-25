@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pydantic import PydanticUserError, ValidationError
 
 from booktx.command_hints import (
+    profile_option_fragment,
     translate_todo_resume_command,
     validate_command,
 )
@@ -20,6 +22,9 @@ from booktx.models import TranslationTodo
 from booktx.status import StatusBundle
 from booktx.validate import ValidationReport
 from booktx.versioning import resolve_current_version
+
+if TYPE_CHECKING:
+    from booktx.runtime import RuntimeMode
 
 __all__ = [
     "TodoChapterStatus",
@@ -169,9 +174,12 @@ def list_translation_todos(project: Project) -> list[TranslationTodo]:
     return todos
 
 
-def _recreate_todo_command(project: Project, todo: TranslationTodo) -> str:
+def _recreate_todo_command(
+    project: Project, todo: TranslationTodo, *, mode: RuntimeMode | None = None
+) -> str:
+    profile = profile_option_fragment(project, mode)
     return (
-        f"booktx translate todo-next . --profile {todo.profile}"
+        f"booktx translate todo-next .{profile}"
         f" --chapters {todo.chapters_requested}"
         f" --batch-words {todo.batch_words} --write"
     )
@@ -231,6 +239,7 @@ def build_todo_status(
     todo: TranslationTodo,
     bundle: StatusBundle,
     *,
+    mode: RuntimeMode | None = None,
     validation_report: ValidationReport | None = None,
     fail_on_warnings: bool = True,
 ) -> TodoStatusSnapshot:
@@ -271,14 +280,15 @@ def build_todo_status(
     elif context_drifted:
         state = "blocked"
         blocking_reason = "context changed since the todo was created"
-        next_safe_command = _recreate_todo_command(project, todo)
+        next_safe_command = _recreate_todo_command(project, todo, mode=mode)
     elif validation.blocking:
         state = "blocked"
         blocking_reason = "validation findings must be resolved before resuming"
-        next_safe_command = validate_command(project, fail_on_warnings=True)
+        next_safe_command = validate_command(project, mode=mode, fail_on_warnings=True)
     elif current is not None:
         next_safe_command = translate_todo_resume_command(
             project,
+            mode=mode,
             todo_id=todo.todo_id,
             output_format="block",
         )

@@ -342,3 +342,123 @@ def test_profile_root_mode_does_not_leak_sibling_profile_translations(
     assert "LEAK-CHECK" not in list_res.output
     assert "fr_default" not in next_res.output
     assert "fr_default" not in list_res.output
+
+
+def test_todo_next_from_profile_root_keeps_paths_and_commands_local(
+    monkeypatch, tmp_path: Path
+):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            ".",
+            "--chapters",
+            "1",
+            "--batch-words",
+            "20",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "markdown: todos/" in res.output
+    assert "json: todos/" in res.output
+    assert "--profile" not in res.output
+    assert "translations/" not in res.output
+    assert str(project_dir) not in res.output
+    assert "../" not in res.output
+
+    todo_md = next((profile_root / "todos").glob("*.md"))
+    text = todo_md.read_text("utf-8")
+    assert "booktx translate todo-status . --todo-id" in text
+    assert "booktx translate todo-resume . --todo-id" in text
+    assert "--profile" not in text
+    assert "translations/" not in text
+    assert str(project_dir) not in text
+    assert "../" not in text
+
+
+def test_todo_resume_from_profile_root_writes_local_task_and_submit_hints(
+    monkeypatch, tmp_path: Path
+):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+
+    create = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            ".",
+            "--chapters",
+            "1",
+            "--batch-words",
+            "20",
+            "--write",
+            "--json",
+        ],
+    )
+    assert create.exit_code == 0, create.output
+    todo_id = json.loads(create.output)["todo_id"]
+
+    resume = runner.invoke(
+        app,
+        ["translate", "todo-resume", ".", "--todo-id", todo_id, "--format", "block"],
+    )
+    assert resume.exit_code == 0, resume.output
+    assert "Source file: tasks/" in resume.output
+    assert "Durable block template: ingest/" in resume.output
+    assert (
+        "Submit durable file with: booktx translate insert . --task-id" in resume.output
+    )
+    assert " --file ingest/" in resume.output
+    assert "--profile" not in resume.output
+    assert "translations/" not in resume.output
+    assert str(project_dir) not in resume.output
+    assert "../" not in resume.output
+
+    block = next((profile_root / "ingest").glob("*.block.txt"))
+    text = block.read_text("utf-8")
+    assert "# source: tasks/" in text
+    assert "# submit: booktx translate insert . --task-id" in text
+    assert " --file ingest/" in text
+    assert "--profile" not in text
+    assert "translations/" not in text
+    assert str(project_dir) not in text
+    assert "../" not in text
+
+
+def test_todo_status_from_profile_root_uses_local_next_command(
+    monkeypatch, tmp_path: Path
+):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+
+    create = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            ".",
+            "--chapters",
+            "1",
+            "--batch-words",
+            "20",
+            "--write",
+            "--json",
+        ],
+    )
+    assert create.exit_code == 0, create.output
+    todo_id = json.loads(create.output)["todo_id"]
+
+    status = runner.invoke(app, ["translate", "todo-status", ".", "--todo-id", todo_id])
+    assert status.exit_code == 0, status.output
+    assert "next: booktx translate todo-resume . --todo-id" in status.output
+    assert "--profile" not in status.output
+    assert "translations/" not in status.output
+    assert str(project_dir) not in status.output
+    assert "../" not in status.output

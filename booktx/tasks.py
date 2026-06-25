@@ -250,11 +250,15 @@ def write_block_ingest_template(
         if task.context_view_path
         else ""
     )
+    record_chunks = sorted({record.chunk_id for record in task.records})
     headers = [
         "# booktx block submission",
         f"# profile: {task.profile or 'none'}",
         f"# target: {task.target_locale or task.target_language}",
         f"# task: {task.task_id}",
+        f"# chapter: {task.chapter_id} {task.chapter_title}".rstrip(),
+        f"# record_chunks: {', '.join(record_chunks)}",
+        "# note: record ids are chunk-based; record id prefixes may differ from chapter ids",
         f"# translation_version: {task.translation_version or 'none'}",
         f"# baseline: {task.baseline_ref or task.translation_version or 'none'}",
         f"# baseline_sha256: {task.baseline_sha256 or ''}",
@@ -268,6 +272,7 @@ def write_block_ingest_template(
         f"# source_sha256: {task.source_sha256 or ''}",
         f"# source: {source_display}",
         f"# submit: {submit_hint}",
+        "# note: submit only this block file; the JSON template targets stay empty unless you use JSON mode",
         "",
     ]
     parts = [f">>> {record.id}" for record in task.records]

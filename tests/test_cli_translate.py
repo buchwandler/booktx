@@ -1557,6 +1557,159 @@ def test_translate_insert_rejects_missing_inline_tag_for_epub_record(
             str(ingest_path),
         ],
     )
-    # Pre-write enforcement: insert should reject before writing the store.
+    # Pre-write enforcement: insert should reject before writing the store,
+    # never accepting the broken target.
     assert insert_res.exit_code != 0
     assert "inline_xhtml_preserved" in insert_res.output
+    assert "accepted:" not in insert_res.output
+    from booktx.config import load_translation_store
+
+    store = load_translation_store(load_project(proj.root))
+    assert all(
+        candidate.target != "Hallo Welt."
+        for stored in store.records.values()
+        for candidate in stored.versions
+    )
+
+
+def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
+    tmp_path: Path,
+):
+    # ac-0002: submitting a new record in an already-partial chunk must not
+    # crash the EPUB inline-XHTML preflight staging with a Pydantic
+    # ValidationError (SubmittedRecord mixed into TranslatedChunk).
+    from ebooklib import epub
+
+    from booktx.config import find_source_file, init_project
+
+    proj = init_project(tmp_path / "book", target_language="de")
+    book = epub.EpubBook()
+    book.set_identifier("test")
+    book.set_title("T")
+    book.set_language("en")
+    ch1 = epub.EpubHtml(title="C1", file_name="ch1.xhtml", lang="en")
+    ch1.content = (
+        '<html xmlns="http://www.w3.org/1999/xhtml">'
+        "<head><title>C1</title></head><body>"
+        "<p>Alpha sentence one.</p>"
+        "<p>Beta sentence two.</p>"
+        "<p>Gamma sentence three.</p>"
+        "</body></html>"
+    )
+    book.add_item(ch1)
+    book.spine = ["nav", ch1]
+    book.add_item(epub.EpubNav())
+    book.add_item(epub.EpubNcx())
+    book.toc = (ch1,)
+    epub.write_epub(str(proj.source_dir / "book.epub"), book, {})
+
+    find_source_file(proj)
+    assert runner.invoke(app, ["extract", str(proj.root)]).exit_code == 0
+    runner.invoke(app, ["context", "init", str(proj.root), "--non-interactive"])
+    runner.invoke(
+        app,
+        ["context", "mark-ready", str(proj.root), "--force", "--reason", "test"],
+    )
+
+    # The EPUB fixture deterministically produces >=2 records in one chunk.
+    first = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(proj.root),
+            "--unit",
+            "batch",
+            "--max-words",
+            "1",
+            "--json",
+        ],
+    )
+    assert first.exit_code == 0, first.output
+    first_task = json.loads(first.output)
+    first_record = first_task["records"][0]
+    first_chunk = first_record["chunk_id"]
+
+    # Accept the early record so effective.chunks[first_chunk] exists but is
+    # partial (only the first record is accepted).
+    first_ingest = proj.profile_dir / "ingest" / f"{first_task['task_id']}.json"
+    first_ingest.parent.mkdir(parents=True, exist_ok=True)
+    first_ingest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "profile": proj.profile,
+                "task_id": first_task["task_id"],
+                "translation_version": first_task.get("translation_version"),
+                "records": [{"id": first_record["id"], "target": "Alpha Satz eins."}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    first_insert = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(proj.root),
+            "--task-id",
+            first_task["task_id"],
+            "--json-file",
+            str(first_ingest),
+        ],
+    )
+    assert first_insert.exit_code == 0, first_insert.output
+
+    # Now request the next task: a later record in the same chunk that is not
+    # yet present in the effective (partial) chunk.
+    second = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(proj.root),
+            "--unit",
+            "batch",
+            "--max-words",
+            "1",
+            "--json",
+        ],
+    )
+    assert second.exit_code == 0, second.output
+    later = json.loads(second.output)
+    later_record = later["records"][0]
+    assert later_record["chunk_id"] == first_chunk
+    assert later_record["id"] != first_record["id"]
+
+    # Submit a later record in the already-partial chunk. The old bug crashed
+    # here with a Pydantic ValidationError for TranslatedChunk.
+    second_ingest = proj.profile_dir / "ingest" / f"{later['task_id']}.json"
+    second_ingest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "profile": proj.profile,
+                "task_id": later["task_id"],
+                "translation_version": later.get("translation_version"),
+                "records": [{"id": later_record["id"], "target": "Beta Satz zwei."}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    second_insert = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(proj.root),
+            "--task-id",
+            later["task_id"],
+            "--json-file",
+            str(second_ingest),
+        ],
+    )
+
+    assert "ValidationError" not in second_insert.output
+    assert "TranslatedChunk" not in second_insert.output
+    assert "SubmittedRecord" not in second_insert.output
+    assert second_insert.exit_code == 0, second_insert.output

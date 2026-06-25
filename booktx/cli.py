@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -2943,7 +2944,9 @@ def translate_next(
             console.print(f"batch words: {todo.batch_words}")
             from booktx.todo_resume import resume_translation_todo
 
-            task = resume_translation_todo(proj, summary, todo_id=todo.todo_id)
+            task = resume_translation_todo(
+                proj, summary, mode=runtime.mode, todo_id=todo.todo_id
+            )
             _print_translate_task(
                 task,
                 proj,
@@ -3050,7 +3053,19 @@ def translate_insert(
     # Pre-write EPUB inline-XHTML check (Q2=a).
     # Stage submitted records and run the preflight BEFORE writing the store.
     submitted_ids = {r.id for r in submitted_records}
-    _staged_preflight_check(proj, submitted_records, submitted_ids)
+    try:
+        _staged_preflight_check(proj, submitted_records, submitted_ids)
+    except ValidationError as exc:
+        console.print(
+            "[red]error:[/red] internal preflight staging failed while "
+            "validating submitted EPUB inline XHTML"
+        )
+        console.print(
+            "hint: retry after updating booktx; the staged EPUB model could "
+            "not be built. Run with debug output if available for traceback details."
+        )
+        console.print(f"detail: {exc}")
+        raise typer.Exit(code=1) from None
     try:
         result = accept_translation_records(
             proj,
@@ -3221,7 +3236,8 @@ def translate_todo_next(
     """
     from booktx.agent_todo import build_translation_todo, write_translation_todo
 
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
     _require_chunks(proj)
     _require_no_source_drift(proj)
     _require_ready_context(proj)
@@ -3243,7 +3259,7 @@ def translate_todo_next(
     json_path: Path | None = None
     md_path: Path | None = None
     if write:
-        json_path, md_path = write_translation_todo(proj, todo)
+        json_path, md_path = write_translation_todo(proj, todo, mode=runtime.mode)
         # Verify the written file is loadable before printing success.
         loaded = load_translation_todo(proj, todo.todo_id)
         if loaded is None:
@@ -3280,9 +3296,9 @@ def translate_todo_next(
             ],
         }
         if json_path is not None:
-            payload["json_path"] = str(json_path.relative_to(proj.root))
+            payload["json_path"] = display_path(json_path, runtime.mode)
         if md_path is not None:
-            payload["markdown_path"] = str(md_path.relative_to(proj.root))
+            payload["markdown_path"] = display_path(md_path, runtime.mode)
         console.print_json(json.dumps(payload, ensure_ascii=False))
         return
 
@@ -3300,18 +3316,19 @@ def translate_todo_next(
     console.print("chapters: " + ", ".join(c.chapter_id for c in todo.chapters))
     if md_path is not None:
         console.print(
-            f"markdown: {md_path.relative_to(proj.root).as_posix()}",
+            f"markdown: {display_path(md_path, runtime.mode)}",
             soft_wrap=True,
             markup=False,
         )
     if json_path is not None:
         console.print(
-            f"json: {json_path.relative_to(proj.root).as_posix()}",
+            f"json: {display_path(json_path, runtime.mode)}",
             soft_wrap=True,
             markup=False,
         )
     console.print(
-        "next command: " + translate_todo_status_command(proj, todo_id=todo.todo_id),
+        "next command: "
+        + translate_todo_status_command(proj, mode=runtime.mode, todo_id=todo.todo_id),
         soft_wrap=True,
         markup=False,
     )
@@ -3319,6 +3336,7 @@ def translate_todo_next(
         "resume command: "
         + translate_todo_resume_command(
             proj,
+            mode=runtime.mode,
             todo_id=todo.todo_id,
             output_format="block",
         ),
@@ -3384,7 +3402,8 @@ def translate_todo_status(
     as_json: bool = typer.Option(False, "--json", help="Emit stable JSON output."),
 ) -> None:
     """Show live bounded-run todo status and the next safe command."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
     _require_chunks(proj)
     bundle = _project_status_snapshot(proj)
     try:
@@ -3393,6 +3412,7 @@ def translate_todo_status(
             proj,
             todo,
             bundle,
+            mode=runtime.mode,
             validation_report=validate_project(proj),
             fail_on_warnings=True,
         )
@@ -3433,7 +3453,8 @@ def translate_todo_resume(
     ),
 ) -> None:
     """Resume a bounded multi-chapter todo and create the next safe task."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
     if output_format not in {"text", "tsv", "block"}:
         _die("--format must be text, tsv, or block")
     if as_json and output_format != "text":
@@ -3441,13 +3462,16 @@ def translate_todo_resume(
     _require_chunks(proj)
     bundle = _project_status_snapshot(proj)
     try:
-        task = resume_translation_todo(proj, bundle, todo_id=todo_id, latest=latest)
+        task = resume_translation_todo(
+            proj, bundle, mode=runtime.mode, todo_id=todo_id, latest=latest
+        )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
     _print_translate_task(
         task,
         proj,
+        mode=runtime.mode,
         as_json=as_json,
         output_format=output_format,
         show_sources=show_sources,
@@ -4270,6 +4294,7 @@ def _staged_preflight_check(proj, submitted_records, submitted_ids: set[str]) ->
     from booktx.progress import load_source_chunks
 
     source_chunks = {c.chunk_id: c for c in load_source_chunks(proj)}
+    submitted_by_id = {record.id: record for record in submitted_records}
     staged_chunks: dict[str, TranslatedChunk] = {}
     for chunk_id, source_chunk in source_chunks.items():
         existing = effective.chunks.get(chunk_id)
@@ -4277,9 +4302,7 @@ def _staged_preflight_check(proj, submitted_records, submitted_ids: set[str]) ->
         if existing is not None:
             for rec in existing.records:
                 if rec.id in submitted_ids:
-                    submitted = next(
-                        (r for r in submitted_records if r.id == rec.id), None
-                    )
+                    submitted = submitted_by_id.get(rec.id)
                     if submitted is not None:
                         staged_records.append(
                             TranslatedRecord(id=submitted.id, target=submitted.target)

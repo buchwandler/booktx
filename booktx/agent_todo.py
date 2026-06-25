@@ -21,9 +21,11 @@ from booktx.models import (
     TranslationTodo,
     TranslationTodoChapter,
 )
+from booktx.path_display import display_path
 
 if TYPE_CHECKING:
     from booktx.config import Project
+    from booktx.runtime import RuntimeMode
     from booktx.status import (
         ChapterProgress,
         StatusBundle,
@@ -203,7 +205,9 @@ def build_translation_todo(
 # ---------------------------------------------------------------------------
 
 
-def render_translation_todo_markdown(todo: TranslationTodo, project: Project) -> str:
+def render_translation_todo_markdown(
+    todo: TranslationTodo, project: Project, *, mode: RuntimeMode | None = None
+) -> str:
     """Render the human-readable todo markdown.
 
     The output is the durable loop instruction file an agent reads before
@@ -231,13 +235,18 @@ def render_translation_todo_markdown(todo: TranslationTodo, project: Project) ->
     lines.append(f"Advisory run budget: {max_run_label} source words")
     lines.append(f"Profile: {todo.profile}")
     if project.context_md_path is not None:
-        lines.append(f"Context: {project.context_md_path.relative_to(project.root)}")
+        context_path = (
+            display_path(project.context_md_path, mode)
+            if mode is not None
+            else project.context_md_path.relative_to(project.root)
+        )
+        lines.append(f"Context: {context_path}")
     lines.append("")
 
     # Stop conditions
     lines.append("## Stop immediately if")
     lines.append("")
-    strict_validate = validate_command(project, fail_on_warnings=True)
+    strict_validate = validate_command(project, mode=mode, fail_on_warnings=True)
     lines.append(f"- `{strict_validate}` reports errors or warnings.")
     lines.append("- `booktx translate insert` rejects the submission.")
     lines.append("- `booktx status` reports source drift or context not ready.")
@@ -262,6 +271,7 @@ def render_translation_todo_markdown(todo: TranslationTodo, project: Project) ->
         "   "
         + translate_todo_status_command(
             project,
+            mode=mode,
             todo_id=todo.todo_id,
         )
     )
@@ -274,6 +284,7 @@ def render_translation_todo_markdown(todo: TranslationTodo, project: Project) ->
     lines.append("   ```bash")
     next_cmd = translate_todo_resume_command(
         project,
+        mode=mode,
         todo_id=todo.todo_id,
         output_format="block",
     )
@@ -289,7 +300,7 @@ def render_translation_todo_markdown(todo: TranslationTodo, project: Project) ->
     lines.append("7. Validate:")
     lines.append("")
     lines.append("   ```bash")
-    lines.append(f"   {validate_command(project, fail_on_warnings=True)}")
+    lines.append(f"   {validate_command(project, mode=mode, fail_on_warnings=True)}")
     lines.append("   ```")
     lines.append("")
     lines.append("8. Continue the loop unless a stop condition applies.")
@@ -320,7 +331,10 @@ def render_translation_todo_markdown(todo: TranslationTodo, project: Project) ->
 
 
 def write_translation_todo(
-    project: Project, todo: TranslationTodo
+    project: Project,
+    todo: TranslationTodo,
+    *,
+    mode: RuntimeMode | None = None,
 ) -> tuple[Path, Path]:
     """Persist both the JSON and Markdown todo files atomically.
 
@@ -340,6 +354,8 @@ def write_translation_todo(
     md_path = translation_todo_markdown_path(project, todo.todo_id)
 
     write_json_model_atomic(json_path, todo)
-    write_text_atomic(md_path, render_translation_todo_markdown(todo, project))
+    write_text_atomic(
+        md_path, render_translation_todo_markdown(todo, project, mode=mode)
+    )
 
     return json_path, md_path

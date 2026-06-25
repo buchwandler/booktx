@@ -55,9 +55,20 @@ booktx source status .
 booktx context status .
 booktx translate next . --unit batch --max-words 800 --format block
 booktx translate insert . --task-id TASK --file ingest/TASK.block.txt --format block
+booktx translate todo-next . --chapters 3 --batch-words 800 --write
+booktx translate todo-status . --todo-id TODO
+booktx translate todo-resume . --todo-id TODO --format block
 booktx validate .
 booktx build .
 ```
+
+The todo commands (`todo-next`, `todo-status`, `todo-resume`) are runtime-aware: in
+profile-root mode they omit `--profile`, use profile-local paths (`todos/`,
+`ingest/`, `tasks/`, `context.md`), and never print `translations/`, absolute
+project paths, or `../`. Their generated todo markdown and block ingest templates
+follow the same rule. A `translate insert` EPUB inline-XHTML preflight staging
+failure is reported as a compact `error:`/`hint:` message, never a raw Pydantic
+traceback.
 
 ## First commands in any existing project
 
@@ -168,6 +179,12 @@ In block files:
 - Do not add commentary outside target text.
 - Do not edit `tasks/TASK.source.block.txt` as the submission.
 
+The block template header records the task chapter and the chunk ids its records
+belong to (for example `# chapter: 0002 Contents` and `# record_chunks: 0001`).
+Record ids are chunk-based, so a task whose target is chapter `0002` can contain
+record ids prefixed with `0001` when that chapter starts inside source chunk
+`0001`. This is expected, not a bug.
+
 Submit:
 
 ```bash
@@ -271,6 +288,10 @@ booktx translate todo-next . --profile PROFILE --chapters 3 --batch-words 800 --
 booktx translate todo-status . --profile PROFILE --latest
 booktx translate todo-resume . --profile PROFILE --latest --format block
 ```
+
+In isolated profile-root mode, drop `--profile` from all three and run them with
+project argument `.` from inside `translations/<profile>/`; the written todo
+markdown and resume hints then use local paths only.
 
 ## Single large chapters
 

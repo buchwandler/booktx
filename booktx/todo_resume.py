@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from booktx.command_hints import (
     translate_todo_resume_command,
     validate_command,
@@ -17,6 +19,9 @@ from booktx.todo_status import (
     load_translation_todo,
 )
 from booktx.validate import validate_project
+
+if TYPE_CHECKING:
+    from booktx.runtime import RuntimeMode
 
 __all__ = [
     "ensure_single_chapter_todo",
@@ -53,6 +58,7 @@ def resume_translation_todo(
     project: Project,
     bundle: StatusBundle,
     *,
+    mode: RuntimeMode | None = None,
     todo_id: str | None = None,
     latest: bool = False,
 ) -> TranslationTask:
@@ -71,6 +77,7 @@ def resume_translation_todo(
         project,
         todo,
         bundle,
+        mode=mode,
         validation_report=report,
         fail_on_warnings=True,
     )
@@ -140,6 +147,7 @@ def resume_translation_todo(
         project,
         bundle,
         selected_chapter,
+        mode=mode,
         unit=actual_unit,
         record_ids=record_ids,
         requested_max_words=todo.batch_words,
