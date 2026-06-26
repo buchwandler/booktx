@@ -232,3 +232,156 @@ def test_validate_ignores_crlf_vs_lf_drift(tmp_path: Path):
     context_markdown_path(proj).write_bytes(md.encode("utf-8"))
     report = validate_project(proj)
     assert _drift_finding(report) is None
+
+
+# --- whole-term forbidden matching -----------------------------------------
+
+
+def test_forbidden_target_does_not_match_substring_inside_word(tmp_path: Path):
+    """Forbidden 'Reich' must not match 'zahlreiche'."""
+    proj_path = _write_project(tmp_path, target="zahlreiche Siege")
+    proj = load_project(proj_path)
+    from booktx.context import TranslationContext
+
+    ctx = TranslationContext(
+        source_language="en",
+        target_language="de",
+        glossary=[
+            {
+                "source": "Lowlands",
+                "target": None,
+                "forbidden_targets": ["Reich"],
+                "enforce": "error",
+                "category": "term",
+                "status": "approved",
+                "notes": "",
+                "examples": [],
+                "case_sensitive": False,
+            }
+        ],
+    )
+    from booktx.context import write_context
+
+    write_context(proj, ctx)
+    report = validate_project(proj)
+    assert report.passed
+
+
+def test_forbidden_target_matches_standalone_word_with_punctuation(tmp_path: Path):
+    """Forbidden 'Reich' must match 'das Reich' and '(Reich)'."""
+    proj_path = _write_project(tmp_path, target="das Reich")
+    proj = load_project(proj_path)
+    from booktx.context import TranslationContext
+
+    ctx = TranslationContext(
+        source_language="en",
+        target_language="de",
+        glossary=[
+            {
+                "source": "Lowlands",
+                "target": None,
+                "forbidden_targets": ["Reich"],
+                "enforce": "error",
+                "category": "term",
+                "status": "approved",
+                "notes": "",
+                "examples": [],
+                "case_sensitive": False,
+            }
+        ],
+    )
+    from booktx.context import write_context
+
+    write_context(proj, ctx)
+    report = validate_project(proj)
+    assert not report.passed
+
+
+def test_forbidden_target_case_insensitive_whole_word(tmp_path: Path):
+    """Case-insensitive 'reich' must match 'REICH' standalone."""
+    proj_path = _write_project(tmp_path, target="REICH")
+    proj = load_project(proj_path)
+    from booktx.context import TranslationContext
+
+    ctx = TranslationContext(
+        source_language="en",
+        target_language="de",
+        glossary=[
+            {
+                "source": "Lowlands",
+                "target": None,
+                "forbidden_targets": ["reich"],
+                "enforce": "error",
+                "category": "term",
+                "status": "approved",
+                "notes": "",
+                "examples": [],
+                "case_sensitive": False,
+            }
+        ],
+    )
+    from booktx.context import write_context
+
+    write_context(proj, ctx)
+    report = validate_project(proj)
+    assert not report.passed
+
+
+def test_source_term_gate_uses_whole_term_not_substring(tmp_path: Path):
+    """Source-term gate must not match 'Lowlands' inside 'LowlandsRegion'."""
+    proj_path = _write_project(tmp_path, target="die Niederlande")
+    proj = load_project(proj_path)
+    # Change the source text so the term is a substring.
+    proj = load_project(proj_path)
+    chunk = Chunk(
+        chunk_id="0001",
+        source_language="en",
+        target_language="de",
+        records=[Record(id="0001-000001", source="The LowlandsRegion is safe.")],
+    )
+    (proj.chunks_dir / "0001.json").write_text(
+        chunk.model_dump_json(), encoding="utf-8"
+    )
+    _write_context(proj_path, enforce="error")
+    report = validate_project(proj)
+    # The source term 'Lowlands' should not match 'LowlandsRegion'.
+    assert report.passed
+    assert "forbidden_term_used" not in {f.rule for f in report.findings}
+
+
+def test_forbidden_phrase_matches_with_word_boundaries(tmp_path: Path):
+    """Multi-word forbidden phrase matches with word boundaries."""
+    proj_path = _write_project(tmp_path, target="die Wasp Empire")
+    proj = load_project(proj_path)
+    from booktx.context import TranslationContext
+
+    ctx = TranslationContext(
+        source_language="en",
+        target_language="de",
+        glossary=[
+            {
+                "source": "Lowlands",
+                "target": None,
+                "forbidden_targets": ["Wasp Empire"],
+                "enforce": "error",
+                "category": "term",
+                "status": "approved",
+                "notes": "",
+                "examples": [],
+                "case_sensitive": False,
+            }
+        ],
+    )
+    from booktx.context import write_context
+
+    write_context(proj, ctx)
+    report = validate_project(proj)
+    assert not report.passed
+
+
+def test_forbidden_empty_term_returns_no_match(tmp_path: Path):
+    """Empty forbidden term should never match."""
+    from booktx.validate import _contains_term
+
+    assert not _contains_term("any text", "", case_sensitive=False)
+    assert not _contains_term("", "Reich", case_sensitive=False)

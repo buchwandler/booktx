@@ -1048,7 +1048,24 @@ def profile_list_cmd(
     as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
-    _reject_if_isolated(runtime)
+    if runtime.mode.isolated_output:
+        profile_name = runtime.mode.profile_name or ""
+        payload = {
+            "isolated": True,
+            "profiles": [
+                {
+                    "profile": profile_name,
+                }
+            ],
+        }
+        if as_json:
+            console.print_json(json.dumps(payload, ensure_ascii=False))
+            return
+        console.print(
+            "isolated mode: showing current profile only; run from project root for all profiles"
+        )
+        console.print(f"  * {profile_name}")
+        return
     project = load_source_project(runtime.project.root)
     overview = build_profiles_overview(project)
     if as_json:
@@ -1081,12 +1098,23 @@ def profile_show_cmd(
     as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
-    _reject_if_isolated(runtime)
+    if runtime.mode.isolated_output:
+        current = runtime.mode.profile_name or ""
+        # In profile-root mode, "." means the current profile; reject others.
+        if profile_name != "." and profile_name != current:
+            _die(
+                f"profile {profile_name!r} is not accessible in isolated mode; "
+                "only the current profile is available"
+            )
+        profile_name = current
     try:
         payload = _profile_detail_payload(runtime.project.root, profile_name)
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
+    if runtime.mode.isolated_output:
+        # Sanitize paths for isolated output.
+        payload["path"] = "."
     if as_json:
         console.print_json(json.dumps(payload, ensure_ascii=False))
         return
@@ -1254,6 +1282,41 @@ def profile_create_pass_through_cmd(
     console.print(f"created pass-through profile: {project.profile}")
     if select:
         console.print(f"selected active profile: {project.profile}")
+
+
+# --- context helpers (glossary) ----------------------------------------------
+
+
+def _dedupe_nonempty(values: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in values or []:
+        value = raw.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _term_equal(a: str, b: str, *, case_sensitive: bool) -> bool:
+    return a == b if case_sensitive else a.casefold() == b.casefold()
+
+
+def _clean_forbidden_targets(
+    values: list[str],
+    *,
+    approved_target: str | None,
+    case_sensitive: bool,
+) -> list[str]:
+    cleaned = _dedupe_nonempty(values)
+    if approved_target:
+        cleaned = [
+            value
+            for value in cleaned
+            if not _term_equal(value, approved_target, case_sensitive=case_sensitive)
+        ]
+    return cleaned
 
 
 # --- context -----------------------------------------------------------------
@@ -1828,51 +1891,219 @@ def context_add_term(
     source: str = typer.Argument(..., help="Source term."),
     target: str | None = typer.Option(None, "--target", help="Approved target term."),
     forbid: list[str] | None = typer.Option(
-        None, "--forbid", help="Forbidden target term (repeatable)."
+        None,
+        "--forbid",
+        help="Replace the full forbidden-target list with these values. Repeatable.",
     ),
-    category: str = typer.Option("term", "--category", help="Glossary category."),
-    notes: str = typer.Option("", "--notes", help="Glossary notes."),
-    enforce: str = typer.Option(
-        "warn", "--enforce", help="Enforcement: off, warn, or error."
+    append_forbid: list[str] | None = typer.Option(
+        None, "--append-forbid", help="Append forbidden targets explicitly. Repeatable."
+    ),
+    clear_forbidden: bool = typer.Option(
+        False, "--clear-forbidden", help="Clear all forbidden targets."
+    ),
+    category: str | None = typer.Option(None, "--category", help="Glossary category."),
+    notes: str | None = typer.Option(None, "--notes", help="Glossary notes."),
+    enforce: str | None = typer.Option(
+        None, "--enforce", help="Enforcement: off, warn, or error."
     ),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
 ) -> None:
-    """Add or update a glossary entry."""
-    if enforce not in {"off", "warn", "error"}:
+    """Add or update a glossary entry.
+
+    --forbid replaces the full forbidden-target list. Use --append-forbid
+    to add entries without removing existing ones.
+    """
+    # Conflict detection.
+    forbid_supplied = forbid is not None
+    append_supplied = append_forbid is not None
+    if forbid_supplied and append_supplied:
+        _die("--forbid and --append-forbid are mutually exclusive")
+    if clear_forbidden and (forbid_supplied or append_supplied):
+        _die("--clear-forbidden conflicts with --forbid and --append-forbid")
+    if enforce is not None and enforce not in {"off", "warn", "error"}:
         _die("--enforce must be off, warn, or error")
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     ctx = _load_context_or_exit(proj)
-    forbidden = forbid or []
+    # Determine if this is an update to an existing entry.
+    existing: GlossaryEntry | None = None
     for entry in ctx.glossary:
         if entry.source == source:
-            if target is not None:
-                entry.target = target
-                entry.status = "approved" if target else entry.status
-            for value in forbidden:
-                if value not in entry.forbidden_targets:
-                    entry.forbidden_targets.append(value)
-            entry.category = category or entry.category
-            entry.notes = notes or entry.notes
-            entry.enforce = enforce  # type: ignore[assignment]
+            existing = entry
             break
+    if existing is not None:
+        # Update path.
+        if target is not None:
+            existing.target = target
+            existing.status = "approved" if target else existing.status
+        # Forbidden target handling.
+        if clear_forbidden:
+            # Prune only: remove anything that equals the approved target.
+            existing.forbidden_targets = _clean_forbidden_targets(
+                [],
+                approved_target=existing.target,
+                case_sensitive=existing.case_sensitive,
+            )
+        elif forbid_supplied:
+            existing.forbidden_targets = _clean_forbidden_targets(
+                forbid or [],
+                approved_target=existing.target,
+                case_sensitive=existing.case_sensitive,
+            )
+        elif append_supplied:
+            combined = list(existing.forbidden_targets) + (append_forbid or [])
+            existing.forbidden_targets = _clean_forbidden_targets(
+                combined,
+                approved_target=existing.target,
+                case_sensitive=existing.case_sensitive,
+            )
+        # Preserve existing fields unless explicitly changed.
+        if category is not None:
+            existing.category = category
+        if notes is not None:
+            existing.notes = notes
+        if enforce is not None:
+            existing.enforce = enforce  # type: ignore[assignment]
     else:
+        # New entry path.
+        applied_category = category if category is not None else "term"
+        applied_enforce = enforce if enforce is not None else "warn"
+        applied_notes = notes if notes is not None else ""
+        # Compute forbidden list.
+        if clear_forbidden:
+            raw_forbidden: list[str] = []
+        elif forbid_supplied:
+            raw_forbidden = forbid or []
+        elif append_supplied:
+            raw_forbidden = append_forbid or []
+        else:
+            raw_forbidden = []
+        cleaned_forbidden = _clean_forbidden_targets(
+            raw_forbidden,
+            approved_target=target,
+            case_sensitive=False,  # new entries always case-insensitive
+        )
         ctx.glossary.append(
             GlossaryEntry(
                 source=source,
                 target=target,
-                forbidden_targets=forbidden,
-                category=category,
+                forbidden_targets=cleaned_forbidden,
+                category=applied_category,
                 status="approved" if target else "open",
-                notes=notes,
-                enforce=enforce,  # type: ignore[arg-type]
+                notes=applied_notes,
+                enforce=applied_enforce,  # type: ignore[arg-type]
             )
         )
     _guard_md_safe_or_die(proj, ctx)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
     console.print(f"updated term: {source}")
+
+
+@context_app.command(name="remove-term")
+def context_remove_term(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    source: str = typer.Argument(..., help="Source term to remove."),
+    missing_ok: bool = typer.Option(
+        False, "--missing-ok", help="Exit zero when the term is absent."
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+) -> None:
+    """Delete a glossary entry by source term."""
+    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    ctx = _load_context_or_exit(proj)
+    before = len(ctx.glossary)
+    ctx.glossary = [entry for entry in ctx.glossary if entry.source != source]
+    after = len(ctx.glossary)
+    removed = before - after
+    if removed == 0 and not missing_ok:
+        _die(f"no glossary entry for source: {source}")
+    _guard_md_safe_or_die(proj, ctx)
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+    console.print(f"removed {removed} term(s): {source}")
+
+
+@context_app.command(name="reset-term")
+def context_reset_term(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    source: str = typer.Argument(..., help="Source term."),
+    target: str | None = typer.Option(None, "--target", help="Approved target term."),
+    forbid: list[str] | None = typer.Option(
+        None, "--forbid", help="Forbidden target term (repeatable)."
+    ),
+    category: str | None = typer.Option(None, "--category", help="Glossary category."),
+    notes: str | None = typer.Option(None, "--notes", help="Glossary notes."),
+    enforce: str | None = typer.Option(
+        None, "--enforce", help="Enforcement: off, warn, or error."
+    ),
+    create: bool = typer.Option(
+        False, "--create", help="Create the entry if it does not exist."
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+) -> None:
+    """Replace one glossary entry atomically with supplied values."""
+    if enforce is not None and enforce not in {"off", "warn", "error"}:
+        _die("--enforce must be off, warn, or error")
+    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    ctx = _load_context_or_exit(proj)
+    existing: GlossaryEntry | None = None
+    for entry in ctx.glossary:
+        if entry.source == source:
+            existing = entry
+            break
+    if existing is None:
+        if not create:
+            _die(f"no glossary entry for source: {source}. Pass --create to add it.")
+        applied_category = category if category is not None else "term"
+        applied_enforce = enforce if enforce is not None else "warn"
+        applied_notes = notes if notes is not None else ""
+        cleaned_forbidden = _clean_forbidden_targets(
+            forbid or [],
+            approved_target=target,
+            case_sensitive=False,
+        )
+        ctx.glossary.append(
+            GlossaryEntry(
+                source=source,
+                target=target,
+                forbidden_targets=cleaned_forbidden,
+                category=applied_category,
+                status="approved" if target else "open",
+                notes=applied_notes,
+                enforce=applied_enforce,  # type: ignore[arg-type]
+            )
+        )
+        _guard_md_safe_or_die(proj, ctx)
+        write_context(proj, ctx)
+        write_context_markdown(proj, ctx)
+        console.print(f"created term: {source}")
+        return
+    # Replace fields when supplied.
+    if target is not None:
+        existing.target = target
+        existing.status = "approved" if target else "open"
+    if forbid is not None:
+        existing.forbidden_targets = _clean_forbidden_targets(
+            forbid,
+            approved_target=existing.target,
+            case_sensitive=existing.case_sensitive,
+        )
+    if category is not None:
+        existing.category = category
+    if notes is not None:
+        existing.notes = notes
+    if enforce is not None:
+        existing.enforce = enforce  # type: ignore[assignment]
+    _guard_md_safe_or_die(proj, ctx)
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+    console.print(f"reset term: {source}")
 
 
 @context_app.command(name="mark-ready")
@@ -2003,6 +2234,9 @@ def context_chapter_note(
     replace_open_issues: bool = typer.Option(
         False, "--replace-open-issues", help="Replace the open issue list."
     ),
+    replace_all: bool = typer.Option(
+        False, "--replace-all", help="Replace the entire chapter note atomically."
+    ),
     force_discard_md_only: bool = typer.Option(
         False,
         "--force-discard-md-only",
@@ -2017,7 +2251,12 @@ def context_chapter_note(
     Durable replacement for manually editing ``context.md`` after each
     completed chapter. Decisions and open issues append by default; pass
     ``--replace-decisions`` or ``--replace-open-issues`` to replace a list.
+    ``--replace-all`` sets the stored note exactly to the supplied values.
     """
+    if replace_all and (replace_decisions or replace_open_issues):
+        _die(
+            "--replace-all conflicts with --replace-decisions and --replace-open-issues"
+        )
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     ctx = _load_context_or_exit(proj)
     try:
@@ -2044,6 +2283,7 @@ def context_chapter_note(
         note,
         replace_decisions=replace_decisions,
         replace_open_issues=replace_open_issues,
+        replace_all=replace_all,
     )
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)

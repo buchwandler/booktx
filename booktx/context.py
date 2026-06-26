@@ -1015,12 +1015,16 @@ def upsert_chapter_context(
     *,
     replace_decisions: bool = False,
     replace_open_issues: bool = False,
+    replace_all: bool = False,
 ) -> None:
     """Create or update one chapter note.
 
     Title and summaries update only when provided. Decisions and open issues
     append by default (avoiding exact duplicates) and replace only when the
     matching replace flag is true.
+
+    When ``replace_all`` is true, the stored note is set exactly to the
+    supplied values (empty strings and empty lists are allowed).
     """
     existing: ChapterContext | None = None
     for ch in context.chapter_contexts:
@@ -1029,6 +1033,15 @@ def upsert_chapter_context(
             break
     if existing is None:
         context.chapter_contexts.append(note)
+        return
+    if replace_all:
+        existing.title = note.title
+        existing.source_summary = note.source_summary
+        existing.translation_summary = note.translation_summary
+        existing.decisions_added = list(note.decisions_added)
+        existing.open_issues = list(note.open_issues)
+        if not existing.chunk_ids:
+            existing.chunk_ids = list(note.chunk_ids)
         return
     if note.title:
         existing.title = note.title

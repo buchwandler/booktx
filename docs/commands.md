@@ -222,3 +222,35 @@ pass_number = 1
 name = "Flow review"
 enforce = "warn"
 ```
+
+## Glossary repair and chapter note reset
+
+```bash
+# Replace forbidden targets (full replacement, not append).
+booktx context add-term . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
+
+# Append forbidden targets explicitly.
+booktx context add-term . "empire" --append-forbid "Kaiserreich"
+
+# Clear all forbidden targets.
+booktx context add-term . "empire" --clear-forbidden
+
+# Remove a wrong glossary entry.
+booktx context remove-term . "empire"
+booktx context remove-term . "empire" --missing-ok
+
+# Reset one entry atomically.
+booktx context reset-term . "empire" \
+  --target "Imperium" \
+  --forbid "Reich" --forbid "Empire" \
+  --category "concept" --enforce error
+
+# Replace an entire chapter note.
+booktx context chapter-note . 0006 \
+  --replace-all \
+  --title "TWO" \
+  --source-summary "..." \
+  --translation-summary "..." \
+  --decision "Keep Apt" \
+  --open-issue "Check title rendering"
+```

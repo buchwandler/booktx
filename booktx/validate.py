@@ -23,6 +23,7 @@ exits non-zero on any mandatory failure.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -415,10 +416,21 @@ def validate_record_pair(
     return findings
 
 
+def _edge_prefix(term: str) -> str:
+    return r"(?<!\w)" if term[0].isalnum() or term[0] == "_" else ""
+
+
+def _edge_suffix(term: str) -> str:
+    return r"(?!\w)" if term[-1].isalnum() or term[-1] == "_" else ""
+
+
 def _contains_term(text: str, term: str, *, case_sensitive: bool) -> bool:
-    if case_sensitive:
-        return term in text
-    return term.casefold() in text.casefold()
+    term = term.strip()
+    if not term:
+        return False
+    pattern = f"{_edge_prefix(term)}{re.escape(term)}{_edge_suffix(term)}"
+    flags = 0 if case_sensitive else re.IGNORECASE
+    return re.search(pattern, text, flags) is not None
 
 
 def _check_forbidden_terms(

@@ -677,3 +677,434 @@ def test_context_add_question_creates_required_dynamic_question(tmp_path):
     assert q["required"] is True
     assert q["origin"] == "agent_review"
     assert q["status"] == "recommended"
+
+
+# --- add-term replacement semantics ----------------------------------------
+
+
+def test_context_add_term_forbid_replaces_existing_list_and_prunes_target(
+    tmp_path: Path,
+):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    # First call: target Reich, forbid Imperium
+    res1 = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "empire",
+            "--target",
+            "Reich",
+            "--forbid",
+            "Imperium",
+        ],
+    )
+    assert res1.exit_code == 0, res1.output
+    data1 = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry1 = next(g for g in data1["glossary"] if g["source"] == "empire")
+    assert entry1["target"] == "Reich"
+    assert entry1["forbidden_targets"] == ["Imperium"]
+    # Second call: target Imperium, forbid Reich and Empire.
+    # Should replace forbidden list and prune Imperium (now the target).
+    res2 = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "empire",
+            "--target",
+            "Imperium",
+            "--forbid",
+            "Reich",
+            "--forbid",
+            "Empire",
+        ],
+    )
+    assert res2.exit_code == 0, res2.output
+    data2 = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry2 = next(g for g in data2["glossary"] if g["source"] == "empire")
+    assert entry2["target"] == "Imperium"
+    assert sorted(entry2["forbidden_targets"]) == ["Empire", "Reich"]
+
+
+def test_context_add_term_append_forbid_is_explicit(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    # Initial: forbid A
+    runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--target",
+            "T",
+            "--forbid",
+            "A",
+        ],
+    )
+    # Append B without replacing A
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--append-forbid",
+            "B",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "test")
+    assert sorted(entry["forbidden_targets"]) == ["A", "B"]
+
+
+def test_context_add_term_clear_forbidden(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--forbid",
+            "A",
+            "--forbid",
+            "B",
+        ],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--clear-forbidden",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "test")
+    assert entry["forbidden_targets"] == []
+
+
+def test_context_add_term_forbid_append_conflict(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--forbid",
+            "A",
+            "--append-forbid",
+            "B",
+        ],
+    )
+    assert res.exit_code != 0
+    assert "mutually exclusive" in res.output
+
+
+def test_context_add_term_clear_forbidden_conflict(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--clear-forbidden",
+            "--forbid",
+            "A",
+        ],
+    )
+    assert res.exit_code != 0
+    assert "conflicts" in res.output
+
+
+def test_context_add_term_update_does_not_clobber_category_or_enforce(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--target",
+            "T",
+            "--category",
+            "concept",
+            "--enforce",
+            "error",
+            "--notes",
+            "original note",
+        ],
+    )
+    # Update only target; category/enforce/notes must be preserved.
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--target",
+            "T2",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "test")
+    assert entry["target"] == "T2"
+    assert entry["category"] == "concept"
+    assert entry["enforce"] == "error"
+    assert entry["notes"] == "original note"
+
+
+# --- remove-term -----------------------------------------------------------
+
+
+def test_context_remove_term_deletes_entry_and_renders(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--target",
+            "T",
+        ],
+    )
+    res = runner.invoke(
+        app,
+        ["context", "remove-term", str(project_dir), "test"],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    assert not any(g["source"] == "test" for g in data["glossary"])
+    assert "test" not in _ctx_md(project_dir).read_text("utf-8")
+
+
+def test_context_remove_term_missing_fails_unless_missing_ok(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        ["context", "remove-term", str(project_dir), "nonexistent"],
+    )
+    assert res.exit_code != 0
+    res_ok = runner.invoke(
+        app,
+        ["context", "remove-term", str(project_dir), "nonexistent", "--missing-ok"],
+    )
+    assert res_ok.exit_code == 0, res_ok.output
+
+
+# --- reset-term ------------------------------------------------------------
+
+
+def test_context_reset_term_replaces_entry(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "test",
+            "--target",
+            "Old",
+            "--forbid",
+            "A",
+            "--category",
+            "concept",
+            "--notes",
+            "old",
+            "--enforce",
+            "error",
+        ],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            "test",
+            "--target",
+            "New",
+            "--forbid",
+            "B",
+            "--category",
+            "term",
+            "--notes",
+            "",
+            "--enforce",
+            "warn",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "test")
+    assert entry["target"] == "New"
+    assert entry["forbidden_targets"] == ["B"]
+    assert entry["category"] == "term"
+    assert entry["notes"] == ""
+    assert entry["enforce"] == "warn"
+
+
+def test_context_reset_term_create_flag_required_for_missing(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            "nonexistent",
+            "--target",
+            "T",
+        ],
+    )
+    assert res.exit_code != 0
+    res_create = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            "nonexistent",
+            "--target",
+            "T",
+            "--create",
+        ],
+    )
+    assert res_create.exit_code == 0, res_create.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "nonexistent")
+    assert entry["target"] == "T"
+
+
+# --- chapter-note --replace-all --------------------------------------------
+
+
+def test_chapter_note_replace_all_resets_summaries_and_lists(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    # Create initial state.
+    runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--title",
+            "Old",
+            "--source-summary",
+            "old source",
+            "--translation-summary",
+            "old trans",
+            "--decision",
+            "old d",
+            "--open-issue",
+            "old issue",
+        ],
+    )
+    # Replace all.
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--replace-all",
+            "--title",
+            "New",
+            "--source-summary",
+            "new source",
+            "--translation-summary",
+            "new trans",
+            "--decision",
+            "new d",
+            "--open-issue",
+            "new issue",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["title"] == "New"
+    assert note["source_summary"] == "new source"
+    assert note["translation_summary"] == "new trans"
+    assert note["decisions_added"] == ["new d"]
+    assert note["open_issues"] == ["new issue"]
+
+
+def test_chapter_note_replace_all_rejects_other_replace_flags(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--replace-all",
+            "--replace-decisions",
+            "--title",
+            "X",
+        ],
+    )
+    assert res.exit_code != 0, res.output
+    assert "conflicts" in res.output
+
+
+def test_chapter_note_replace_all_preserves_chunk_ids(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    # Create with chapter-map to hydrate chunk_ids.
+    (project_dir / ".booktx" / "chapter-map.json").write_text(
+        '{"version": 1, "source_sha256": "", '
+        '"chapters": [{"chapter_id": "0006", "title": "Mapped", '
+        '"chunk_ids": ["0006"]}]}',
+        encoding="utf-8",
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0006",
+            "--replace-all",
+            "--title",
+            "New",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
+    assert note["chunk_ids"] == ["0006"]
+    assert note["title"] == "New"

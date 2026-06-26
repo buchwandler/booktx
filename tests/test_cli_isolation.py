@@ -101,8 +101,9 @@ def test_profile_commands_are_blocked_in_profile_root_mode(monkeypatch, tmp_path
     _, profile_root = _make_project(tmp_path)
     monkeypatch.chdir(profile_root)
 
-    for args in (
-        ["profile", "list", "."],
+    # profile list and profile show . are now allowed in isolated mode.
+    # Other cross-profile commands remain blocked.
+    blocked_args = (
         ["profile", "show", ".", "fr_default"],
         [
             "profile",
@@ -114,12 +115,52 @@ def test_profile_commands_are_blocked_in_profile_root_mode(monkeypatch, tmp_path
             "0001-000001",
         ],
         ["pass-through", ".", "--profile", "passthrough_en"],
-    ):
+    )
+    for args in blocked_args:
         res = runner.invoke(app, args)
         assert res.exit_code != 0
-        assert "profile-root isolated mode" in res.output
         assert "../" not in res.output
         assert str(profile_root.parent.parent) not in res.output
+
+
+def test_profile_list_from_profile_root_shows_current_profile_only(
+    monkeypatch, tmp_path: Path
+):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+    res = runner.invoke(app, ["profile", "list", "."])
+    assert res.exit_code == 0, res.output
+    assert "de_default" in res.output
+    assert "fr_default" not in res.output
+    assert str(project_dir) not in res.output
+    assert "../" not in res.output
+    json_res = runner.invoke(app, ["profile", "list", ".", "--json"])
+    assert json_res.exit_code == 0, json_res.output
+    assert "fr_default" not in json_res.output
+    assert str(project_dir) not in json_res.output
+    assert "translations/de_default" not in json_res.output
+
+
+def test_profile_show_current_from_profile_root_defaults_to_current(
+    monkeypatch, tmp_path: Path
+):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+    res = runner.invoke(app, ["profile", "show", ".", "."])
+    assert res.exit_code == 0, res.output
+    assert "de_default" in res.output
+    assert str(project_dir) not in res.output
+    assert "../" not in res.output
+    assert "translations/de_default" not in res.output
+
+
+def test_profile_show_other_from_profile_root_is_blocked(monkeypatch, tmp_path: Path):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+    res = runner.invoke(app, ["profile", "show", ".", "fr_default"])
+    assert res.exit_code != 0, res.output
+    assert "../" not in res.output
+    assert str(project_dir) not in res.output
 
 
 def test_mode_source_and_doctor_commands_work_from_profile_root(

@@ -52,6 +52,8 @@ Use:
 booktx mode .
 booktx doctor isolation .
 booktx source status .
+booktx profile list .          # shows current profile only
+booktx profile show . .         # defaults to current profile
 booktx context status .
 booktx translate next . --unit batch --max-words 800 --format block
 booktx translate insert . --task-id TASK --file ingest/TASK.block.txt --format block
@@ -61,6 +63,10 @@ booktx translate todo-resume . --todo-id TODO --format block
 booktx validate .
 booktx build .
 ```
+
+`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile select`, `profile create`, `profile migrate-current`) remain blocked in isolated mode.
+
+````
 
 The todo commands (`todo-next`, `todo-status`, `todo-resume`) are runtime-aware: in
 profile-root mode they omit `--profile`, use profile-local paths (`todos/`,
@@ -77,7 +83,7 @@ Run:
 ```bash
 booktx status .
 booktx profile list .
-```
+````
 
 Then determine the target profile.
 
@@ -402,3 +408,39 @@ Review candidates are stored in `reviews[]` under each record in the translation
 store. The effective output uses the `active_review` when valid, falling back
 to the `active_version`. Use `booktx translation compare . RECORD --versions 1.1,R1.1,R2.1`
 to inspect the full chain.
+
+## Glossary correction workflow
+
+Never edit `context.json` directly. Use CLI commands for all glossary changes:
+
+```bash
+# Replace all forbidden targets (full replacement, not append).
+booktx context add-term . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
+
+# Append forbidden targets explicitly without removing existing ones.
+booktx context add-term . "empire" --append-forbid "Kaiserreich"
+
+# Clear all forbidden targets.
+booktx context add-term . "empire" --clear-forbidden
+
+# Remove a wrong glossary entry entirely.
+booktx context remove-term . "empire"
+booktx context remove-term . "empire" --missing-ok
+
+# Replace one entry atomically (target, forbidden targets, category, notes, enforce).
+booktx context reset-term . "empire" \
+  --target "Imperium" \
+  --forbid "Reich" --forbid "Empire" \
+  --category "concept" --enforce error
+
+# Atomic reset of an entire chapter note.
+booktx context chapter-note . 0006 \
+  --replace-all \
+  --title "TWO" \
+  --source-summary "..." \
+  --translation-summary "..." \
+  --decision "Keep Apt" \
+  --open-issue "Check title rendering"
+```
+
+`--forbid` now replaces the full forbidden-target list. When the target changes, any forbidden term equal to the new target is pruned automatically. Use `--append-forbid` when you want to add terms without removing existing ones.

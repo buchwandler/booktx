@@ -367,3 +367,13 @@ Review candidates are stored separately from translation versions in
 
 Enable quality review by adding `[quality_review]` to the profile's `config.toml`.
 See `docs/profiles.md` for configuration reference.
+
+### Glossary correction
+
+```bash
+# Fix wrong forbidden targets (replaces, doesn't append).
+booktx context add-term . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
+
+# Remove a wrong entry.
+booktx context remove-term . "empire"
+```

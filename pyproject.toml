@@ -36,7 +36,7 @@ dependencies = [
     "beautifulsoup4",
     "markdown-it-py",
     "phrasplit",
-    "epub2text>=0.2.4",
+    "epub2text>=0.2.6",
     "text2epub",
 ]
 

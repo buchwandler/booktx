@@ -72,12 +72,16 @@ Use:
 booktx mode .
 booktx doctor isolation .
 booktx source status .
+booktx profile list .          # shows current profile only, no sibling names
+booktx profile show . .         # defaults to current profile
 booktx context status .
 booktx translate next . --unit batch --max-words 800 --format block
 booktx translate insert . --task-id TASK --file ingest/TASK.block.txt --format block
 booktx validate .
 booktx build .
 ```
+
+`profile list` in isolated mode shows only the current profile (no sibling profile names, no absolute paths, no `../`). Cross-profile commands like `profile compare`, `profile select`, `profile create`, and `profile migrate-current` remain blocked.
 
 If a command in profile-root mode suggests `../`, prints an absolute path, or
 reveals another profile, stop and report a booktx isolation bug.
