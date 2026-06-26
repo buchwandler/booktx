@@ -851,6 +851,145 @@ def test_todo_markdown_uses_strict_validate_and_advisory_budget(tmp_path: Path):
     assert "booktx translate todo-status ." in text
     assert "booktx translate todo-resume ." in text
     assert "stop and report progress before requesting more work" in text
+    # ac-0011: scoped check is used for per-task validation, not global validate.
+    assert "booktx check ." in text
+    assert "booktx validate ." in text  # still present for final pre-build
+    # The stop condition references scoped check, not global validate.
+    assert "active todo chapter" in text
+    assert "do not block continuing the todo" in text
+
+
+def _corrupt_store_record_target(
+    project_dir: Path, record_id: str, new_target: str = ""
+) -> None:
+    """Directly set a record's target in the store (test helper)."""
+    proj = _proj(project_dir)
+    path = translation_store_path(proj)
+    store = json.loads(path.read_text("utf-8"))
+    records = store.get("records", {})
+    if record_id in records:
+        versions = records[record_id].get("versions", [])
+        for v in versions:
+            if v.get("version_ref") == records[record_id].get("active_version"):
+                v["target"] = new_target
+                break
+    path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def test_todo_status_scoped_does_not_block_on_out_of_scope_error(tmp_path: Path):
+    """ac-0001: a validation error in a completed chapter does not block"""
+    """the bounded todo when scoped validation is clean for the current chapter."""
+    project_dir = _make_three_chapter_project(tmp_path)
+    _accept_chapter(project_dir, "0001")
+    # Create todo BEFORE corruption so chapter 0001 is complete.
+    _create_todo(project_dir, chapters=2, batch_words=800)
+    # Now corrupt a record in the completed chapter 0001 to produce an error.
+    _corrupt_store_record_target(project_dir, "0001-000001", new_target="")
+    # Chapter 0001 is complete; current chapter should be 0002.
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-status",
+            str(project_dir),
+            "--latest",
+            "--json",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["state"] == "ready", payload
+    assert payload["validation"]["errors"] == 0, payload["validation"]
+    assert payload["validation_scope_chapter"] == "0002", payload
+    # Next command should be todo-resume, not validate.
+    assert "todo-resume" in payload["next_safe_command"]
+    # Global note should warn about out-of-scope issues.
+    assert payload["global_note"] is not None
+    assert "outside this todo" in payload["global_note"]
+
+
+def test_todo_status_scoped_blocks_on_in_scope_error(tmp_path: Path):
+    """ac-0002: a validation error in the current chapter still blocks."""
+    project_dir = _make_three_chapter_project(tmp_path)
+    _accept_n_records(project_dir, "0001", 1)
+    _create_todo(project_dir, chapters=2, batch_words=800)
+    # Corrupt the accepted record in the CURRENT chapter 0001.
+    _corrupt_store_record_target(project_dir, "0001-000001", new_target="")
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-status",
+            str(project_dir),
+            "--latest",
+            "--json",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["state"] == "blocked", payload
+    assert payload["validation"]["blocking"] is True
+    assert payload["validation_scope_chapter"] == "0001"
+    # Next command should be scoped check --chapter, not global validate.
+    assert "booktx check ." in payload["next_safe_command"]
+    assert "--chapter 0001" in payload["next_safe_command"]
+    assert "booktx validate ." not in payload["next_safe_command"]
+
+
+def test_todo_status_and_todo_resume_agree_on_scope(tmp_path: Path):
+    """ac-0004: both commands use the same shared chapter resolution."""
+    project_dir = _make_three_chapter_project(tmp_path)
+    _accept_chapter(project_dir, "0001")
+    _create_todo(project_dir, chapters=2, batch_words=800)
+    # Corrupt a record in the completed chapter 0001 (outside todo scope).
+    _corrupt_store_record_target(project_dir, "0001-000001", new_target="")
+
+    # todo-status should be ready (out-of-scope error).
+    status_res = runner.invoke(
+        app,
+        ["translate", "todo-status", str(project_dir), "--latest", "--json"],
+    )
+    assert status_res.exit_code == 0, status_res.output
+    status = json.loads(status_res.output)
+    assert status["state"] == "ready"
+
+    # todo-resume should succeed (scoped validation is clean).
+    resume_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--latest",
+            "--json",
+            "--format",
+            "text",
+        ],
+    )
+    assert resume_res.exit_code == 0, resume_res.output
+    resume = json.loads(resume_res.output)
+    assert resume["chapter_id"] == "0002"
+
+
+def test_todo_status_human_output_shows_scope_and_note(tmp_path: Path):
+    """ac-0003: human output shows validation scope and global note."""
+    project_dir = _make_three_chapter_project(tmp_path)
+    _accept_chapter(project_dir, "0001")
+    _create_todo(project_dir, chapters=2, batch_words=800)
+    _corrupt_store_record_target(project_dir, "0001-000001", new_target="")
+
+    res = runner.invoke(
+        app,
+        ["translate", "todo-status", str(project_dir), "--latest"],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "state: ready" in res.output
+    assert "validation scope: chapter 0002" in res.output
+    assert "global validation has warnings outside this todo" in res.output
+    assert "full validation before final build" in res.output
 
 
 def test_todo_next_human_output_keeps_paths_and_commands_copyable(tmp_path: Path):

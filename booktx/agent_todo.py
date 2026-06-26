@@ -214,9 +214,9 @@ def render_translation_todo_markdown(
     starting the bounded run.
     """
     from booktx.command_hints import (
+        check_command,
         translate_todo_resume_command,
         translate_todo_status_command,
-        validate_command,
     )
 
     lines: list[str] = []
@@ -246,8 +246,18 @@ def render_translation_todo_markdown(
     # Stop conditions
     lines.append("## Stop immediately if")
     lines.append("")
-    strict_validate = validate_command(project, mode=mode, fail_on_warnings=True)
-    lines.append(f"- `{strict_validate}` reports errors or warnings.")
+    first_chapter_id = todo.chapters[0].chapter_id if todo.chapters else None
+    scoped_check = check_command(
+        project, mode=mode, chapter_id=first_chapter_id, fail_on_warnings=True
+    )
+    lines.append(
+        f"- `{scoped_check}` reports errors or warnings for the active todo chapter."
+    )
+    lines.append(
+        "- Full-project validation warnings outside this todo"
+        " do not block continuing the todo,"
+        " but must be resolved before final build."
+    )
     lines.append("- `booktx translate insert` rejects the submission.")
     lines.append("- `booktx status` reports source drift or context not ready.")
     lines.append(
@@ -297,10 +307,17 @@ def render_translation_todo_markdown(
     lines.append("")
     lines.append("6. Submit exactly the printed submit command.")
     lines.append("")
-    lines.append("7. Validate:")
+    lines.append("7. Validate the active todo chapter:")
     lines.append("")
     lines.append("   ```bash")
-    lines.append(f"   {validate_command(project, mode=mode, fail_on_warnings=True)}")
+    lines.append(f"   {scoped_check}")
+    lines.append("   ```")
+    lines.append("   For the final pre-build check, use full-project validation:")
+    lines.append("")
+    lines.append("   ```bash")
+    from booktx.command_hints import validate_command as _validate_command
+
+    lines.append(f"   {_validate_command(project, mode=mode, fail_on_warnings=True)}")
     lines.append("   ```")
     lines.append("")
     lines.append("8. Continue the loop unless a stop condition applies.")

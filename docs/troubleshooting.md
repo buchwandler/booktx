@@ -81,11 +81,16 @@ Then re-request tasks against the refreshed source.
 
 ## Validation warnings during bounded todo runs
 
-Bounded todo runs should use:
+Bounded todo runs should use scoped validation per batch:
 
 ```bash
-booktx validate ./book --profile PROFILE --fail-on-warnings
+booktx check ./book --profile PROFILE --chapter CHAPTER --fail-on-warnings
 ```
+
+Use `booktx validate ./book --profile PROFILE --fail-on-warnings` only for the
+final pre-build check. If validation flags an old accepted record, use
+`booktx translation revise-record` to fix it; never edit
+`translation-store.json` directly.
 
 Warnings remain non-fatal for plain `booktx validate`, but `todo-resume` and
 the generated todo workflow expect warnings to be cleared before continuing.

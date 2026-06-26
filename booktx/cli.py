@@ -45,6 +45,7 @@ from booktx.chapters import (
 from booktx.chunking import RECORD_ID_SCHEME, segmenter_metadata, spans_to_chunks
 from booktx.command_hints import (
     build_command,
+    check_command,
     context_chapter_note_command,
     translate_next_command,
     translate_todo_resume_command,
@@ -144,9 +145,14 @@ from booktx.status import (
 from booktx.submissions import resolve_submission
 from booktx.tasks import create_translation_task, select_translation_record_ids
 from booktx.todo_resume import resolve_translation_todo, resume_translation_todo
-from booktx.todo_status import build_todo_status, load_translation_todo
+from booktx.todo_status import (
+    build_todo_status,
+    current_todo_chapter_id,
+    load_translation_todo,
+)
 from booktx.translation_store import (
     active_candidate,
+    active_review_candidate,
     ensure_store_record,
     find_candidate,
     migrate_legacy_store,
@@ -156,6 +162,7 @@ from booktx.validate import (
     Finding,
     Severity,
     ValidationReport,
+    load_validation_context,
     strict_load_translated,
     validate_chunk_pair,
     validate_project,
@@ -3364,6 +3371,12 @@ def _print_todo_status_human(status: Any) -> None:
         f"errors={validation.errors} warnings={validation.warnings}"
         f"{' (blocking)' if validation.blocking else ''}"
     )
+    if status.validation_scope_chapter is not None:
+        scope = status.validation_scope_chapter
+        title = ""
+        if status.current_chapter is not None:
+            title = f" {status.current_chapter.title}".rstrip()
+        console.print(f"validation scope: chapter {scope}{title}")
     if status.blocking_reason:
         console.print(f"reason: {status.blocking_reason}")
     if status.current_chapter is not None:
@@ -3383,6 +3396,12 @@ def _print_todo_status_human(status: Any) -> None:
         )
     elif status.goal_complete:
         console.print("next: stop - todo goal complete")
+    if status.global_note:
+        console.print(
+            f"note: {status.global_note}",
+            soft_wrap=True,
+            markup=False,
+        )
     console.print("planned chapters:")
     for chapter in status.chapters:
         console.print(
@@ -3411,13 +3430,19 @@ def translate_todo_status(
     bundle = _project_status_snapshot(proj)
     try:
         todo = resolve_translation_todo(proj, bundle, todo_id=todo_id, latest=latest)
+        scope_chapter = current_todo_chapter_id(todo, bundle)
+        scoped_report = validate_project(proj, chapter_id=scope_chapter)
+        # Second full pass for the non-blocking global note (ac-0003).
+        global_report = validate_project(proj) if scope_chapter is not None else None
         status = build_todo_status(
             proj,
             todo,
             bundle,
             mode=runtime.mode,
-            validation_report=validate_project(proj),
+            validation_report=scoped_report,
             fail_on_warnings=True,
+            scope_chapter_id=scope_chapter,
+            global_report=global_report,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
@@ -4220,6 +4245,143 @@ def translate_set_record(
         )
 
 
+@translate_app.command(name="revise-record")
+def translation_revise_record(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    record_ref: str = typer.Argument(..., help="Record id to revise."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    stdin: bool = typer.Option(
+        False,
+        "--stdin",
+        help="Read the target text from stdin (default source).",
+    ),
+    target: str | None = typer.Option(None, "--target", help="Inline target text."),
+    activate: bool = typer.Option(
+        True,
+        "--activate/--no-activate",
+        help="Activate the revised version after writing.",
+    ),
+) -> None:
+    """Revise an already accepted translation record safely.
+
+    Validates the new target, runs staged EPUB inline-XHTML preflight
+    (strict mode: warnings block), and writes through the store API.
+    Never edits translation-store.json directly.
+    """
+    from booktx.io_utils import utc_timestamp
+
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_ready_context(proj)
+    record_id = parse_record_ref(record_ref).canonical_id
+
+    # Read target text.
+    if target is not None:
+        target_text = target
+    elif stdin:
+        target_text = sys.stdin.read()
+        if target_text.endswith("\r\n"):
+            target_text = target_text[:-2]
+        elif target_text.endswith("\n"):
+            target_text = target_text[:-1]
+    else:
+        _die("provide the target text with --stdin or --target")
+        return  # unreachable, but keeps mypy happy
+
+    if not target_text.strip():
+        _die(f"empty target for record {record_id}")
+
+    # Load store and check the record exists.
+    store = load_translation_store(proj)
+    stored = store.records.get(record_id)
+    if stored is None:
+        _die(f"record {record_id} has no stored translations")
+    assert stored is not None
+
+    # Reject when an active_review exists: the effective output would be
+    # the review candidate, so revising the translation version is a
+    # silent no-op. The user must clear or re-review explicitly.
+    review = active_review_candidate(stored)
+    if review is not None:
+        _die(
+            f"record {record_id} has an active review candidate"
+            f" ({review.review_ref}). Revise the review candidate instead"
+            f" with `booktx translation review . {record_ref}`,"
+            f" or deactivate the review before revising the translation."
+        )
+
+    # Validate the record pair.
+    bundle = _project_status_snapshot(proj)
+    source_view = bundle.index.source_by_id.get(record_id)
+    if source_view is None:
+        _die(f"record {record_id} has no matching source record")
+    assert source_view is not None
+    source_chunks = bundle.index.source_chunks
+    source_chunk = source_chunks.get(source_view.chunk_id)
+    if source_chunk is None:
+        _die(f"record {record_id} has no matching source chunk")
+    assert source_chunk is not None
+    source_record = next((r for r in source_chunk.records if r.id == record_id), None)
+    if source_record is None:
+        _die(f"record {record_id} not found in source chunk")
+    assert source_record is not None
+    translated = TranslatedRecord(id=record_id, target=target_text)
+    context = load_validation_context(proj)
+    pair_findings = validate_record_pair(
+        source_record, translated, source_chunk.chunk_id, context
+    )
+    pair_errors = [f for f in pair_findings if f.severity == Severity.ERROR]
+    if pair_errors:
+        _render_submission_failures(pair_errors)
+        raise typer.Exit(code=1)
+
+    # Staged EPUB inline-XHTML preflight (strict: warnings also block).
+    _staged_preflight_check(
+        proj,
+        [SubmittedRecord(id=record_id, target=target_text)],
+        {record_id},
+        fail_on_warnings=True,
+    )
+
+    # Write through the store API.
+    resolution = resolve_current_version(proj)
+    version_ref = resolution.version_ref
+    ensure_store_record(
+        store,
+        record_id,
+        source=source_view.source,
+        source_sha256=source_view.source_sha256,
+    )
+    upsert_translation_version(
+        store.records[record_id],
+        version_ref,
+        target_text,
+        updated_at=utc_timestamp(),
+        activate=activate,
+    )
+    write_translation_store(proj, store)
+
+    console.print(
+        f"revised: {record_id} -> {version_ref}" + (" (activated)" if activate else "")
+    )
+    # Suggest a scoped re-check.
+    chapter_id = bundle.index.record_to_chapter.get(record_id, "")
+    recheck = check_command(
+        proj,
+        mode=runtime.mode,
+        chapter_id=chapter_id or None,
+        fail_on_warnings=True,
+    )
+    console.print(
+        f"recheck: {recheck}",
+        soft_wrap=True,
+        markup=False,
+    )
+
+
 # --- validate ----------------------------------------------------------------
 
 
@@ -4276,8 +4438,18 @@ def validate(
 
 
 def _staged_preflight_check(
-    proj: Project, submitted_records: list[SubmittedRecord], submitted_ids: set[str]
+    proj: Project,
+    submitted_records: list[SubmittedRecord],
+    submitted_ids: set[str],
+    *,
+    fail_on_warnings: bool = False,
 ) -> None:
+    """Run EPUB inline-XHTML preflight on staged submitted records.
+
+    Layers submitted records on top of current effective translations and
+    runs the preflight. If inline-XHTML errors (or, when ``fail_on_warnings=True``,
+    warnings) are found, renders them and exits non-zero BEFORE the store is written.
+    """
     """Run EPUB inline-XHTML preflight on staged submitted records.
 
     Layers submitted records on top of current effective translations and
@@ -4337,37 +4509,80 @@ def _staged_preflight_check(
     preflight_findings = validate_epub_inline_preflight(
         proj, record_ids=submitted_ids, effective_chunks=staged_chunks
     )
-    errors = [f for f in preflight_findings if f.severity == "error"]
-    if errors:
-        for f in errors:
-            color = "red"
-            loc = f" [{f.record_id}]" if f.record_id else ""
-            console.print(
-                f"[{color}]error[/{color}] {f.chunk_id}{loc} {f.rule}: {f.message}"
+    blocking = [f for f in preflight_findings if f.severity == "error"]
+    if fail_on_warnings:
+        blocking.extend(f for f in preflight_findings if f.severity == "warn")
+    if blocking:
+        for f in blocking:
+            _render_finding(
+                Finding(
+                    chunk_id=f.chunk_id or "epub-preflight",
+                    severity=f.severity,
+                    rule=f.rule,
+                    message=f.message,
+                    record_id=f.record_id,
+                    record_ids=list(f.record_ids),
+                    chapter_id=f.chapter_id,
+                    chapter_title=f.chapter_title,
+                    span_index=f.span_index,
+                    block_id=f.block_id,
+                    document_href=f.document_href,
+                    source=f.source,
+                    target=f.target,
+                )
             )
-            if f.source:
-                console.print(f"  source: {f.source}")
-            if f.target:
-                console.print(f"  target: {f.target}")
             fix_record = f.record_id or (f.record_ids[0] if f.record_ids else "")
             if fix_record:
                 console.print(
-                    f"  fix: booktx translate get-record . {fix_record} --context 2",
+                    f"  fix: booktx translation revise-record . {fix_record} --stdin",
                     soft_wrap=True,
                     markup=False,
                 )
         raise typer.Exit(code=1)
 
 
+def _truncate(text: str, limit: int = 120) -> str:
+    """Return a single-line excerpt of ``text``, truncated for display."""
+    one_line = " ".join(text.split())
+    if len(one_line) <= limit:
+        return one_line
+    return one_line[:limit].rstrip() + "\u2026"
+
+
+def _render_finding(f: Finding) -> None:
+    color = "red" if f.severity == "error" else "yellow"
+    if f.record_id:
+        loc = f" [{f.record_id}]"
+    elif f.record_ids:
+        loc = f" records={f.record_ids}"
+    else:
+        loc = ""
+    console.print(
+        f"[{color}]{f.severity}[/{color}] {f.chunk_id}{loc} {f.rule}: {f.message}"
+    )
+    if f.chapter_id:
+        title = f" {f.chapter_title}".rstrip() if f.chapter_title else ""
+        console.print(f"  chapter: {f.chapter_id}{title}")
+    span_parts = []
+    if f.span_index is not None:
+        span_parts.append(f"span={f.span_index}")
+    if f.block_id:
+        span_parts.append(f"block={f.block_id}")
+    if span_parts:
+        console.print(f"  {' '.join(span_parts)}")
+    if f.document_href:
+        console.print(f"  href: {f.document_href}")
+    if f.source:
+        console.print(f"  source: {_truncate(f.source)}", soft_wrap=True, markup=False)
+    if f.target:
+        console.print(f"  target: {_truncate(f.target)}", soft_wrap=True, markup=False)
+
+
 def _render_validate_findings(report: ValidationReport) -> None:
     if not report.findings:
         return
     for f in report.findings:
-        color = "red" if f.severity == "error" else "yellow"
-        loc = f" [{f.record_id}]" if f.record_id else ""
-        console.print(
-            f"[{color}]{f.severity}[/{color}] {f.chunk_id}{loc} {f.rule}: {f.message}"
-        )
+        _render_finding(f)
 
 
 @app.command()

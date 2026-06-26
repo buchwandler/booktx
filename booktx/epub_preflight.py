@@ -347,6 +347,41 @@ def _attribute_span_mismatch_record(
     return "", record_ids
 
 
+def _attribute_issue_record(
+    issue: FragmentValidationIssue,
+    records: list[Record],
+    translated_by_id: Mapping[str, Any],
+) -> tuple[str, list[str]]:
+    """Pick the offending record for one span-level sanitized issue.
+
+    Applies rule-specific logic when possible and falls back to
+    :func:`_attribute_span_mismatch_record` for skeleton-shape rules. The
+    returned ``record_ids`` always lists every involved span record so the
+    finding can show the full span membership even when a single record is
+    attributed.
+
+    For ``dash_semantic_cue_missing``, the culprit is the first translated
+    record whose source contains an en/em dash and whose target contains
+    neither. The inline skeleton is usually unchanged for this rule, so
+    skeleton-based attribution would return an empty record id.
+    """
+    involved = [record.id for record in records]
+    if issue.rule == "dash_semantic_cue_missing":
+        for record in records:
+            translated = translated_by_id.get(record.id)
+            if translated is None:
+                continue
+            target = getattr(translated, "target", "") if translated is not None else ""
+            if (
+                ("\u2013" in record.source or "\u2014" in record.source)
+                and "\u2013" not in target
+                and "\u2014" not in target
+            ):
+                return record.id, involved
+        return "", involved
+    return _attribute_span_mismatch_record(records, translated_by_id)
+
+
 def validate_epub_inline_preflight(
     project: Project,
     *,
@@ -423,12 +458,12 @@ def validate_epub_inline_preflight(
                         )
                     )
 
-        offender_id, involved_ids = _attribute_span_mismatch_record(
-            span_records, translated_by_id
-        )
         for issue in span.sanitized_issues:
             if issue.severity == "warn" and require_complete:
                 continue
+            offender_id, involved_ids = _attribute_issue_record(
+                issue, span_records, translated_by_id
+            )
             findings.append(
                 EpubPreflightFinding(
                     severity=issue.severity,

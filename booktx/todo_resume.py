@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from booktx.command_hints import (
+    check_command,
     translate_todo_resume_command,
-    validate_command,
 )
 from booktx.config import Project, _err
 from booktx.models import TranslationTask, TranslationTodo
@@ -14,6 +14,7 @@ from booktx.status import StatusBundle
 from booktx.tasks import create_translation_task, select_translation_record_ids
 from booktx.todo_status import (
     build_todo_status,
+    current_todo_chapter_id,
     find_incomplete_todo_for_chapter,
     latest_incomplete_todo,
     load_translation_todo,
@@ -66,12 +67,7 @@ def resume_translation_todo(
     todo = resolve_translation_todo(project, bundle, todo_id=todo_id, latest=latest)
     # Scope validation to the todo's current chapter so unrelated-chapter
     # preflight errors do not block a bounded run.
-    scope_chapter = None
-    for ch in todo.chapters:
-        live = bundle.index.chapters_by_id.get(ch.chapter_id)
-        if live is not None and live.records_remaining > 0:
-            scope_chapter = ch.chapter_id
-            break
+    scope_chapter = current_todo_chapter_id(todo, bundle)
     report = validate_project(project, chapter_id=scope_chapter)
     status = build_todo_status(
         project,
@@ -80,6 +76,7 @@ def resume_translation_todo(
         mode=mode,
         validation_report=report,
         fail_on_warnings=True,
+        scope_chapter_id=scope_chapter,
     )
     if status.goal_complete:
         raise _err(
@@ -103,12 +100,14 @@ def resume_translation_todo(
             ),
         )
     if report.errors or report.warnings:
-        strict_validate = validate_command(project, fail_on_warnings=True)
+        strict_check = check_command(
+            project, chapter_id=scope_chapter, fail_on_warnings=True
+        )
         raise _err(
             "todo_validation_blocked",
             (
                 f"todo {todo.todo_id} cannot resume because "
-                f"{strict_validate} reports {len(report.errors)} error(s) "
+                f"{strict_check} reports {len(report.errors)} error(s) "
                 f"and {len(report.warnings)} warning(s)."
             ),
         )

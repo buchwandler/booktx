@@ -35,6 +35,7 @@ from booktx.models import (
 )
 from booktx.progress import source_record_sha256
 from booktx.validate import (
+    Finding,
     Severity,
     validate_chunk_pair,
     validate_project,
@@ -1203,3 +1204,183 @@ def test_audit_inline_uses_manifest_when_record_markup_missing(tmp_path: Path):
     assert any(f["rule"] == "inline_xhtml_preserved" for f in result.findings), (
         result.findings
     )
+
+
+def test_finding_as_dict_includes_optional_fields_when_present():
+    """ac-0005: Finding.as_dict includes location fields when set."""
+    f = Finding(
+        chunk_id="0006",
+        severity="warn",
+        rule="dash_semantic_cue_missing",
+        message="source has dash",
+        record_id="0006-000006",
+        record_ids=["0006-000006", "0006-000007"],
+        chapter_id="0005",
+        chapter_title="ONE",
+        span_index=123,
+        block_id="chapter001.xhtml#p4",
+        document_href="OEBPS/ch5.xhtml",
+        source="spring \u2013 which",
+        target="Frühling kommen",
+    )
+    d = f.as_dict()
+    assert d["chunk_id"] == "0006"
+    assert d["record_id"] == "0006-000006"
+    assert d["record_ids"] == ["0006-000006", "0006-000007"]
+    assert d["chapter_id"] == "0005"
+    assert d["chapter_title"] == "ONE"
+    assert d["span_index"] == 123
+    assert d["block_id"] == "chapter001.xhtml#p4"
+    assert d["document_href"] == "OEBPS/ch5.xhtml"
+    assert d["source"] == "spring \u2013 which"
+    assert d["target"] == "Frühling kommen"
+
+
+def test_finding_as_dict_omits_empty_optional_fields():
+    """ac-0005: Finding.as_dict omits optional fields when empty/None."""
+    f = Finding(
+        chunk_id="0001",
+        severity="error",
+        rule="empty_target",
+        message="record 0001-000001 has an empty target",
+        record_id="0001-000001",
+    )
+    d = f.as_dict()
+    assert "record_ids" not in d
+    assert "chapter_id" not in d
+    assert "span_index" not in d
+    assert "source" not in d
+    assert "target" not in d
+    assert isinstance(d, dict)
+    # All values should be str/int (backward compatible).
+    for v in d.values():
+        assert isinstance(v, (str, int)), f"unexpected type {type(v)} for {v}"
+
+
+def test_dash_attribution_in_preflight():
+    """ac-0006: dash_semantic_cue_missing is attributed to the record whose"""
+    """source has an en/em dash and target does not."""
+    from booktx.epub_inline_xhtml import FragmentValidationIssue
+    from booktx.epub_preflight import _attribute_issue_record
+
+    def mk(rid, src):
+        return Record(id=rid, source=src, source_markup="plain:v1")
+
+    records = [
+        mk("0006-000006", "Information Stenwold \u2013 spring"),
+        mk("0006-000007", "No dash here"),
+    ]
+    translated = {
+        "0006-000006": type("T", (), {"target": "Informationen Frühling"})(),
+        "0006-000007": type("T", (), {"target": "Kein Strich"})(),
+    }
+    issue = FragmentValidationIssue(
+        "dash_semantic_cue_missing",
+        "source contains a dash cue but target does not",
+        "warn",
+    )
+    rid, ids = _attribute_issue_record(issue, records, translated)
+    assert rid == "0006-000006"
+    assert ids == ["0006-000006", "0006-000007"]
+
+
+def test_validate_project_scoped_counters(tmp_path: Path):
+    """ac-0010: scoped validate counts only chunks in the resolved scope."""
+    from booktx.chapters import ensure_chapter_map
+
+    project_dir = _make_project_with_translations(tmp_path)
+    proj = load_project(project_dir)
+    # Get chapter 0001's chunk ids.
+    chapter_map = ensure_chapter_map(proj)
+    ch0001 = next(c for c in chapter_map.chapters if c.chapter_id == "0001")
+    # Global validation.
+    global_report = validate_project(proj)
+    assert global_report.chunks_checked > 0
+    # Scoped to chapter 0001.
+    scoped_report = validate_project(proj, chapter_id="0001")
+    assert scoped_report.chunks_checked == len(ch0001.chunk_ids)
+    assert scoped_report.chunks_checked <= global_report.chunks_checked
+
+
+def _make_project_with_translations(tmp_path: Path) -> Path:
+    """Helper: create a simple project with translated chunks for scoping tests."""
+
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# One\n\nFirst sentence. Second sentence.\n\n"
+        "# Two\n\nThird sentence. Fourth sentence.\n\n"
+        "# Three\n\nFifth sentence. Sixth sentence.\n",
+        encoding="utf-8",
+    )
+    project_dir = tmp_path / "proj"
+    res = CliRunner().invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--target",
+            "de",
+            "--source-file",
+            str(src),
+            "--chunk-size",
+            "2",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    ext = CliRunner().invoke(app, ["extract", str(project_dir)])
+    assert ext.exit_code == 0, ext.output
+    CliRunner().invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    CliRunner().invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(project_dir),
+            "--force",
+            "--reason",
+            "test",
+        ],
+    )
+    # Translate chapter 0001 via the CLI.
+    next_res = CliRunner().invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--chapter",
+            "0001",
+            "--unit",
+            "chapter",
+            "--max-words",
+            "900",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    ingest = project_dir / task["ingest_path"]
+    ingest_json = {
+        "schema_version": 2,
+        "profile": task.get("profile", ""),
+        "task_id": task["task_id"],
+        "translation_version": task["translation_version"],
+        "records": [
+            {"id": r["id"], "target": f"Trans {r['id']}"} for r in task["records"]
+        ],
+    }
+    ingest.write_text(json.dumps(ingest_json), encoding="utf-8")
+    ins = CliRunner().invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--json-file",
+            str(ingest),
+        ],
+    )
+    assert ins.exit_code == 0, ins.output
+    return project_dir

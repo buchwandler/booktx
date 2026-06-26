@@ -69,6 +69,7 @@ booktx translation list ./book --profile de_gpt5_5 --chapter 10
 booktx translation compare ./book --profile de_gpt5_5 74@38 --versions 1.1,1.2
 booktx translation activate ./book --profile de_gpt5_5 74@38 1.2
 booktx translation review ./book --profile de_gpt5_5 74@38 --activate 1.2 --note "Better rhythm"
+booktx translation revise-record ./book --profile de_gpt5_5 74@38 --target "Revised target text"
 booktx translate export ./book --profile de_gpt5_5
 ```
 
@@ -88,8 +89,9 @@ booktx translate todo-next ./book --profile de_gpt5_5 --chapters 3 --start-chapt
 Creates a durable todo under `translations/<profile>/todos/` that describes the
 bounded run: chapters to complete, per-task word budget, advisory run budget,
 and stop conditions. The agent reads the todo markdown and follows
-`todo-status -> todo-resume -> insert -> validate --fail-on-warnings` until
-complete or a stop condition fires. This is NOT a translation submission; the
+`todo-status -> todo-resume -> insert -> check --chapter CHAPTER` until
+complete or a stop condition fires. Use `booktx validate --fail-on-warnings`
+for the final pre-build check only. This is NOT a translation submission; the
 agent still fills ingest files and runs `translate insert` for each batch.
 `--max-run-words` is advisory only.
 

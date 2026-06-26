@@ -1713,3 +1713,103 @@ def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
     assert "TranslatedChunk" not in second_insert.output
     assert "SubmittedRecord" not in second_insert.output
     assert second_insert.exit_code == 0, second_insert.output
+
+
+def test_translate_revise_record_succeeds(tmp_path: Path):
+    """ac-0007: revise-record accepts a new target and writes to the store."""
+    project_dir = _make_project(tmp_path)
+    task, record, _ = _insert_identity_target(project_dir)
+    record_id = record["id"]
+
+    # Revise the record with a new target.
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "revise-record",
+            str(project_dir),
+            record_id,
+            "--target",
+            "Revised translation for " + record_id,
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "revised:" in res.output
+    assert record_id in res.output
+    assert "recheck:" in res.output
+
+
+def test_translate_revise_record_rejects_unknown_record(tmp_path: Path):
+    """ac-0008: revise-record rejects unknown record ids."""
+    project_dir = _make_project(tmp_path)
+
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "revise-record",
+            str(project_dir),
+            "9999-999999",
+            "--target",
+            "some text",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "no matching source" in res.output or "error" in res.output
+
+
+def test_translate_revise_record_rejects_empty_target(tmp_path: Path):
+    """ac-0008: revise-record rejects empty targets."""
+    project_dir = _make_project(tmp_path)
+    task, record, _ = _insert_identity_target(project_dir)
+    record_id = record["id"]
+
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "revise-record",
+            str(project_dir),
+            record_id,
+            "--target",
+            "",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "empty" in res.output.lower()
+
+
+def test_translate_revise_record_store_stays_valid(tmp_path: Path):
+    """ac-0007: after revision, the store is valid Pydantic JSON."""
+    project_dir = _make_project(tmp_path)
+    task, record, _ = _insert_identity_target(project_dir)
+    record_id = record["id"]
+
+    runner.invoke(
+        app,
+        [
+            "translate",
+            "revise-record",
+            str(project_dir),
+            record_id,
+            "--target",
+            "Revised " + record_id,
+        ],
+    )
+
+    # Reload the store and verify it parses.
+    store_path = _store_path(project_dir)
+    raw = json.loads(store_path.read_text("utf-8"))
+    assert "records" in raw
+    assert record_id in raw["records"]
+    stored = raw["records"][record_id]
+    assert "active_version" in stored
+    assert "versions" in stored
+    # Verify the revised target is present.
+    av = stored["active_version"]
+    versions = [v for v in stored["versions"] if v["version_ref"] == av]
+    assert len(versions) == 1
+    assert versions[0]["target"] == "Revised " + record_id

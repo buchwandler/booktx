@@ -96,22 +96,53 @@ class Severity:
 
 @dataclass(slots=True)
 class Finding:
-    """One validation finding for one chunk."""
+    """One validation finding for one chunk.
+
+    Optional location/context fields are populated from EPUB inline-XHTML
+    preflight findings and left empty for plain record-level findings. They
+    are included in :meth:`as_dict` only when non-empty so the JSON report
+    stays backward compatible and readable.
+    """
 
     chunk_id: str
     severity: str
     rule: str
     message: str
     record_id: str = ""
+    record_ids: list[str] = field(default_factory=list)
+    chapter_id: str = ""
+    chapter_title: str = ""
+    span_index: int | None = None
+    block_id: str = ""
+    document_href: str = ""
+    source: str = ""
+    target: str = ""
 
-    def as_dict(self) -> dict[str, str]:
-        return {
+    def as_dict(self) -> dict[str, object]:
+        data: dict[str, object] = {
             "chunk_id": self.chunk_id,
             "severity": self.severity,
             "rule": self.rule,
             "message": self.message,
             "record_id": self.record_id,
         }
+        if self.record_ids:
+            data["record_ids"] = list(self.record_ids)
+        if self.chapter_id:
+            data["chapter_id"] = self.chapter_id
+        if self.chapter_title:
+            data["chapter_title"] = self.chapter_title
+        if self.span_index is not None:
+            data["span_index"] = self.span_index
+        if self.block_id:
+            data["block_id"] = self.block_id
+        if self.document_href:
+            data["document_href"] = self.document_href
+        if self.source:
+            data["source"] = self.source
+        if self.target:
+            data["target"] = self.target
+        return data
 
 
 @dataclass(slots=True)
@@ -1108,6 +1139,42 @@ def _resolve_validation_scope(
     return resolved_chapter, merged_records or None
 
 
+def _scoped_chunk_ids(
+    project: Project,
+    source_chunks: dict[str, Chunk],
+    *,
+    chapter_id: str | None,
+    record_ids: set[str] | None,
+) -> set[str] | None:
+    """Return the set of chunk ids in the validation scope, or None when unscoped.
+
+    ``None`` means whole-project (every chunk is in scope). When a scope is
+    set, the returned set contains only chunks holding at least one in-scope
+    record, so the chunks_checked/passed/missing counters match the findings
+    a scoped run actually shows.
+    """
+    if chapter_id is None and record_ids is None:
+        return None
+    scoped: set[str] = set()
+    if chapter_id is not None:
+        try:
+            from booktx.chapters import load_chapter_map
+
+            chapter_map = load_chapter_map(project)
+        except Exception:  # noqa: BLE001
+            chapter_map = None
+        if chapter_map is not None:
+            for chapter in chapter_map.chapters:
+                if chapter.chapter_id == chapter_id:
+                    scoped.update(chapter.chunk_ids)
+                    break
+    if record_ids:
+        for chunk_id, chunk in source_chunks.items():
+            if any(record.id in record_ids for record in chunk.records):
+                scoped.add(chunk_id)
+    return scoped or set()
+
+
 def epub_preflight_findings_as_validation_findings(
     preflight_findings: list[Any],
 ) -> list[Finding]:
@@ -1119,20 +1186,19 @@ def epub_preflight_findings_as_validation_findings(
                 chunk_id=pf.chunk_id or "epub-preflight",
                 severity=pf.severity,
                 rule=pf.rule,
-                message=_format_preflight_message(pf),
+                message=pf.message,
                 record_id=pf.record_id,
+                record_ids=list(pf.record_ids),
+                chapter_id=pf.chapter_id,
+                chapter_title=pf.chapter_title,
+                span_index=pf.span_index,
+                block_id=pf.block_id,
+                document_href=pf.document_href,
+                source=pf.source,
+                target=pf.target,
             )
         )
     return findings
-
-
-def _format_preflight_message(pf: Any) -> str:
-    """Render a preflight finding message with source/target context."""
-    parts = [pf.message]
-    if pf.source or pf.target:
-        parts.append(f"source: {pf.source}")
-        parts.append(f"target: {pf.target}")
-    return " | ".join(parts)
 
 
 def validate_project(
@@ -1256,6 +1322,12 @@ def validate_project(
     resolved_chapter, resolved_record_ids = _resolve_validation_scope(
         project, chapter_id=chapter_id, record_ids=record_ids, task_id=task_id
     )
+    scoped_chunks = _scoped_chunk_ids(
+        project,
+        source_chunks,
+        chapter_id=resolved_chapter,
+        record_ids=resolved_record_ids,
+    )
     if new_epub_pipeline:
         from booktx.epub_preflight import validate_epub_inline_preflight
 
@@ -1277,7 +1349,23 @@ def validate_project(
         if drift_finding is not None:
             report.findings.append(drift_finding)
 
+    # Scope record-level findings to the resolved chapter/task/record set so a
+    # bounded run is not blocked by findings in unrelated chapters. Structural
+    # findings (manifest/context/store/ledger, whose chunk_id is not a real
+    # source chunk) always remain; only findings attached to a source chunk
+    # outside the scope are dropped. EPUB preflight findings are already scoped
+    # by chapter inside validate_epub_inline_preflight.
+    if scoped_chunks is not None:
+        report.findings = [
+            finding
+            for finding in report.findings
+            if finding.chunk_id not in source_chunks
+            or finding.chunk_id in scoped_chunks
+        ]
+
     for chunk_id in sorted(source_chunks):
+        if scoped_chunks is not None and chunk_id not in scoped_chunks:
+            continue
         source = source_chunks[chunk_id]
         report.chunks_checked += 1
         if new_epub_pipeline:

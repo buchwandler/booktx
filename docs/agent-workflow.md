@@ -75,6 +75,8 @@ booktx validate . --fail-on-warnings
 booktx build . --require-complete
 ```
 
+For per-batch validation within a bounded todo, use scoped `booktx check . --chapter CHAPTER --fail-on-warnings` instead. Use `booktx validate` only for the final pre-build check.
+
 ## 7. Longer bounded runs
 
 When the user asks to continue for multiple chapters, do not request one huge
@@ -89,6 +91,10 @@ booktx translate todo-resume . --profile de_gpt5_5 --latest --format block
 Read the generated todo markdown and follow its loop. After each completed
 chapter, fill the `booktx context chapter-note` template printed by
 `booktx translate insert`; do not hand-edit `context.md` for chapter notes.
+
+If validation flags an old accepted record during a bounded run, use
+`booktx translation revise-record . RECORD_ID --target "..."` to fix it.
+Never edit `translation-store.json` directly.
 That chapter-note append affects the next task's context view, but it does not
 mint a new dotted version by itself.
 Stop when the todo goal is complete, when `todo-status` says it is complete, or
@@ -101,7 +107,7 @@ budget runs low. `--max-run-words` is advisory only.
 - Cross-profile reference work is allowed only from project-root collaborative
   mode.
 - Never edit `.booktx/chunks/*.json` directly during normal translation work.
-- Never edit `translations/<profile>/translation-store.json` directly.
+- Never edit `translations/<profile>/translation-store.json` directly. If validation flags an old accepted record, use `booktx translation revise-record` to fix it.
 - Never edit `translations/<profile>/translated/*.json` directly; use `booktx translate export`.
 - Use `booktx profile compare` for cross-profile review instead of mixing store files manually.
 - If a `todo-status`, `todo-resume`, or `todo-next` command fails with an internal

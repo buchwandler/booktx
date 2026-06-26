@@ -274,6 +274,7 @@ Use commands instead:
 booktx translate insert ...
 booktx translation activate ...
 booktx translate export ...
+booktx translation revise-record . RECORD_ID --target "..."
 booktx check . --chapter CHAPTER --fail-on-warnings
 booktx validate . --profile PROFILE
 ```
@@ -292,6 +293,12 @@ booktx translate todo-resume . --profile PROFILE --latest --format block
 In isolated profile-root mode, drop `--profile` from all three and run them with
 project argument `.` from inside `translations/<profile>/`; the written todo
 markdown and resume hints then use local paths only.
+
+Use scoped `booktx check . --chapter CHAPTER --fail-on-warnings` for per-batch
+validation within a bounded todo. Use `booktx validate . --fail-on-warnings`
+only for the final pre-build check. If validation flags an old accepted record,
+use `booktx translation revise-record` to fix it; never edit
+`translation-store.json` directly.
 
 ## Single large chapters
 

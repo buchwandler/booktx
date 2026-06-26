@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 from pydantic import PydanticUserError, ValidationError
 
 from booktx.command_hints import (
+    check_command,
     profile_option_fragment,
     translate_todo_resume_command,
-    validate_command,
 )
 from booktx.config import (
     Project,
@@ -30,6 +30,7 @@ __all__ = [
     "TodoChapterStatus",
     "TodoValidationStatus",
     "TodoStatusSnapshot",
+    "current_todo_chapter_id",
     "load_translation_todo",
     "list_translation_todos",
     "latest_incomplete_todo",
@@ -97,6 +98,8 @@ class TodoStatusSnapshot:
     state: str
     blocking_reason: str | None
     next_safe_command: str | None
+    validation_scope_chapter: str | None = None
+    global_note: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -117,10 +120,12 @@ class TodoStatusSnapshot:
             "source_drifted": self.source_drifted,
             "context_drifted": self.context_drifted,
             "validation": self.validation.as_dict(),
+            "validation_scope_chapter": self.validation_scope_chapter,
             "state": self.state,
             "blocking_reason": self.blocking_reason,
             "next_planned_chapter": self.next_planned_chapter,
             "next_safe_command": self.next_safe_command,
+            "global_note": self.global_note,
             "chapters": [chapter.as_dict() for chapter in self.chapters],
         }
 
@@ -234,6 +239,19 @@ def _chapter_statuses(
     return chapters, current
 
 
+def current_todo_chapter_id(todo: TranslationTodo, bundle: StatusBundle) -> str | None:
+    """Return the first incomplete planned chapter id for a todo.
+
+    Shared by todo-status and todo-resume so both scope validation to the
+    same current chapter and emit identical scoped next-command hints.
+    """
+    for planned in todo.chapters:
+        live = bundle.index.chapters_by_id.get(planned.chapter_id)
+        if live is not None and live.records_remaining > 0:
+            return planned.chapter_id
+    return None
+
+
 def build_todo_status(
     project: Project,
     todo: TranslationTodo,
@@ -242,8 +260,19 @@ def build_todo_status(
     mode: RuntimeMode | None = None,
     validation_report: ValidationReport | None = None,
     fail_on_warnings: bool = True,
+    scope_chapter_id: str | None = None,
+    global_report: ValidationReport | None = None,
 ) -> TodoStatusSnapshot:
-    """Build the live status snapshot for one bounded-run todo."""
+    """Build the live status snapshot for one bounded-run todo.
+
+    ``validation_report`` is the scoped report used for the blocking gate.
+    ``scope_chapter_id`` records which chapter the scoped pass covered (for
+    display) and selects the scoped ``check --chapter`` next-command hint
+    when validation blocks. ``global_report`` is an optional second
+    whole-project pass: when the scoped pass passes but the global pass has
+    warnings/errors outside the scope, a non-blocking note is surfaced and
+    ``state`` stays ``ready``.
+    """
     chapters, current = _chapter_statuses(todo, bundle)
     complete_count = sum(1 for chapter in chapters if chapter.complete)
     goal_complete = complete_count == len(chapters)
@@ -284,13 +313,36 @@ def build_todo_status(
     elif validation.blocking:
         state = "blocked"
         blocking_reason = "validation findings must be resolved before resuming"
-        next_safe_command = validate_command(project, mode=mode, fail_on_warnings=True)
+        next_safe_command = check_command(
+            project, mode=mode, chapter_id=scope_chapter_id, fail_on_warnings=True
+        )
     elif current is not None:
         next_safe_command = translate_todo_resume_command(
             project,
             mode=mode,
             todo_id=todo.todo_id,
             output_format="block",
+        )
+
+    # Non-blocking global note: scoped validation passed, but a second
+    # whole-project pass found warnings/errors outside this todo's chapter.
+    # Never blocks; just reminds the operator to run full validation before
+    # the final build.
+    global_note: str | None = None
+    scoped_errors = len(report.errors) if report is not None else 0
+    scoped_warnings = len(report.warnings) if report is not None else 0
+    if (
+        global_report is not None
+        and not validation.blocking
+        and state == "ready"
+        and (
+            len(global_report.errors) > scoped_errors
+            or len(global_report.warnings) > scoped_warnings
+        )
+    ):
+        global_note = (
+            "global validation has warnings outside this todo; run full "
+            "validation before final build"
         )
 
     return TodoStatusSnapshot(
@@ -306,6 +358,8 @@ def build_todo_status(
         state=state,
         blocking_reason=blocking_reason,
         next_safe_command=next_safe_command,
+        validation_scope_chapter=scope_chapter_id,
+        global_note=global_note,
     )
 
 
