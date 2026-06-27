@@ -1384,3 +1384,109 @@ def _make_project_with_translations(tmp_path: Path) -> Path:
     )
     assert ins.exit_code == 0, ins.output
     return project_dir
+
+
+# --- outer_quotation_marks_preserved ---------------------------------------
+
+
+def _quote_pair(source: str, target: str) -> list[Finding]:
+    """Run the pair-level rule on a fully-quoted source and a target."""
+    from booktx.models import Record, TranslatedRecord
+
+    src = Record(id="0001-000001", source=source, protected_terms=[], placeholders=[])
+    tgt = TranslatedRecord(id="0001-000001", target=target)
+    return validate_record_pair(src, tgt, "0001")
+
+
+def _quote_rules(findings: list[Finding]) -> set[str]:
+    return {f.rule for f in findings}
+
+
+def test_outer_quotation_marks_missing_closing_is_error():
+    # The canonical bug: target opens „ but never closes.
+    findings = _quote_pair(
+        "‘They won’t make any allowances for me if they catch us.’",
+        "„Sie werden keine Rücksicht auf mich nehmen, wenn sie uns erwischen.",
+    )
+    assert "outer_quotation_marks_preserved" in _quote_rules(findings)
+    assert any(f.severity == Severity.ERROR for f in findings)
+
+
+def test_outer_quotation_marks_german_low_high_passes():
+    findings = _quote_pair(
+        "‘They won’t make any allowances for me if they catch us.’",
+        "„Sie werden keine Rücksicht auf mich nehmen, wenn sie uns erwischen.“",
+    )
+    assert "outer_quotation_marks_preserved" not in _quote_rules(findings)
+
+
+def test_outer_quotation_marks_german_guillemets_passes():
+    findings = _quote_pair(
+        "‘They won’t make any allowances for me if they catch us.’",
+        "»Sie werden keine Rücksicht auf mich nehmen, wenn sie uns erwischen.«",
+    )
+    assert "outer_quotation_marks_preserved" not in _quote_rules(findings)
+
+
+def test_outer_quotation_marks_straight_double_passes():
+    findings = _quote_pair('"He said hello."', '"Er sagte Hallo."')
+    assert "outer_quotation_marks_preserved" not in _quote_rules(findings)
+
+
+def test_outer_quotation_marks_straight_single_passes():
+    findings = _quote_pair("'He said hello.'", "'Er sagte Hallo.'")
+    assert "outer_quotation_marks_preserved" not in _quote_rules(findings)
+
+
+def test_outer_quotation_marks_curly_double_passes():
+    findings = _quote_pair("“He said hello.”", "“Er sagte Hallo.”")
+    assert "outer_quotation_marks_preserved" not in _quote_rules(findings)
+
+
+def test_outer_quotation_marks_split_continuation_ignored():
+    # Source opens a quote but does not close it: a continuation span, not in scope.
+    findings = _quote_pair("‘And then she continued", "„Und dann fuhr sie fort")
+    assert "outer_quotation_marks_preserved" not in _quote_rules(findings)
+
+
+def test_outer_quotation_marks_inline_xhtml_uses_visible_edges():
+    # Visible source text is ‘Inside.’; target must close the visible quote.
+    from booktx.models import Record, TranslatedRecord
+
+    src = Record(
+        id="0001-000001",
+        source="<i>‘Inside.’</i>",
+        source_markup="epub-inline-xhtml:v1",
+        protected_terms=[],
+        placeholders=[],
+    )
+    bad = TranslatedRecord(id="0001-000001", target="<i>„Drinnen.</i>")
+    good = TranslatedRecord(id="0001-000001", target="<i>„Drinnen.“</i>")
+    assert "outer_quotation_marks_preserved" in _quote_rules(
+        validate_record_pair(src, bad, "0001")
+    )
+    assert "outer_quotation_marks_preserved" not in _quote_rules(
+        validate_record_pair(src, good, "0001")
+    )
+
+
+def test_outer_quotation_marks_mismatched_pairs_fail():
+    for target in ("„Sie werden erwischen.«", "»Sie werden erwischen.“"):
+        findings = _quote_pair("‘They won’t make any allowances.’", target)
+        assert "outer_quotation_marks_preserved" in _quote_rules(findings), target
+
+
+def test_outer_quotation_marks_finding_carries_source_and_target():
+    findings = _quote_pair(
+        "‘They won’t make any allowances for me if they catch us.’",
+        "„Sie werden keine Rücksicht auf mich nehmen, wenn sie uns erwischen.",
+    )
+    quote = [f for f in findings if f.rule == "outer_quotation_marks_preserved"]
+    assert len(quote) == 1
+    finding = quote[0]
+    expected_src = "‘They won’t make any allowances for me if they catch us.’"
+    expected_tgt = (
+        "„Sie werden keine Rücksicht auf mich nehmen, wenn sie uns erwischen."
+    )
+    assert finding.source == expected_src
+    assert finding.target == expected_tgt

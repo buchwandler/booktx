@@ -1813,3 +1813,151 @@ def test_translate_revise_record_store_stays_valid(tmp_path: Path):
     versions = [v for v in stored["versions"] if v["version_ref"] == av]
     assert len(versions) == 1
     assert versions[0]["target"] == "Revised " + record_id
+
+
+# --- outer_quotation_marks_preserved CLI regression ---------------------
+
+
+QUOTED_DOC = """\
+‘They won’t make any allowances for me if they catch us.’
+"""
+
+
+def _make_quoted_project(tmp_path: Path) -> Path:
+    """Project whose first source record is fully outer-quoted."""
+    src = tmp_path / "quoted.md"
+    src.write_text(QUOTED_DOC, encoding="utf-8")
+    project_dir = tmp_path / "book"
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--target",
+            "de",
+            "--source-file",
+            str(src),
+            "--chunk-size",
+            "2",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(project_dir),
+            "--force",
+            "--reason",
+            "test setup",
+        ],
+    )
+    return project_dir
+
+
+def _first_task_record(project_dir: Path):
+    next_res = runner.invoke(
+        app,
+        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    return task, task["records"][0]
+
+
+def test_translate_insert_rejects_missing_final_quote(tmp_path: Path):
+    project_dir = _make_quoted_project(tmp_path)
+    task, record = _first_task_record(project_dir)
+    record_id = record["id"]
+    before = _store_path(project_dir)
+    before_text = before.read_text("utf-8") if before.is_file() else None
+
+    # Block submission: target opens „ but never closes.
+    block = f">>> {record_id}\n„Sie werden keine Rücksicht auf mich nehmen.\n"
+    insert_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--stdin",
+            "--format",
+            "block",
+        ],
+        input=block,
+    )
+
+    assert insert_res.exit_code == 1, insert_res.output
+    assert "submission rejected" in insert_res.output
+    assert "outer_quotation_marks_preserved" in insert_res.output
+    # The offending source/target must be rendered for an actionable rejection.
+    assert "source:" in insert_res.output
+    assert "target:" in insert_res.output
+    # The candidate must NOT have been written.
+    after = _store_path(project_dir)
+    after_text = after.read_text("utf-8") if after.is_file() else None
+    assert after_text == before_text
+
+
+def test_translate_revise_record_rejects_missing_final_quote(tmp_path: Path):
+    project_dir = _make_quoted_project(tmp_path)
+    task, record = _first_task_record(project_dir)
+    record_id = record["id"]
+
+    # First accept a fully valid target („...") so a record exists to revise.
+    valid_block = f">>> {record_id}\n„Sie werden keine Rücksicht auf mich nehmen.“\n"
+    ok_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--stdin",
+            "--format",
+            "block",
+        ],
+        input=valid_block,
+    )
+    assert ok_res.exit_code == 0, ok_res.output
+    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    active = store["records"][record_id]["active_version"]
+    valid_versions = [
+        v for v in store["records"][record_id]["versions"] if v["version_ref"] == active
+    ]
+    assert len(valid_versions) == 1 and valid_versions[0]["target"].endswith("“")
+
+    # Now revise to a target that drops the closing quote.
+    rev_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "revise-record",
+            str(project_dir),
+            record_id,
+            "--stdin",
+        ],
+        input="„Sie werden keine Rücksicht auf mich nehmen.\n",
+    )
+
+    assert rev_res.exit_code == 1, rev_res.output
+    assert "submission rejected" in rev_res.output
+    assert "outer_quotation_marks_preserved" in rev_res.output
+    assert "source:" in rev_res.output
+    assert "target:" in rev_res.output
+
+    # The store must be unchanged: the active target still ends with the valid “.
+    store_after = json.loads(_store_path(project_dir).read_text("utf-8"))
+    active_after = store_after["records"][record_id]["active_version"]
+    active_versions = [
+        v
+        for v in store_after["records"][record_id]["versions"]
+        if v["version_ref"] == active_after
+    ]
+    assert len(active_versions) == 1 and active_versions[0]["target"].endswith("“")

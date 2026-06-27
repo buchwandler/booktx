@@ -75,6 +75,7 @@ Rules:
 - Keep every `>>> RECORD_ID` header unchanged.
 - Write only the target translation under each header.
 - Preserve required placeholder tokens (for example `__NAME_001__`) exactly.
+- Preserve enclosing quotation marks when the source record is fully quoted. German targets may use either `„...“` or `»...«`, but both opening and closing quotation marks must be present as a valid pair. Do not mix quote styles within one outer pair.
 - Do not add commentary outside target text.
 - Do not edit `tasks/<task>.source.block.txt` as the submission.
 

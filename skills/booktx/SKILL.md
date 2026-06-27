@@ -181,6 +181,7 @@ In block files:
 - Keep every `>>> RECORD_ID` header unchanged.
 - Write only the target translation under each header.
 - Preserve required placeholder tokens exactly.
+- If a source record is fully enclosed in dialogue quotes, preserve a complete enclosing quote pair in the target. German targets may use `„...“` or `»...«`; do not leave an opening `„` without the closing `“`.
 - Do not translate protected names unless context explicitly allows it.
 - Do not add commentary outside target text.
 - Do not edit `tasks/TASK.source.block.txt` as the submission.

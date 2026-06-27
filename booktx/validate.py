@@ -26,6 +26,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -198,6 +199,77 @@ class EffectiveTranslations:
 
 
 # --- per-pair validation -----------------------------------------------------
+
+# Recognized outer (enclosing) quotation-mark pairs.
+# Visible-text edge checks use these to decide whether a record is fully
+# enclosed in dialogue quotes. A pair must match exactly: we reject
+# mismatched open/close combinations such as `„...«`.
+_SOURCE_OUTER_QUOTE_PAIRS = frozenset(
+    {
+        ("\u2018", "\u2019"),  # ‘...’
+        ("\u201c", "\u201d"),  # “...”
+        ('"', '"'),  # "..."
+        ("'", "'"),  # '...'
+        ("\u00ab", "\u00bb"),  # «...»
+        ("\u00bb", "\u00ab"),  # »...«
+    }
+)
+
+# Target pairs are locale-tolerant: German „...“, guillemets, curly
+# quotes, low-high ‚...‘, plus straight-quote fallbacks.
+_TARGET_OUTER_QUOTE_PAIRS = frozenset(
+    {
+        ("\u201e", "\u201c"),  # „...“ (German)
+        ("\u00bb", "\u00ab"),  # »...« (German guillemets)
+        ("\u201c", "\u201d"),  # “...”
+        ("\u2018", "\u2019"),  # ‘...’
+        ("\u201a", "\u2018"),  # ‚...‘ (German single low-9)
+        ('"', '"'),  # "..."
+        ("'", "'"),  # '...'
+        ("\u00ab", "\u00bb"),  # «...»
+    }
+)
+
+
+def _visible_text_for_quote_edges(fragment: str) -> str:
+    """Return visible text for quote-edge checks.
+
+    When the fragment carries inline XHTML, the surrounding/inner tags must
+    not affect which characters sit at the visible edges, so `<i>‘X.’</i>`
+    is treated as `‘X.’`. Plain (non-XHTML) fragments are only HTML-unescaped
+    and stripped of surrounding whitespace.
+    """
+    if "<" in fragment and ">" in fragment:
+        try:
+            from booktx.epub_inline_xhtml import strip_inline_xhtml
+
+            return strip_inline_xhtml(fragment).strip()
+        except Exception:  # noqa: BLE001 - never mask XHTML validation root cause
+            return unescape(fragment).strip()
+    return unescape(fragment).strip()
+
+
+def _outer_quote_pair(text: str) -> tuple[str, str] | None:
+    """Return the (open, close) visible edge chars of *text*, or None.
+
+    None is returned for fragments shorter than two visible characters so
+    that a lone quote mark or empty record is never reported as a complete
+    outer pair on either side.
+    """
+    visible = _visible_text_for_quote_edges(text)
+    if len(visible) < 2:
+        return None
+    return visible[0], visible[-1]
+
+
+def _source_is_fully_outer_quoted(source_text: str) -> bool:
+    pair = _outer_quote_pair(source_text)
+    return pair in _SOURCE_OUTER_QUOTE_PAIRS
+
+
+def _target_is_fully_outer_quoted(target_text: str) -> bool:
+    pair = _outer_quote_pair(target_text)
+    return pair in _TARGET_OUTER_QUOTE_PAIRS
 
 
 def _load_source_chunk(path: Path) -> Chunk:
@@ -391,6 +463,78 @@ def _check_inline_xhtml(
     return findings
 
 
+def _check_outer_quotation_preserved(
+    source_rec: Record, target_rec: TranslatedRecord, chunk_id: str
+) -> list[Finding]:
+    """Require a complete enclosing quote pair in the target when the source has one.
+
+    Rule ``outer_quotation_marks_preserved``. The check operates on visible
+    text so inline XHTML tags at the edges are ignored. Only records whose
+    visible source text starts AND ends with a recognized outer pair are in
+    scope; split/continuation dialogue spans are not flagged.
+    """
+    if not _source_is_fully_outer_quoted(source_rec.source):
+        return []
+    if _target_is_fully_outer_quoted(target_rec.target):
+        return []
+    source_pair = _outer_quote_pair(source_rec.source)
+    # _source_is_fully_outer_quoted() above already confirmed a recognized
+    # source pair exists, so source_pair cannot be None here.
+    assert source_pair is not None
+    target_pair = _outer_quote_pair(target_rec.target)
+    detail = "the target is not enclosed in a complete accepted quotation pair"
+    if target_pair is not None:
+        opener, closer = target_pair
+        accepted_openers = {pair[0] for pair in _TARGET_OUTER_QUOTE_PAIRS}
+        accepted_closers = {pair[1] for pair in _TARGET_OUTER_QUOTE_PAIRS}
+        source_openers = {pair[0] for pair in _SOURCE_OUTER_QUOTE_PAIRS}
+        source_closers = {pair[1] for pair in _SOURCE_OUTER_QUOTE_PAIRS}
+        if opener not in accepted_openers and opener not in source_openers:
+            detail = "the target opening quotation mark is not recognized"
+        elif (
+            closer is not None
+            and closer not in accepted_closers
+            and closer not in source_closers
+        ):
+            detail = "the target closing quotation mark is not recognized"
+        elif opener in accepted_openers:
+            # Recognized opener but the pair as a whole is not accepted:
+            # the closer is missing or mismatches the opener.
+            matching = {
+                pair[1] for pair in _TARGET_OUTER_QUOTE_PAIRS if pair[0] == opener
+            }
+            if closer in matching:
+                # Defensive: should have been caught by the pass branch.
+                detail = "the target quotation pair is not accepted"
+            elif closer in accepted_closers or closer in source_closers:
+                detail = (
+                    "the target mixes quote styles within one outer pair "
+                    f"(opens {opener!r}, closes {closer!r})"
+                )
+            else:
+                detail = (
+                    f"the target opens {opener!r} but lacks the matching closing quote"
+                )
+        elif closer in accepted_closers or closer in source_closers:
+            detail = (
+                f"the target closes {closer!r} but lacks the matching opening quote"
+            )
+    return [
+        Finding(
+            chunk_id=chunk_id,
+            severity=Severity.ERROR,
+            rule="outer_quotation_marks_preserved",
+            message=(
+                f"record {target_rec.id} source is fully enclosed in "
+                f"quotation marks {tuple(c for c in source_pair)}, but " + detail
+            ),
+            record_id=target_rec.id,
+            source=source_rec.source,
+            target=target_rec.target,
+        )
+    ]
+
+
 def validate_record_pair(
     source_rec: Record,
     target_rec: TranslatedRecord,
@@ -413,6 +557,7 @@ def validate_record_pair(
     findings.extend(_check_protected_names_preserved(source_rec, target_rec, chunk_id))
     findings.extend(_check_forbidden_terms(source_rec, target_rec, chunk_id, context))
     findings.extend(_check_inline_xhtml(source_rec, target_rec, chunk_id))
+    findings.extend(_check_outer_quotation_preserved(source_rec, target_rec, chunk_id))
     return findings
 
 

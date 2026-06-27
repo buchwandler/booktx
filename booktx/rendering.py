@@ -360,3 +360,7 @@ def render_submission_failures(findings: list[Finding]) -> None:
         else:
             console.print(f"{finding.chunk_id} {finding.rule}:")
         console.print(f"  {finding.message}")
+        if finding.source:
+            console.print(f"  source: {finding.source}", soft_wrap=True, markup=False)
+        if finding.target:
+            console.print(f"  target: {finding.target}", soft_wrap=True, markup=False)
