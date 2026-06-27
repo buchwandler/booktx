@@ -70,6 +70,7 @@ booktx translation compare ./book --profile de_gpt5_5 74@38 --versions 1.1,1.2
 booktx translation activate ./book --profile de_gpt5_5 74@38 1.2
 booktx translation review ./book --profile de_gpt5_5 74@38 --activate 1.2 --note "Better rhythm"
 booktx translation revise-record ./book --profile de_gpt5_5 74@38 --target "Revised target text"
+booktx translation revise-block ./book --profile de_gpt5_5 --file ingest/fixes.block.txt --format block --activate
 booktx translate export ./book --profile de_gpt5_5
 booktx translate export-index ./book --profile de_gpt5_5
 booktx translate export-index ./book --profile de_gpt5_5 --kind source
@@ -205,24 +206,21 @@ Questions start as `open`. Agents may store draft defaults with `context recomme
 
 ## Review commands (`booktx review`)
 
-- `booktx review status .` -- report review coverage by pass (eligible/reviewed/missing/stale/blocked)
-- `booktx review next . --pass 1` -- create the next durable review task for a pass
+- `booktx review configure . --show` -- show current quality review config
+- `booktx review configure . --enable --pass 1 --name "Flow review" --mode manual --enforce warn` -- enable review with one pass (see `docs/profiles.md` for all flags)
+- `booktx review configure . --disable` -- disable quality review entirely
+- `booktx review status .` -- report review coverage by pass (eligible/reviewed/missing/stale/blocked); JSON includes `next_command`, `first_missing_record`, `first_missing_chapter`
+- `booktx review next . --pass 1` -- create the next durable review task for a pass; supports `--selection missing|stale|reviewed|all|changed-base` and `--base active_translation|active_review|pass:N`
+- `booktx review next . --pass 1 --selection reviewed --base active_review` -- rerun a pass over already-reviewed records, creating `R1.2` from `R1.1`
 - `booktx review insert . --review-task-id TASK --file reviews/TASK.block.txt --format block` -- parse and accept a review submission
 - `booktx review activate . RECORD R1.2` -- manually activate an existing review candidate for a record
+- `booktx review deactivate . RECORD` -- deactivate the active review, falling back to the active translation version
+- `booktx review revise-record . RECORD --base-review R1.2 --stdin` -- revise an accepted review candidate by creating a new same-pass rerun
 
-Profile quality review must be enabled in `config.toml` for review commands to work:
+Enable quality review via CLI (preferred) or TOML:
 
-```toml
-[quality_review]
-enabled = true
-active_passes = [1]
-
-[[quality_review.passes]]
-pass_number = 1
-name = "Flow review"
-enforce = "warn"
-```
-
+````bash
+booktx review configure . --enable --pass 1 --name "Flow review" --mode manual --enforce warn
 ## Glossary repair and chapter note reset
 
 ```bash
@@ -253,4 +251,4 @@ booktx context chapter-note . 0006 \
   --translation-summary "..." \
   --decision "Keep Apt" \
   --open-issue "Check title rendering"
-```
+````

@@ -21,6 +21,7 @@ import shutil
 import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +80,7 @@ from booktx.config import (
     translation_task_path,
     translation_task_source_block_path,
     write_identity,
+    write_profile_config,
     write_translation_store,
 )
 from booktx.context import (
@@ -108,6 +110,7 @@ from booktx.context import (
 from booktx.editor_indexes import (
     EditorIndexError,
     EditorIndexesResult,
+    build_editor_indexes,
     export_editor_indexes,
 )
 from booktx.epub_io import EpubExtraction, extract_epub
@@ -119,6 +122,8 @@ from booktx.models import (
     Chunk,
     Manifest,
     NamesFile,
+    QualityReviewConfig,
+    ReviewPassConfig,
     StoredTranslationRecordV2,
     TranslatedChunk,
     TranslatedRecord,
@@ -4073,6 +4078,11 @@ def translate_export_index(  # noqa: C901
         help="Fail when target validation warnings are present.",
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit command summary as JSON."),
+    jsonl: bool = typer.Option(
+        False,
+        "--jsonl",
+        help="Also write current-only JSONL aliases next to the JSON indexes.",
+    ),
 ) -> None:
     """Export profile-local editor QA indexes.
 
@@ -4105,6 +4115,25 @@ def translate_export_index(  # noqa: C901
             kinds=requested,
             fail_on_warn=fail_on_warn,  # type: ignore[arg-type]
         )
+        if jsonl:
+            source_index, target_index, source_target_index, _ = build_editor_indexes(
+                proj
+            )
+            if result.source_path is not None:
+                _write_jsonl_index(
+                    Path(result.source_path).with_suffix(".jsonl"),
+                    source_index.model_dump(mode="json")["records"],
+                )
+            if result.target_path is not None:
+                _write_jsonl_index(
+                    Path(result.target_path).with_suffix(".jsonl"),
+                    target_index.model_dump(mode="json")["records"],
+                )
+            if result.source_target_path is not None:
+                _write_jsonl_index(
+                    Path(result.source_target_path).with_suffix(".jsonl"),
+                    source_target_index.model_dump(mode="json")["records"],
+                )
     except EditorIndexError as exc:
         # source-index may have been written before target-based export failed.
         partial = exc.result
@@ -4146,6 +4175,20 @@ def translate_export_index(  # noqa: C901
     console.print(f"missing: {result.missing_count}")
     console.print(f"warnings: {result.warning_count}")
     console.print(f"errors: {result.error_count}")
+    if jsonl:
+        console.print("jsonl: written for requested successful indexes")
+
+
+def _write_jsonl_index(path: Path, records: dict[str, Any]) -> None:
+    from booktx.io_utils import write_text_atomic
+
+    lines = [
+        json.dumps(
+            {"id": record_id, **payload}, ensure_ascii=False, separators=(",", ":")
+        )
+        for record_id, payload in records.items()
+    ]
+    write_text_atomic(path, "\n".join(lines) + ("\n" if lines else ""))
 
 
 def _editor_index_summary(
@@ -4666,10 +4709,10 @@ def translation_revise_record(
     review = active_review_candidate(stored)
     if review is not None:
         _die(
-            f"record {record_id} has an active review candidate"
-            f" ({review.review_ref}). Revise the review candidate instead"
-            f" with `booktx translation review . {record_ref}`,"
-            f" or deactivate the review before revising the translation."
+            f"record {record_id} has active review {review.review_ref},"
+            f" so changing active_version will not affect output."
+            f" Use `booktx review revise-record . {record_ref} --base-review {review.review_ref}"
+            f" --stdin` or `booktx review deactivate . {record_ref}`."
         )
 
     # Validate the record pair.
@@ -4739,6 +4782,147 @@ def translation_revise_record(
         soft_wrap=True,
         markup=False,
     )
+
+
+@translate_app.command(name="revise-block")
+def translation_revise_block(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    file: Path | None = typer.Option(None, "--file", help="Block submission file."),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read block submission from stdin."
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    output_format: str = typer.Option(
+        "block", "--format", help="Submission format: block."
+    ),
+    activate: bool = typer.Option(
+        True,
+        "--activate/--no-activate",
+        help="Activate revised versions after writing.",
+    ),
+) -> None:
+    """Revise multiple accepted translation records from a block file safely."""
+    if output_format != "block":
+        _die("translation revise-block currently supports --format block only")
+        return
+    if (file is None) == (not stdin):
+        _die("provide exactly one of --file or --stdin")
+        return
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_ready_context(proj)
+    from booktx.io_utils import utc_timestamp
+    from booktx.submissions import parse_block_submission
+
+    text = sys.stdin.read() if stdin else file.read_text("utf-8")  # type: ignore[union-attr]
+    parsed = parse_block_submission(text)
+    if not parsed.records:
+        _die("block submission contains no records")
+        return
+    submitted = [
+        SubmittedRecord(id=parse_record_ref(r.id).canonical_id, target=r.target)
+        for r in parsed.records
+    ]
+    submitted_ids = {item.id for item in submitted}
+    if len(submitted_ids) != len(submitted):
+        _die("duplicate record id in block submission")
+        return
+
+    store = load_translation_store(proj)
+    conflicts = []
+    for item in submitted:
+        stored = store.records.get(item.id)
+        if stored is None:
+            _die(f"record {item.id} has no stored translations")
+            return
+        review = active_review_candidate(stored)
+        if review is not None:
+            conflicts.append(f"{item.id} ({review.review_ref})")
+    if conflicts:
+        _die(
+            "records have active reviews, so revising active_version will not affect output: "
+            + ", ".join(conflicts)
+            + ". Use `booktx review deactivate . RECORD` or review correction commands first."
+        )
+        return
+
+    bundle = _project_status_snapshot(proj)
+    context = load_validation_context(proj)
+    findings: list[Finding] = []
+    source_views: dict[str, SourceRecordView] = {}
+    for item in submitted:
+        source_view = bundle.index.source_by_id.get(item.id)
+        if source_view is None:
+            _die(f"record {item.id} has no matching source record")
+            return
+        source_chunk = bundle.index.source_chunks.get(source_view.chunk_id)
+        if source_chunk is None:
+            _die(f"record {item.id} has no matching source chunk")
+            return
+        source_record = next((r for r in source_chunk.records if r.id == item.id), None)
+        if source_record is None:
+            _die(f"record {item.id} not found in source chunk")
+            return
+        findings.extend(
+            validate_record_pair(
+                source_record,
+                TranslatedRecord(id=item.id, target=item.target),
+                source_chunk.chunk_id,
+                context,
+            )
+        )
+        source_views[item.id] = source_view
+    errors = [f for f in findings if f.severity == Severity.ERROR]
+    if errors:
+        _render_submission_failures(errors)
+        raise typer.Exit(code=1)
+    _staged_preflight_check(proj, submitted, submitted_ids, fail_on_warnings=True)
+
+    version_ref = resolve_current_version(proj).version_ref
+    for item in submitted:
+        source_view = source_views[item.id]
+        ensure_store_record(
+            store,
+            item.id,
+            source=source_view.source,
+            source_sha256=source_view.source_sha256,
+        )
+        upsert_translation_version(
+            store.records[item.id],
+            version_ref,
+            item.target,
+            updated_at=utc_timestamp(),
+            activate=activate,
+        )
+    write_translation_store(proj, store)
+    chapters = sorted(
+        {
+            bundle.index.record_to_chapter.get(item.id, "")
+            for item in submitted
+            if bundle.index.record_to_chapter.get(item.id)
+        }
+    )
+    console.print(
+        f"revised: {len(submitted)} record(s) -> {version_ref}"
+        + (" (activated)" if activate else "")
+    )
+    if chapters:
+        console.print("affected chapters: " + ", ".join(chapters))
+        for chapter_id in chapters:
+            console.print(
+                "recheck: "
+                + check_command(
+                    proj,
+                    mode=runtime.mode,
+                    chapter_id=chapter_id,
+                    fail_on_warnings=True,
+                ),
+                soft_wrap=True,
+                markup=False,
+            )
 
 
 # --- validate ----------------------------------------------------------------
@@ -5179,6 +5363,141 @@ def _main(
 # --- review command group ------------------------------------------------
 
 
+@review_app.command(name="configure")
+def review_configure(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    show: bool = typer.Option(
+        False, "--show", help="Show current quality review config."
+    ),
+    enable: bool = typer.Option(False, "--enable", help="Enable quality review."),
+    disable: bool = typer.Option(False, "--disable", help="Disable quality review."),
+    pass_number: int | None = typer.Option(
+        None, "--pass", help="Review pass number to configure."
+    ),
+    name: str | None = typer.Option(None, "--name", help="Review pass name."),
+    mode: str | None = typer.Option(
+        None, "--mode", help="manual|after_chapter|before_build."
+    ),
+    enforce: str | None = typer.Option(None, "--enforce", help="off|warn|error."),
+    before: int | None = typer.Option(None, "--before", help="Context records before."),
+    after: int | None = typer.Option(None, "--after", help="Context records after."),
+    batch_words: int | None = typer.Option(
+        None, "--batch-words", help="Default review batch size."
+    ),
+    instructions: str | None = typer.Option(
+        None, "--instructions", help="Pass instructions."
+    ),
+    base: str | None = typer.Option(
+        None, "--base", help="active_translation|active_review."
+    ),
+    required_base_pass: int | None = typer.Option(
+        None, "--required-base-pass", help="Required prior pass."
+    ),
+) -> None:
+    """Show or update profile quality-review configuration without manual TOML edits."""
+    if enable and disable:
+        _die("use only one of --enable or --disable")
+        return
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    cfg = proj.profile_config
+    if cfg is None:
+        _die("profile config is not available")
+        return
+    if cfg.kind == "pass-through" and (enable or pass_number is not None):
+        _die("pass-through profiles cannot configure quality review")
+        return
+
+    quality = cfg.quality_review or QualityReviewConfig()
+    if (
+        show
+        and not enable
+        and not disable
+        and pass_number is None
+        and cfg.quality_review is None
+    ):
+        console.print("quality review: not configured")
+        console.print(
+            'next: booktx review configure . --enable --pass 1 --name "Flow review" --mode manual --enforce warn'
+        )
+        return
+
+    if disable:
+        quality.enabled = False
+    else:
+        if enable:
+            quality.enabled = True
+        if pass_number is not None:
+            existing = next(
+                (p for p in quality.passes if p.pass_number == pass_number), None
+            )
+            if existing is None:
+                existing = ReviewPassConfig(pass_number=pass_number)
+                quality.passes.append(existing)
+                quality.passes.sort(key=lambda p: p.pass_number)
+            if pass_number not in quality.active_passes:
+                quality.active_passes.append(pass_number)
+                quality.active_passes.sort()
+            updates: dict[str, Any] = {
+                k: v
+                for k, v in [
+                    ("name", name),
+                    ("mode", mode),
+                    ("enforce", enforce),
+                    ("before_records", before),
+                    ("after_records", after),
+                    ("batch_words", batch_words),
+                    ("instructions", instructions),
+                    ("base", base),
+                    ("required_base_pass", required_base_pass),
+                ]
+                if v is not None
+            }
+            if updates:
+                updated = existing.model_copy(update=updates)
+                quality.passes = [
+                    updated if p.pass_number == pass_number else p
+                    for p in quality.passes
+                ]
+        cfg.quality_review = quality
+        try:
+            cfg = cfg.model_validate(cfg.model_dump(mode="json"))
+        except ValidationError as exc:
+            _die("invalid quality review configuration: " + str(exc))
+            return
+        write_profile_config(proj.root, cfg.profile, cfg)
+        quality = cfg.quality_review or QualityReviewConfig()
+
+    console.print("quality review: " + ("enabled" if quality.enabled else "disabled"))
+    active = ", ".join(str(p) for p in quality.active_passes) or "none"
+    console.print(f"active passes: {active}")
+    for p in quality.passes:
+        console.print(f"pass {p.pass_number} {p.name}".rstrip())
+        console.print(f"  mode: {p.mode}  enforce: {p.enforce}  base: {p.base}")
+        console.print(
+            f"  context: before={p.before_records} after={p.after_records} batch_words={p.batch_words}"
+        )
+        if p.required_base_pass is not None:
+            console.print(f"  required base pass: {p.required_base_pass}")
+    if quality.enabled:
+        first_pass = quality.active_passes[0] if quality.active_passes else 1
+        console.print("next: booktx review status .", soft_wrap=True, markup=False)
+        console.print(
+            f"next review: booktx review next . --pass {first_pass}",
+            soft_wrap=True,
+            markup=False,
+        )
+    else:
+        console.print(
+            'next: booktx review configure . --enable --pass 1 --name "Flow review" --mode manual --enforce warn',
+            soft_wrap=True,
+            markup=False,
+        )
+
+
 @review_app.command(name="status")
 def review_status(
     project_dir: Path = typer.Argument(..., help="Project directory."),
@@ -5339,10 +5658,34 @@ def review_next(
     console.print(
         f"records: {task.record_count}  pass: R{task.pass_number} {task.pass_name}".rstrip()
     )
+    from booktx.config import (
+        translation_review_ingest_block_path,
+        translation_review_source_block_path,
+    )
+
+    src_path = _project_relative(
+        translation_review_source_block_path(proj, task.review_task_id), proj.root
+    )
+    ingest_path = _project_relative(
+        translation_review_ingest_block_path(proj, task.review_task_id), proj.root
+    )
+    console.print(f"read:   {src_path}", soft_wrap=True, markup=False)
+    console.print(f"edit:   {ingest_path}", soft_wrap=True, markup=False)
     console.print(
         f"submit: booktx review insert . --review-task-id {task.review_task_id} "
-        f"--file reviews/{task.review_task_id}.block.txt --format block"
+        f"--file {ingest_path} --format block",
+        soft_wrap=True,
+        markup=False,
     )
+    console.print(
+        "check:  "
+        + check_command(
+            proj, mode=runtime.mode, chapter_id=task.chapter_id, fail_on_warnings=True
+        ),
+        soft_wrap=True,
+        markup=False,
+    )
+    console.print("status: booktx review status .", soft_wrap=True, markup=False)
 
 
 @review_app.command(name="insert")
@@ -5461,6 +5804,202 @@ def review_activate(
     stored.active_review = candidate.review_ref
     write_translation_store(proj, store)
     console.print(f"{record_id} -> {candidate.review_ref}")
+
+
+@review_app.command(name="deactivate")
+def review_deactivate(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    record_ref: str = typer.Argument(..., help="Record ref such as 74@38."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+) -> None:
+    """Deactivate the active review for a record, falling back to the active translation version."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    from booktx.config import load_translation_store, write_translation_store
+
+    store = load_translation_store(proj)
+    record_id = parse_record_ref(record_ref).canonical_id
+    stored = store.records.get(record_id)
+    if stored is None:
+        _die(f"record {record_id} has no stored translations")
+        return
+    if stored.active_review is None:
+        _die("no active review to deactivate")
+        return
+    old_ref = stored.active_review
+    stored.active_review = None
+    write_translation_store(proj, store)
+    console.print(f"{record_id}: deactivated review {old_ref}")
+    # Re-check hint.
+    bundle = _project_status_snapshot(proj)
+    chapter_id = bundle.index.record_to_chapter.get(record_id, "")
+    console.print(
+        "recheck: "
+        + check_command(
+            proj,
+            mode=runtime.mode,
+            chapter_id=chapter_id or None,
+            fail_on_warnings=True,
+        ),
+        soft_wrap=True,
+        markup=False,
+    )
+
+
+@review_app.command(name="revise-record")
+def review_revise_record(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    record_ref: str = typer.Argument(..., help="Record ref such as 74@38."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    base_review: str = typer.Option(
+        ...,
+        "--base-review",
+        help="Existing review ref to base the revision on, e.g. R1.2.",
+    ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read the revised target from stdin."
+    ),
+    target: str | None = typer.Option(
+        None, "--target", help="Inline revised target text (short texts only)."
+    ),
+    activate: bool = typer.Option(
+        True,
+        "--activate/--no-activate",
+        help="Activate the new review candidate after writing.",
+    ),
+) -> None:
+    """Revise an accepted review candidate by creating a new same-pass rerun."""
+    from booktx.io_utils import utc_timestamp
+    from booktx.translation_store import (
+        find_review_candidate,
+        review_chain_is_stale,
+        validate_record_pair,
+    )
+
+    if (target is None) == (not stdin):
+        _die("provide exactly one of --stdin or --target")
+        return
+    if target is not None:
+        target_text = target
+    else:
+        target_text = sys.stdin.read()
+        if target_text.endswith("\r\n"):
+            target_text = target_text[:-2]
+        elif target_text.endswith("\n"):
+            target_text = target_text[:-1]
+    if not target_text.strip():
+        _die("empty target")
+        return
+
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_ready_context(proj)
+    record_id = parse_record_ref(record_ref).canonical_id
+
+    store = load_translation_store(proj)
+    stored = store.records.get(record_id)
+    if stored is None:
+        _die(f"record {record_id} has no stored translations")
+        return
+    existing = find_review_candidate(stored, base_review)
+    if existing is None:
+        _die(f"record {record_id} has no review {base_review}")
+        return
+    if existing.status != "accepted":
+        _die(f"review {base_review} is {existing.status!r}, not accepted")
+        return
+    if review_chain_is_stale(stored, existing.review_ref):
+        _die(f"review {base_review} has a stale derivation chain")
+        return
+
+    # Validate the record pair.
+    bundle = _project_status_snapshot(proj)
+    source_view = bundle.index.source_by_id.get(record_id)
+    if source_view is None:
+        _die(f"record {record_id} has no matching source record")
+        return
+    source_chunk = bundle.index.source_chunks.get(source_view.chunk_id)
+    if source_chunk is None:
+        _die(f"record {record_id} has no matching source chunk")
+        return
+    source_record = next((r for r in source_chunk.records if r.id == record_id), None)
+    if source_record is None:
+        _die(f"record {record_id} not found in source chunk")
+        return
+    context = load_validation_context(proj)
+    pair_findings = validate_record_pair(
+        source_record,
+        TranslatedRecord(id=record_id, target=target_text),
+        source_chunk.chunk_id,
+        context,
+    )
+    pair_errors = [f for f in pair_findings if f.severity == Severity.ERROR]
+    if pair_errors:
+        _render_submission_failures(pair_errors)
+        raise typer.Exit(code=1)
+
+    _staged_preflight_check(
+        proj,
+        [SubmittedRecord(id=record_id, target=target_text)],
+        {record_id},
+        fail_on_warnings=True,
+    )
+
+    # Determine next run number for this pass: max existing run + 1.
+    next_run = (
+        max(
+            (
+                r.run_number
+                for r in stored.reviews
+                if r.pass_number == existing.pass_number
+            ),
+            default=0,
+        )
+        + 1
+    )
+    new_ref = f"R{existing.pass_number}.{next_run}"
+    from booktx.models import TranslationReviewCandidate
+
+    created_at = utc_timestamp()
+    candidate = TranslationReviewCandidate(
+        pass_number=existing.pass_number,
+        run_number=next_run,
+        review_ref=new_ref,
+        base_kind="review",
+        base_ref=existing.review_ref,
+        base_target_sha256=existing.target_sha256,
+        target=target_text,
+        target_sha256=sha256(target_text.encode("utf-8")).hexdigest(),
+        status="accepted",
+        created_at=created_at,
+        updated_at=created_at,
+        review_task_id=None,
+        review_note=f"Revised from {base_review}.",
+    )
+    stored.reviews.append(candidate)
+    if activate:
+        stored.active_review = new_ref
+    write_translation_store(proj, store)
+    console.print(
+        f"revised: {record_id} -> {new_ref}" + (" (activated)" if activate else "")
+    )
+    chapter_id = bundle.index.record_to_chapter.get(record_id, "")
+    console.print(
+        "recheck: "
+        + check_command(
+            proj,
+            mode=runtime.mode,
+            chapter_id=chapter_id or None,
+            fail_on_warnings=True,
+        ),
+        soft_wrap=True,
+        markup=False,
+    )
 
 
 def main() -> None:

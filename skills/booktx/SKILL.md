@@ -392,18 +392,20 @@ For EPUB records, the source may contain inline XHTML fragments such as `<em>`, 
 Quality review improves already-accepted translations without overwriting the
 first-pass output:
 
-1. Enable quality review in the profile `config.toml` (see `docs/profiles.md`)
-2. `booktx review status .` -- check review coverage per pass
-3. `booktx review next . --pass 1` -- create a review task for pass 1
-4. Edit the ingest block under `translations/<profile>/reviews/`
-5. `booktx review insert . --review-task-id TASK --file reviews/TASK.block.txt --format block`
-6. Repeat for pass 2 if configured
-7. `booktx validate . --fail-on-warnings` # both passes
-8. `booktx build . --require-complete --require-reviewed`
-
-During review, do not retranslate freely. Review the existing target and improve
-only where quality can be meaningfully raised. If the target is already good,
-submit it unchanged so booktx records an explicit review candidate.
+1. Enable quality review via CLI (no manual TOML edits):
+   `booktx review configure . --enable --pass 1 --name "Flow review" --mode manual --enforce warn`
+2. `booktx review configure . --show` -- inspect current config
+3. `booktx review status .` -- check review coverage per pass; JSON output includes
+   `next_command`, `first_missing_record`, and `first_missing_chapter`
+4. `booktx review next . --pass 1` -- create a review task for pass 1
+   Output includes readable source path, editable ingest path, submit command,
+   per-chapter check, and status hints.
+5. Edit the ingest block under `translations/<profile>/reviews/`
+6. `booktx review insert . --review-task-id TASK --file reviews/TASK.block.txt --format block`
+7. Repeat for pass 2 if configured: `booktx review next . --pass 2`
+8. `booktx validate . --fail-on-warnings` # both passes
+9. `booktx build . --require-complete --require-reviewed`
+   submit it unchanged so booktx records an explicit review candidate.
 
 Review candidates are stored in `reviews[]` under each record in the translation
 store. The effective output uses the `active_review` when valid, falling back
@@ -418,20 +420,52 @@ the canonical store:
 
 1. Run `booktx review status .` first. Its JSON includes `next_command`,
    `first_missing_record`, and `first_missing_chapter`.
-2. Create review work with `booktx review next . --pass N`. Use
+2. If quality review is disabled, enable it with `booktx review configure . --enable ...`.
+   Do not hand-edit the profile `config.toml`.
+3. Create review work with `booktx review next . --pass N`. Use
    `--selection reviewed --base active_review` to rerun a pass over records
    that already have an accepted review (this creates `R1.2` from `R1.1`, not a
    new translation version). Default selection is `missing`.
-3. Submit improvements with `booktx review insert .`; accepted candidates
+4. Submit improvements with `booktx review insert .`; accepted candidates
    activate by default. Use `--no-activate` only when you intentionally keep
    the current effective target.
-4. For source/target term search, refresh and read the
-   `booktx translate export-index .` artifacts. Do not grep
-   `translation-store.json` for normal review work.
-5. Never write Python scripts to parse `translation-store.json` for normal
-   review or polish work. Treat `translation-store.json` as canonical history,
-   not a search interface. Reserve raw-store reads for debugging when a booktx
-   command is genuinely missing.
+5. To revise an already-accepted review candidate, use
+   `booktx review revise-record . RECORD --base-review R1.2 --stdin`. This
+   creates a new same-pass rerun (`R1.3` from `R1.2`) without mutating the
+   existing candidate. Use `booktx review deactivate . RECORD` to fall back to
+   the acti
+
+### Deterministic fixes vs review passes
+
+For deterministic mechanical corrections (forbidden glossary terms,
+detected by script or `qa scan`), use the batch revision path, not the
+review workflow:
+
+```bash
+booktx translate export-index . --jsonl
+# audit current targets for forbidden terms, then:
+booktx translation revise-block . --file ingest/glossary-fixes.block.txt --format block --activate
+booktx validate . --fail-on-warnings
+```
+
+For literary flow, grammar, or style improvements, use the review workflow
+(`review next` / `review insert`) so provenance stays separate from
+translation versions.
+
+### Termux-safe file policy
+
+Never create or write files under `/tmp` during agent work. All generated
+work files (block templates, index files, reports, editor artifacts) must
+be profile-local under `translations/<profile>/` or its subdirectories.
+The `reviews/`, `ingest/`, `tasks/`, and index files are already
+profile-local by default.ve translation version. 6. For source/target term search, refresh and read the
+`booktx translate export-index .` artifacts (or `--jsonl` for line-per-record
+output). Do not grep `translation-store.json` for normal review work.
+Generated current-only surfaces include `source-index.json[l]`,
+`target-index.json[l]`, and `source-target-index.json[l]`. 7. Never write Python scripts to parse `translation-store.json` for normal
+review or polish work. Treat `translation-store.json` as canonical history,
+not a search interface. Reserve raw-store reads for debugging when a booktx
+command is genuinely missing.
 
 ## Glossary correction workflow
 
