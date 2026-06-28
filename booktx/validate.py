@@ -23,7 +23,6 @@ exits non-zero on any mandatory failure.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from html import unescape
@@ -48,6 +47,12 @@ from booktx.context import (
     render_context_markdown,
 )
 from booktx.epub_manifest import load_epub_template_from_manifest
+from booktx.glossary_match import (
+    contains_term,
+    source_rule_applies,
+    target_contains_approved,
+    target_terms,
+)
 from booktx.models import (
     Chunk,
     Placeholder,
@@ -119,6 +124,10 @@ class Finding:
     document_href: str = ""
     source: str = ""
     target: str = ""
+    candidate_kind: str = ""
+    candidate_ref: str = ""
+    candidate_scope: str = ""
+
 
     def as_dict(self) -> dict[str, object]:
         data: dict[str, object] = {
@@ -144,6 +153,12 @@ class Finding:
             data["source"] = self.source
         if self.target:
             data["target"] = self.target
+        if self.candidate_kind:
+            data["candidate_kind"] = self.candidate_kind
+        if self.candidate_ref:
+            data["candidate_ref"] = self.candidate_ref
+        if self.candidate_scope:
+            data["candidate_scope"] = self.candidate_scope
         return data
 
 
@@ -189,6 +204,23 @@ class ValidationReport:
             "findings": [f.as_dict() for f in self.findings],
         }
 
+    @property
+    def blocking_findings(self) -> list[Finding]:
+        """Findings that affect pass/fail regardless of history mode.
+
+        Effective-output and structural findings always count. Inactive
+        historical content findings are excluded: they describe candidates
+        that are not the current output and must not fail a normal build.
+        """
+        return [
+            f for f in self.findings if f.candidate_scope != "inactive"
+        ]
+
+    @property
+    def inactive_findings(self) -> list[Finding]:
+        """Findings about inactive historical translation candidates."""
+        return [f for f in self.findings if f.candidate_scope == "inactive"]
+
 
 @dataclass(slots=True)
 class EffectiveTranslations:
@@ -196,6 +228,38 @@ class EffectiveTranslations:
 
     chunks: dict[str, TranslatedChunk] = field(default_factory=dict)
     findings: list[Finding] = field(default_factory=list)
+
+
+def validation_exits_nonzero(
+    report: ValidationReport,
+    *,
+    fail_on_warnings: bool = False,
+    fail_on_history_warnings: bool = False,
+) -> bool:
+    """Decide whether the ``validate``/``check`` CLI should exit non-zero.
+
+    Shared by both commands so history handling stays identical:
+
+    - Effective-output and structural findings always count.
+    - Inactive historical content errors are fatal when present (they only
+      survive as errors under ``--all-versions-strict``, where inactive
+      content errors are not downgraded to warnings).
+    - Effective/structural warnings count only under ``fail_on_warnings``.
+    - Inactive warnings count only under ``fail_on_history_warnings``.
+    """
+    blocking = report.blocking_findings
+    inactive = report.inactive_findings
+    if any(f.severity == Severity.ERROR for f in blocking):
+        return True
+    if any(f.severity == Severity.ERROR for f in inactive):
+        return True
+    if fail_on_warnings and any(f.severity == Severity.WARN for f in blocking):
+        return True
+    if fail_on_history_warnings and any(
+        f.severity == Severity.WARN for f in inactive
+    ):
+        return True
+    return False
 
 
 # --- per-pair validation -----------------------------------------------------
@@ -556,26 +620,12 @@ def validate_record_pair(
     findings.extend(_check_placeholders_preserved(source_rec, target_rec, chunk_id))
     findings.extend(_check_protected_names_preserved(source_rec, target_rec, chunk_id))
     findings.extend(_check_forbidden_terms(source_rec, target_rec, chunk_id, context))
+    findings.extend(
+        _check_required_glossary_targets(source_rec, target_rec, chunk_id, context)
+    )
     findings.extend(_check_inline_xhtml(source_rec, target_rec, chunk_id))
     findings.extend(_check_outer_quotation_preserved(source_rec, target_rec, chunk_id))
     return findings
-
-
-def _edge_prefix(term: str) -> str:
-    return r"(?<!\w)" if term[0].isalnum() or term[0] == "_" else ""
-
-
-def _edge_suffix(term: str) -> str:
-    return r"(?!\w)" if term[-1].isalnum() or term[-1] == "_" else ""
-
-
-def _contains_term(text: str, term: str, *, case_sensitive: bool) -> bool:
-    term = term.strip()
-    if not term:
-        return False
-    pattern = f"{_edge_prefix(term)}{re.escape(term)}{_edge_suffix(term)}"
-    flags = 0 if case_sensitive else re.IGNORECASE
-    return re.search(pattern, text, flags) is not None
 
 
 def _check_forbidden_terms(
@@ -584,16 +634,18 @@ def _check_forbidden_terms(
     chunk_id: str,
     context: TranslationContext | None,
 ) -> list[Finding]:
-    """Check glossary forbidden target terms for one record pair."""
+    """Check glossary forbidden target terms for one record pair.
+
+    Forbidden targets are scoped to records whose source contains the
+    entry's source term or one of its source variants.
+    """
     if context is None:
         return []
     findings: list[Finding] = []
     for entry in context.glossary:
         if entry.enforce == "off" or not entry.forbidden_targets:
             continue
-        if not _contains_term(
-            source_rec.source, entry.source, case_sensitive=entry.case_sensitive
-        ):
+        if not source_rule_applies(source_rec.source, entry):
             continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
         findings.extend(
@@ -610,7 +662,7 @@ def _forbidden_target_findings(
 ) -> list[Finding]:
     findings: list[Finding] = []
     for forbidden in entry.forbidden_targets:
-        if not _contains_term(
+        if not contains_term(
             target_rec.target, forbidden, case_sensitive=entry.case_sensitive
         ):
             continue
@@ -620,6 +672,53 @@ def _forbidden_target_findings(
                 severity=severity,
                 rule="forbidden_term_used",
                 message=f"{entry.source} must not be translated as {forbidden}",
+                record_id=target_rec.id,
+            )
+        )
+    return findings
+
+
+def _check_required_glossary_targets(
+    source_rec: Record,
+    target_rec: TranslatedRecord,
+    chunk_id: str,
+    context: TranslationContext | None,
+) -> list[Finding]:
+    """Positively enforce approved glossary targets for one record pair.
+
+    When an entry has ``require_target`` and its source rule applies, the
+    target must contain the approved target or one of its target variants;
+    otherwise a ``glossary_target_missing`` finding is emitted at the entry's
+    enforcement severity.
+
+    This is a record-level heuristic: it proves only that an allowed target
+    form occurs somewhere in the same record. It does not establish
+    word-level source/target alignment.
+    """
+    if context is None:
+        return []
+    findings: list[Finding] = []
+    for entry in context.glossary:
+        if entry.enforce == "off" or not entry.require_target:
+            continue
+        approved = target_terms(entry)
+        if not approved:
+            # Cannot require a target that is undefined.
+            continue
+        if not source_rule_applies(source_rec.source, entry):
+            continue
+        if target_contains_approved(target_rec.target, entry):
+            continue
+        severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
+        findings.append(
+            Finding(
+                chunk_id=chunk_id,
+                severity=severity,
+                rule="glossary_target_missing",
+                message=(
+                    f"{entry.source} must be translated using an approved "
+                    f"target ({' / '.join(approved)})"
+                ),
                 record_id=target_rec.id,
             )
         )
@@ -913,6 +1012,7 @@ def load_effective_translated_chunks(  # noqa: C901
     *,
     source_chunks: dict[str, Chunk] | None = None,
     context: TranslationContext | None = None,
+    include_inactive_versions: bool = False,
     all_versions_strict: bool = False,
 ) -> EffectiveTranslations:
     """Merge valid legacy chunk files and accepted store records."""
@@ -1147,9 +1247,23 @@ def load_effective_translated_chunks(  # noqa: C901
                     continue
 
             translated_rec = TranslatedRecord(id=record_id, target=candidate.target)
+            effective_kind = (
+                "review"
+                if isinstance(candidate, TranslationReviewCandidate)
+                else "translation"
+            )
+            effective_ref = (
+                candidate.review_ref
+                if isinstance(candidate, TranslationReviewCandidate)
+                else candidate.version_ref
+            )
             record_findings = validate_record_pair(
                 source_rec, translated_rec, chunk_id, context
             )
+            for _finding in record_findings:
+                _finding.candidate_kind = effective_kind
+                _finding.candidate_ref = effective_ref
+                _finding.candidate_scope = "effective"
             findings.extend(record_findings)
             if any(f.severity == Severity.ERROR for f in record_findings):
                 continue
@@ -1160,14 +1274,22 @@ def load_effective_translated_chunks(  # noqa: C901
                     review_coverage_findings(stored, quality_cfg, chunk_id, record_id)
                 )
 
+            # The version already content-validated above as the effective
+            # output is excluded from the inactive loop. When the effective
+            # output is a review candidate, every translation version is
+            # historical content, so none is excluded.
+            effective_translation_ref = (
+                None
+                if isinstance(candidate, TranslationReviewCandidate)
+                else candidate.version_ref
+            )
             for inactive in stored.versions:
-                # Skip the active translation version (validated above as the
-                # effective or fallback target). When the effective output is
-                # a review candidate, every translation version is inactive.
-                if stored.active_version is not None and (
-                    inactive.version_ref == stored.active_version
-                ):
+                if inactive.version_ref == effective_translation_ref:
                     continue
+                # Structural integrity: ledger referential checks run for ALL
+                # stored versions in every mode. A missing ledger entry is
+                # structural corruption, not a historical content warning, so
+                # it stays fatal regardless of include_inactive_versions.
                 if ledger is not None and (raw_store_version == 2 or ledger.tracks):
                     try:
                         lookup_version(ledger, inactive.version_ref)
@@ -1175,9 +1297,7 @@ def load_effective_translated_chunks(  # noqa: C901
                         findings.append(
                             Finding(
                                 chunk_id=chunk_id,
-                                severity=Severity.ERROR
-                                if all_versions_strict
-                                else Severity.WARN,
+                                severity=Severity.ERROR,
                                 rule="missing_ledger_version",
                                 message=(
                                     f"store record {record_id} references version "
@@ -1187,6 +1307,12 @@ def load_effective_translated_chunks(  # noqa: C901
                             )
                         )
                         continue
+                # Content checks (terminology, placeholders, quotation,
+                # markup) on inactive historical candidates run only in
+                # explicit history mode and are downgraded to warnings
+                # unless all_versions_strict.
+                if not include_inactive_versions:
+                    continue
                 inactive_rec = TranslatedRecord(id=record_id, target=inactive.target)
                 inactive_findings = validate_record_pair(
                     source_rec, inactive_rec, chunk_id, context
@@ -1194,6 +1320,12 @@ def load_effective_translated_chunks(  # noqa: C901
                 for finding in inactive_findings:
                     if finding.severity == Severity.ERROR and not all_versions_strict:
                         finding.severity = Severity.WARN
+                    finding.candidate_kind = "translation"
+                    finding.candidate_ref = inactive.version_ref
+                    finding.candidate_scope = "inactive"
+                    finding.message = (
+                        f"inactive version {inactive.version_ref}: {finding.message}"
+                    )
                 findings.extend(inactive_findings)
 
     merged: dict[str, TranslatedChunk] = {}
@@ -1511,6 +1643,7 @@ def _soft_hyphen_findings(
 def validate_project(
     project: Project,
     *,
+    include_inactive_versions: bool = False,
     all_versions_strict: bool = False,
     chapter_id: str | None = None,
     record_ids: set[str] | None = None,
@@ -1620,6 +1753,7 @@ def validate_project(
         project,
         source_chunks=source_chunks,
         context=context,
+        include_inactive_versions=include_inactive_versions,
         all_versions_strict=all_versions_strict,
     )
     report.findings.extend(effective.findings)

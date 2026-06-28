@@ -99,6 +99,7 @@ def resume_translation_todo(
                 "Create a fresh bounded todo before requesting more work."
             ),
         )
+    _enforce_todo_mandatory_glossary_freshness(project, todo)
     if report.errors or report.warnings:
         strict_check = check_command(
             project, chapter_id=scope_chapter, fail_on_warnings=True
@@ -183,3 +184,26 @@ def ensure_single_chapter_todo(
     )
     write_translation_todo(project, todo)
     return todo
+
+
+def _enforce_todo_mandatory_glossary_freshness(
+    project: Project, todo: TranslationTodo
+) -> None:
+    """Block resuming a todo whose mandatory-glossary fingerprint is stale."""
+    import warnings
+
+    from booktx.glossary_match import live_mandatory_glossary_sha256
+
+    stored = todo.mandatory_glossary_sha256
+    if stored is None:
+        warnings.warn(
+            "todo predates mandatory_glossary_sha256 fingerprinting; "
+            "recreate the todo to enable stale-glossary enforcement",
+            stacklevel=2,
+        )
+        return
+    if live_mandatory_glossary_sha256(project) != stored:
+        raise _err(
+            "task_context_policy_stale",
+            "task context predates mandatory glossary changes; recreate the task",
+        )

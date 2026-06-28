@@ -151,6 +151,33 @@ def _validate_task_profile(
         )
 
 
+def _enforce_mandatory_glossary_freshness(proj: Project, task: object) -> None:
+    """Block stale tasks whose mandatory-glossary fingerprint is out of date.
+
+    Non-legacy tasks (with ``mandatory_glossary_sha256``) must match the live
+    binding glossary; otherwise a mandatory user decision changed after the
+    task was created and the task must be recreated. Legacy tasks without the
+    field remain loadable and emit a non-fatal compatibility warning.
+    """
+    import warnings
+
+    from booktx.glossary_match import live_mandatory_glossary_sha256
+
+    stored = getattr(task, "mandatory_glossary_sha256", None)
+    if stored is None:
+        warnings.warn(
+            "task predates mandatory_glossary_sha256 fingerprinting; "
+            "recreate the task to enable stale-glossary enforcement",
+            stacklevel=2,
+        )
+        return
+    if live_mandatory_glossary_sha256(proj) != stored:
+        raise _err(
+            "task_context_policy_stale",
+            "task context predates mandatory glossary changes; recreate the task",
+        )
+
+
 def _validate_submitted(
     proj: Project,
     bundle: StatusBundle,
@@ -172,6 +199,9 @@ def _validate_submitted(
         if task is not None and task.context_view_path is not None
         else None
     )
+
+    if task is not None:
+        _enforce_mandatory_glossary_freshness(proj, task)
 
     try:
         context = load_validation_context(

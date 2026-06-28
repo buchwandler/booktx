@@ -286,3 +286,40 @@ def review_todo_resume_command(
     if profile:
         parts.append(profile.lstrip())
     return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Glossary workflow rules (booktx_tenday_dekade_analysis.md)
+# ---------------------------------------------------------------------------
+
+
+GLOSSARY_WORKFLOW_RULES: list[str] = [
+    (
+        1,
+        "For user terminology decisions such as \u201calways translate X as Y\u201d, "
+        "use `context reset-term` / `mandate-term` with `--enforce error`, "
+        "not default `warn`.",
+    ),
+    (
+        2,
+        "Never set `--enforce off` to clear validation warnings unless the "
+        "user explicitly says the term is advisory only. Use "
+        "`--allow-disable-enforcement` if you must disable a mandatory rule.",
+    ),
+    (
+        3,
+        "If validation flags inactive historical versions, use "
+        "`validate --include-inactive` only for history audits; normal "
+        "validation stays active-only.",
+    ),
+    (
+        4,
+        "Use `context audit-term` after mandatory glossary changes; "
+        "use `qa-scan --glossary --forbidden` for a broader scan.",
+    ),
+    (
+        5,
+        "Never write temporary files to `/tmp`; write under profile-local "
+        "`ingest/`.",
+    ),
+]

@@ -12,6 +12,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from booktx.config import Project, load_translation_store
+from booktx.glossary_match import (
+    contains_term as glossary_contains_term,
+)
+from booktx.glossary_match import (
+    source_rule_applies,
+    target_contains_approved,
+)
 from booktx.translation_store import effective_target_candidate
 
 if TYPE_CHECKING:
@@ -270,8 +277,17 @@ def _collect_record_findings(
 
     if forbidden:
         for entry in glossary_entries:
+            if not entry.forbidden_targets:
+                continue
+            # Forbidden targets are scoped to records whose source contains
+            # the entry's source term or one of its source variants, using
+            # the same matcher as validation.
+            if not source_rule_applies(source_text, entry):
+                continue
             for ft in entry.forbidden_targets:
-                if _contains_term(target, ft, entry.case_sensitive):
+                if glossary_contains_term(
+                    target, ft, case_sensitive=entry.case_sensitive
+                ):
                     findings.append(
                         _finding(
                             record_id,
@@ -288,9 +304,9 @@ def _collect_record_findings(
         for entry in glossary_entries:
             if entry.status != "approved" or entry.target is None:
                 continue
-            if _contains_term(
-                source_text, entry.source, entry.case_sensitive
-            ) and not _contains_term(target, entry.target, entry.case_sensitive):
+            if source_rule_applies(
+                source_text, entry
+            ) and not target_contains_approved(target, entry):
                 findings.append(
                     _finding(
                         record_id,
@@ -349,8 +365,3 @@ def _collect_record_findings(
     return findings
 
 
-def _contains_term(text: str, term: str, case_sensitive: bool) -> bool:
-    """Check if a term appears as a word or substring in text."""
-    if case_sensitive:
-        return term in text
-    return term.lower() in text.lower()

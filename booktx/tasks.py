@@ -41,7 +41,7 @@ from booktx.config import (
     translation_ingest_path,
     translation_task_source_block_path,
 )
-from booktx.context import ensure_context_view_snapshot
+from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
 from booktx.models import TranslationTask, TranslationTaskRecord
 from booktx.path_display import display_path
@@ -432,6 +432,7 @@ def create_translation_task(
         context_sha256=context_sha256,
         context_view_sha256=context_view_sha256,
         context_view_path=context_view_path,
+        mandatory_glossary_sha256=_live_mandatory_glossary_sha256(project),
         context_notes_scope=context_notes_scope,
         context_target_chapter_id=context_target_chapter_id,
         context_notes_through_chapter_id=context_notes_through_chapter_id,
@@ -466,3 +467,12 @@ def create_translation_task(
     write_block_ingest_template(project, task, mode=mode)
     write_task_source_block(project, task)
     return task
+
+
+def _live_mandatory_glossary_sha256(project: Project) -> str:
+    """Hash of the live binding glossary fields for task fingerprinting."""
+    from booktx.glossary_match import mandatory_glossary_sha256
+
+    ctx = load_context(project)
+    glossary = list(ctx.glossary) if ctx is not None else []
+    return mandatory_glossary_sha256(glossary)

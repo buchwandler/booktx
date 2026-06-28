@@ -178,6 +178,7 @@ from booktx.validate import (
     validate_chunk_pair,
     validate_project,
     validate_record_pair,
+    validation_exits_nonzero,
     write_report,
 )
 from booktx.versioning import (
@@ -1361,6 +1362,29 @@ def _clean_forbidden_targets(
     return cleaned
 
 
+def _clean_variant_list(values: list[str] | None) -> list[str]:
+    """Trim and dedupe source/target variant lists."""
+    return _dedupe_nonempty(values)
+
+
+def _die_disable_enforcement_guard(
+    *, require_target: bool, forbidden_targets: list[str], allow: bool
+) -> None:
+    """Refuse ``--enforce off`` on a mandatory glossary rule unless allowed.
+
+    An advisory approved-target-only entry (target set, no required target and
+    no forbidden targets) may use ``enforce = off`` without failure. A
+    mandatory rule (``require_target`` or non-empty ``forbidden_targets``)
+    needs ``--allow-disable-enforcement`` to be disabled.
+    """
+    if allow:
+        return
+    if require_target or forbidden_targets:
+        _die(
+            "refusing to disable a mandatory glossary rule; "
+            "use --allow-disable-enforcement if this is intentional"
+        )
+
 # --- context -----------------------------------------------------------------
 
 
@@ -1928,7 +1952,7 @@ def context_questionnaire(
 
 
 @context_app.command(name="add-term")
-def context_add_term(
+def context_add_term(  # noqa: C901
     project_dir: Path = typer.Argument(..., help="Project directory."),
     source: str = typer.Argument(..., help="Source term."),
     target: str | None = typer.Option(None, "--target", help="Approved target term."),
@@ -1947,6 +1971,26 @@ def context_add_term(
     notes: str | None = typer.Option(None, "--notes", help="Glossary notes."),
     enforce: str | None = typer.Option(
         None, "--enforce", help="Enforcement: off, warn, or error."
+    ),
+    source_variant: list[str] | None = typer.Option(
+        None,
+        "--source-variant",
+        help="Replace source variants (e.g. plurals). Repeatable.",
+    ),
+    target_variant: list[str] | None = typer.Option(
+        None,
+        "--target-variant",
+        help="Replace approved target variants (e.g. inflections). Repeatable.",
+    ),
+    require_target: bool = typer.Option(
+        False,
+        "--require-target",
+        help="Require an approved target form when the source term occurs.",
+    ),
+    allow_disable_enforcement: bool = typer.Option(
+        False,
+        "--allow-disable-enforcement",
+        help="Allow --enforce off on a mandatory rule (intentional disable).",
     ),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
@@ -2005,8 +2049,20 @@ def context_add_term(
             existing.category = category
         if notes is not None:
             existing.notes = notes
+        if source_variant is not None:
+            existing.source_variants = _clean_variant_list(source_variant)
+        if target_variant is not None:
+            existing.target_variants = _clean_variant_list(target_variant)
+        if require_target:
+            existing.require_target = True
         if enforce is not None:
             existing.enforce = enforce  # type: ignore[assignment]
+        if existing.enforce == "off":
+            _die_disable_enforcement_guard(
+                require_target=existing.require_target,
+                forbidden_targets=existing.forbidden_targets,
+                allow=allow_disable_enforcement,
+            )
     else:
         # New entry path.
         applied_category = category if category is not None else "term"
@@ -2029,7 +2085,10 @@ def context_add_term(
         ctx.glossary.append(
             GlossaryEntry(
                 source=source,
+                source_variants=_clean_variant_list(source_variant),
                 target=target,
+                target_variants=_clean_variant_list(target_variant),
+                require_target=require_target,
                 forbidden_targets=cleaned_forbidden,
                 category=applied_category,
                 status="approved" if target else "open",
@@ -2037,6 +2096,12 @@ def context_add_term(
                 enforce=applied_enforce,  # type: ignore[arg-type]
             )
         )
+        if applied_enforce == "off":
+            _die_disable_enforcement_guard(
+                require_target=require_target,
+                forbidden_targets=cleaned_forbidden,
+                allow=allow_disable_enforcement,
+            )
     _guard_md_safe_or_die(proj, ctx)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
@@ -2082,6 +2147,26 @@ def context_reset_term(
     enforce: str | None = typer.Option(
         None, "--enforce", help="Enforcement: off, warn, or error."
     ),
+    source_variant: list[str] | None = typer.Option(
+        None,
+        "--source-variant",
+        help="Replace source variants (e.g. plurals). Repeatable.",
+    ),
+    target_variant: list[str] | None = typer.Option(
+        None,
+        "--target-variant",
+        help="Replace approved target variants (e.g. inflections). Repeatable.",
+    ),
+    require_target: bool = typer.Option(
+        False,
+        "--require-target",
+        help="Require an approved target form when the source term occurs.",
+    ),
+    allow_disable_enforcement: bool = typer.Option(
+        False,
+        "--allow-disable-enforcement",
+        help="Allow --enforce off on a mandatory rule (intentional disable).",
+    ),
     create: bool = typer.Option(
         False, "--create", help="Create the entry if it does not exist."
     ),
@@ -2110,10 +2195,19 @@ def context_reset_term(
             approved_target=target,
             case_sensitive=False,
         )
+        if applied_enforce == "off":
+            _die_disable_enforcement_guard(
+                require_target=require_target,
+                forbidden_targets=cleaned_forbidden,
+                allow=allow_disable_enforcement,
+            )
         ctx.glossary.append(
             GlossaryEntry(
                 source=source,
+                source_variants=_clean_variant_list(source_variant),
                 target=target,
+                target_variants=_clean_variant_list(target_variant),
+                require_target=require_target,
                 forbidden_targets=cleaned_forbidden,
                 category=applied_category,
                 status="approved" if target else "open",
@@ -2140,12 +2234,196 @@ def context_reset_term(
         existing.category = category
     if notes is not None:
         existing.notes = notes
+    if source_variant is not None:
+        existing.source_variants = _clean_variant_list(source_variant)
+    if target_variant is not None:
+        existing.target_variants = _clean_variant_list(target_variant)
+    if require_target:
+        existing.require_target = True
     if enforce is not None:
         existing.enforce = enforce  # type: ignore[assignment]
+    if existing.enforce == "off":
+        _die_disable_enforcement_guard(
+            require_target=existing.require_target,
+            forbidden_targets=existing.forbidden_targets,
+            allow=allow_disable_enforcement,
+        )
     _guard_md_safe_or_die(proj, ctx)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
     console.print(f"reset term: {source}")
+
+
+@context_app.command(name="mandate-term")
+def context_mandate_term(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    source: str = typer.Argument(..., help="Source term."),
+    target: str | None = typer.Option(None, "--target", help="Approved target term."),
+    source_variant: list[str] | None = typer.Option(
+        None,
+        "--source-variant",
+        help="Source variants (e.g. plurals). Repeatable.",
+    ),
+    target_variant: list[str] | None = typer.Option(
+        None,
+        "--target-variant",
+        help="Approved target variants (e.g. inflections). Repeatable.",
+    ),
+    forbid: list[str] | None = typer.Option(
+        None, "--forbid", help="Forbidden target term (repeatable)."
+    ),
+    category: str | None = typer.Option(None, "--category", help="Glossary category."),
+    notes: str | None = typer.Option(None, "--notes", help="Glossary notes."),
+    enforce: str = typer.Option(
+        "error",
+        "--enforce",
+        help="Enforcement level (defaults to error; cannot be off).",
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+) -> None:
+    """Record a binding user terminology decision.
+
+    Always sets require_target=true and defaults to enforce=error so the
+    approved target is positively enforced. ``--enforce off`` is rejected: a
+    mandated term must stay enforced. Use ``context reset-term`` with
+    ``--allow-disable-enforcement`` to intentionally disable a rule.
+    """
+    if enforce == "off":
+        _die("mandate-term cannot disable enforcement; use reset-term instead")
+    if enforce not in {"warn", "error"}:
+        _die("--enforce must be warn or error")
+    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    ctx = _load_context_or_exit(proj)
+    applied_category = category if category is not None else "term"
+    applied_notes = notes if notes is not None else ""
+    cleaned_forbidden = _clean_forbidden_targets(
+        forbid or [],
+        approved_target=target,
+        case_sensitive=False,
+    )
+    replacement = GlossaryEntry(
+        source=source,
+        source_variants=_clean_variant_list(source_variant),
+        target=target,
+        target_variants=_clean_variant_list(target_variant),
+        require_target=True,
+        forbidden_targets=cleaned_forbidden,
+        category=applied_category,
+        status="approved" if target else "open",
+        notes=applied_notes,
+        enforce=enforce,  # type: ignore[arg-type]
+    )
+    ctx.glossary = [e for e in ctx.glossary if e.source != source]
+    ctx.glossary.append(replacement)
+    _guard_md_safe_or_die(proj, ctx)
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+    console.print(f"mandated term: {source}")
+
+
+@context_app.command(name="audit-term")
+def context_audit_term(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    source: str = typer.Argument(..., help="Source term to audit."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    chapter: str | None = typer.Option(None, "--chapter", help="Scope to a chapter id."),
+    include_inactive: bool = typer.Option(
+        False,
+        "--include-inactive",
+        help="Also count separately-labeled inactive historical violations.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+    jsonl: bool = typer.Option(
+        False, "--jsonl", help="Emit one JSON object per violating record."
+    ),
+    write_block: Path | None = typer.Option(
+        None,
+        "--write-block",
+        help="Write an ingest block + companion source block for violating records.",
+    ),
+) -> None:
+    """Audit effective records for one glossary source term.
+
+    Uses the same shared matcher as validation and QA scan, and scopes
+    forbidden targets to records whose source contains the term or one of
+    its source variants. Effective-only by default; --include-inactive adds
+    separately-labeled historical counts that do not change the effective
+    clean/violation totals.
+    """
+    from booktx.glossary_audit import (
+        audit_glossary_term,
+        render_ingest_block,
+        render_source_block,
+    )
+
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    bundle = _project_status_snapshot(proj)
+    result = audit_glossary_term(
+        proj,
+        bundle,
+        source_term=source,
+        include_inactive=include_inactive,
+        chapter_id=chapter,
+    )
+    if result is None:
+        _die(f"no glossary entry for source: {source}")
+        return
+    if as_json:
+        console.print_json(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
+    elif jsonl:
+        for rec in result.records:
+            if not rec.violates:
+                continue
+            payload = {
+                "source_term": result.source_term,
+                "record_id": rec.record_id,
+                "candidate_ref": rec.candidate_ref,
+                "forbidden_found": list(rec.forbidden_found),
+                "missing_approved": rec.missing_approved,
+            }
+            console.print_json(json.dumps(payload, ensure_ascii=False))
+    else:
+        approved = " / ".join(result.approved_targets) or "(none)"
+        console.print(f"term: {result.source_term} -> {approved}")
+        console.print(f"records with source term: {result.records_with_source_term}")
+        console.print(f"effective target clean: {result.effective_clean}")
+        console.print(
+            f"forbidden target violations: {result.forbidden_violation_records}"
+        )
+        console.print(f"missing approved target: {result.missing_approved_records}")
+        if include_inactive:
+            console.print(
+                f"inactive historical violations: "
+                f"{result.inactive_violation_records} (not blocking current output)"
+            )
+        for rec in result.records:
+            if not rec.violates:
+                continue
+            parts: list[str] = []
+            if rec.forbidden_found:
+                parts.append(f"forbidden={','.join(rec.forbidden_found)}")
+            if rec.missing_approved:
+                parts.append("missing approved target")
+            console.print(f"  {rec.record_id}: {'; '.join(parts)}")
+    if write_block is not None:
+        ingest = render_ingest_block(result)
+        source_block = render_source_block(result)
+        write_block.parent.mkdir(parents=True, exist_ok=True)
+        write_block.write_text(ingest, encoding="utf-8")
+        name = write_block.name
+        if name.endswith(".block.txt"):
+            companion_name = name[: -len(".block.txt")] + ".source.block.txt"
+        else:
+            companion_name = write_block.stem + ".source.block.txt"
+        companion = write_block.with_name(companion_name)
+        companion.write_text(source_block, encoding="utf-8")
+        console.print(f"ingest block: {write_block}")
+        console.print(f"source block: {companion}")
 
 
 @context_app.command(name="mark-ready")
@@ -5083,10 +5361,23 @@ def validate(
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
+    include_inactive: bool = typer.Option(
+        False,
+        "--include-inactive",
+        help="Also validate inactive historical translation versions.",
+    ),
+    fail_on_history_warnings: bool = typer.Option(
+        False,
+        "--fail-on-history-warnings",
+        help=(
+            "Imply --include-inactive and exit non-zero on inactive-version "
+            "warnings."
+        ),
+    ),
     all_versions_strict: bool = typer.Option(
         False,
         "--all-versions-strict",
-        help="Treat inactive-version validation errors as fatal.",
+        help="Imply --include-inactive and keep inactive-version errors fatal.",
     ),
     chapter: str | None = typer.Option(
         None, "--chapter", help="Scope to a specific chapter id."
@@ -5107,6 +5398,9 @@ def validate(
 
     report = validate_project(
         proj,
+        include_inactive_versions=(
+            include_inactive or fail_on_history_warnings or all_versions_strict
+        ),
         all_versions_strict=all_versions_strict,
         chapter_id=chapter,
         task_id=task_id,
@@ -5125,7 +5419,12 @@ def validate(
         )
         console.print("[dim]report:[/dim] ", end="")
         console.print(display_path(out, runtime.mode), soft_wrap=True, markup=False)
-    if not report.passed or (fail_on_warnings and report.warnings):
+    if validation_exits_nonzero(
+        report,
+        fail_on_warnings=fail_on_warnings,
+        fail_on_history_warnings=fail_on_history_warnings,
+    ):
+        raise typer.Exit(code=1)
         raise typer.Exit(code=1)
 
 
@@ -5197,8 +5496,12 @@ def _render_finding(f: Finding) -> None:
         loc = f" records={f.record_ids}"
     else:
         loc = ""
+    scope_marker = ""
+    if f.candidate_scope == "inactive" and f.candidate_ref:
+        kind = f.candidate_kind or "translation"
+        scope_marker = f" [{kind} {f.candidate_ref}]"
     console.print(
-        f"[{color}]{f.severity}[/{color}] {f.chunk_id}{loc} {f.rule}: {f.message}"
+        f"[{color}]{f.severity}[/{color}] {f.chunk_id}{loc} {f.rule}{scope_marker}: {f.message}"
     )
     if f.chapter_id:
         title = f" {f.chapter_title}".rstrip() if f.chapter_title else ""
@@ -5401,7 +5704,7 @@ def check(
             f"errors={len(report.errors)} warnings={len(report.warnings)} "
             f"missing={report.chunks_missing_translation}"
         )
-    if not report.passed or (fail_on_warnings and report.warnings):
+    if validation_exits_nonzero(report, fail_on_warnings=fail_on_warnings):
         raise typer.Exit(code=1)
 
 

@@ -109,6 +109,27 @@ def _validate_task_evidence(project: Project, task: TranslationReviewTask) -> No
             )
 
 
+def _enforce_mandatory_glossary_freshness(proj: Project, task: object) -> None:
+    """Block stale review tasks whose mandatory-glossary fingerprint is stale."""
+    import warnings
+
+    from booktx.glossary_match import live_mandatory_glossary_sha256
+
+    stored = getattr(task, "mandatory_glossary_sha256", None)
+    if stored is None:
+        warnings.warn(
+            "review task predates mandatory_glossary_sha256 fingerprinting; "
+            "recreate the task to enable stale-glossary enforcement",
+            stacklevel=2,
+        )
+        return
+    if live_mandatory_glossary_sha256(proj) != stored:
+        raise _err(
+            "task_context_policy_stale",
+            "task context predates mandatory glossary changes; recreate the task",
+        )
+
+
 def _terminal_pass(quality_cfg: QualityReviewConfig | None) -> int | None:
     if quality_cfg is None or not quality_cfg.active_passes:
         return None
@@ -164,6 +185,7 @@ def accept_review_submission(
 
     _validate_task_profile(project, task)
     _validate_task_evidence(project, task)
+    _enforce_mandatory_glossary_freshness(project, task)
 
     task_records = {r.id: r for r in task.records}
     source_by_id = bundle.index.source_by_id

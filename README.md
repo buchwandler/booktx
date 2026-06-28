@@ -385,3 +385,57 @@ booktx context add-term . "empire" --target "Imperium" --forbid "Reich" --forbid
 # Remove a wrong entry.
 booktx context remove-term . "empire"
 ```
+
+### Mandatory glossary decisions
+
+For user terminology decisions (e.g. \u201calways translate `tenday` as `Dekade`\u201d),
+use ``mandate-term``. It sets ``require_target = true`` and defaults to
+``enforce = error`` so the approved target is positively enforced. It never
+accepts ``--enforce off``:
+
+```bash
+booktx context mandate-term . "tenday" \
+  --source-variant "tendays" \
+  --target "Dekade" --target-variant "Dekaden" \
+  --forbid "Zehntag" --forbid "Zehntage" --forbid "zehn Tage" \
+  --category "calendar"
+```
+
+``reset-term`` and ``add-term`` also accept ``--source-variant``,
+``--target-variant``, and ``--require-target``. Use
+``--allow-disable-enforcement`` to intentionally set ``--enforce off`` on a
+mandatory rule. Advisory approved-target-only entries may use
+``enforce = off`` without warning.
+
+### Auditing a term
+
+After a mandatory glossary change, audit the effective output for one term:
+
+```bash
+booktx context audit-term . "tenday" --profile de_deepseekv4_flash
+```
+
+Generate a safe correction-block template for violating records:
+
+```bash
+booktx context audit-term . "tenday" \
+  --write-block ingest/glossary-tenday-fixes.block.txt
+booktx translation revise-block . \
+  --file ingest/glossary-tenday-fixes.block.txt --format block --activate
+booktx validate . --fail-on-warnings
+```
+
+The ingest block contains only record headers and editable current targets.
+A companion reference-only source block is written alongside it. Only
+violating effective records are included; the generator never guesses the
+corrected translation.
+
+### Active-only validation
+
+``booktx validate`` checks only the effective output by default. Historical
+inactive versions that contain forbidden terms no longer cause warnings. Use
+``--include-inactive`` for history audits:
+
+```bash
+booktx validate . --include-inactive --fail-on-history-warnings
+```

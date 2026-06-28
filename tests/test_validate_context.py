@@ -381,7 +381,7 @@ def test_forbidden_phrase_matches_with_word_boundaries(tmp_path: Path):
 
 def test_forbidden_empty_term_returns_no_match(tmp_path: Path):
     """Empty forbidden term should never match."""
-    from booktx.validate import _contains_term
+    from booktx.glossary_match import contains_term
 
-    assert not _contains_term("any text", "", case_sensitive=False)
-    assert not _contains_term("", "Reich", case_sensitive=False)
+    assert not contains_term("any text", "", case_sensitive=False)
+    assert not contains_term("", "Reich", case_sensitive=False)

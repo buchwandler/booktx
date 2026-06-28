@@ -95,7 +95,10 @@ class GlossaryEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str
+    source_variants: list[str] = Field(default_factory=list)
     target: str | None = None
+    target_variants: list[str] = Field(default_factory=list)
+    require_target: bool = False
     forbidden_targets: list[str] = Field(default_factory=list)
     category: str = "term"  # term, place, people, kinden, title, object, concept
     status: Literal["open", "approved", "rejected"] = "open"

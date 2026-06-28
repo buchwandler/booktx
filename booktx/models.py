@@ -612,6 +612,10 @@ class TranslationTask(BaseModel):
         default=None,
         description="Project-relative path to the immutable task context snapshot",
     )
+    mandatory_glossary_sha256: str | None = Field(
+        default=None,
+        description="sha256 of binding glossary fields when the task was created",
+    )
     context_notes_scope: str | None = Field(
         default=None,
         description="How chapter notes were selected for this task context",
@@ -711,6 +715,10 @@ class TranslationReviewTask(BaseModel):
     profile_config_sha256: str | None = None
     source_config_sha256: str | None = None
     review_policy_sha256: str | None = None
+    mandatory_glossary_sha256: str | None = Field(
+        default=None,
+        description="sha256 of binding glossary fields when the task was created",
+    )
 
     before_records: int
     after_records: int
@@ -791,6 +799,10 @@ class TranslationTodo(BaseModel):
     baseline_ref: str | None = None
     baseline_sha256: str | None = None
     context_sha256: str | None = None
+    mandatory_glossary_sha256: str | None = Field(
+        default=None,
+        description="sha256 of binding glossary fields when the todo was created",
+    )
     source_sha256: str | None = None
     start_totals: StatusTotals
     chapters: list[TranslationTodoChapter] = Field(default_factory=list)

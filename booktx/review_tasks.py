@@ -21,6 +21,7 @@ from booktx.config import (
     translation_review_ingest_block_path,
     translation_review_source_block_path,
 )
+from booktx.context import load_context
 from booktx.io_utils import write_text_atomic
 from booktx.models import (
     QualityReviewConfig,
@@ -434,6 +435,7 @@ def create_review_task(
             project.source_config.model_dump(mode="json")
         ),
         review_policy_sha256=None,
+        mandatory_glossary_sha256=_live_mandatory_glossary_sha256(project),
         before_records=before_n,
         after_records=after_n,
         source_words=sum(source_by_id[s.record_id].source_words for s in selected),
@@ -448,6 +450,15 @@ def create_review_task(
     write_review_source_block(project, task)
     write_review_ingest_block(project, task)
     return task
+
+
+def _live_mandatory_glossary_sha256(project: Project) -> str:
+    """Hash of the live binding glossary fields for review task fingerprinting."""
+    from booktx.glossary_match import mandatory_glossary_sha256
+
+    ctx = load_context(project)
+    glossary = list(ctx.glossary) if ctx is not None else []
+    return mandatory_glossary_sha256(glossary)
 
 
 def write_review_source_block(project: Project, task: TranslationReviewTask) -> object:

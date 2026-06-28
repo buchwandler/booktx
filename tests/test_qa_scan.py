@@ -2,36 +2,48 @@
 
 from __future__ import annotations
 
+from booktx.glossary_match import contains_term
 from booktx.qa_scan import (
     QaScanFinding,
     QaScanResult,
-    _contains_term,
     build_language_leftover_words,
 )
 
-# --- _contains_term ---------------------------------------------------------
+# --- contains_term (shared boundary matcher) -------------------------------
 
 
 def test_contains_term_case_insensitive():
-    assert _contains_term("Hello World", "hello", case_sensitive=False) is True
-    assert _contains_term("Hello World", "HELLO", case_sensitive=False) is True
-    assert _contains_term("Hello World", "goodbye", case_sensitive=False) is False
+    assert contains_term("Hello World", "hello", case_sensitive=False) is True
+    assert contains_term("Hello World", "HELLO", case_sensitive=False) is True
+    assert contains_term("Hello World", "goodbye", case_sensitive=False) is False
 
 
 def test_contains_term_case_sensitive():
-    assert _contains_term("Hello World", "Hello", case_sensitive=True) is True
-    assert _contains_term("Hello World", "hello", case_sensitive=True) is False
-    assert _contains_term("Hello World", "world", case_sensitive=True) is False
-    assert _contains_term("Hello World", "World", case_sensitive=True) is True
+    assert contains_term("Hello World", "Hello", case_sensitive=True) is True
+    assert contains_term("Hello World", "hello", case_sensitive=True) is False
+    assert contains_term("Hello World", "world", case_sensitive=True) is False
+    assert contains_term("Hello World", "World", case_sensitive=True) is True
 
 
-def test_contains_term_empty():
-    assert _contains_term("", "", case_sensitive=False) is True
-    assert _contains_term("text", "", case_sensitive=False) is True
+def test_contains_term_empty_term_is_false():
+    # An empty term matches nothing under boundary matching.
+    assert contains_term("", "", case_sensitive=False) is False
+    assert contains_term("text", "", case_sensitive=False) is False
 
 
-def test_contains_term_substring():
-    assert _contains_term("Wespenartigen", "Wespenart", case_sensitive=False) is True
+def test_contains_term_is_boundary_not_substring():
+    # Boundary matching rejects substring false positives.
+    assert contains_term("Wespenartigen", "Wespenart", case_sensitive=False) is False
+    assert contains_term("a pretenday event", "tenday", case_sensitive=False) is False
+    # ...but matches whole words and multi-word phrases.
+    assert (
+        contains_term("Er trat eine Dekade später.", "Dekade", case_sensitive=False)
+        is True
+    )
+    assert (
+        contains_term("alle zehn Tage später", "zehn Tage", case_sensitive=False)
+        is True
+    )
 
 
 # --- QaScanFinding ----------------------------------------------------------

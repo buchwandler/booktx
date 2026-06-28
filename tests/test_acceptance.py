@@ -15,7 +15,6 @@ from typer.testing import CliRunner
 
 from booktx.acceptance import (
     AcceptResult,
-    SubmissionValidationError,
     SubmittedRecord,
     accept_one_record,
     accept_translation_records,
@@ -279,6 +278,8 @@ def test_task_validation_uses_task_context_view_before_live_context(tmp_path: Pa
     ctx.glossary[0].forbidden_targets = []
     write_context(proj, ctx)
 
+    # Binding glossary was mutated after task creation: the mandatory
+    # fingerprint changed, so the stale check now blocks before submission.
     try:
         accept_translation_records(
             proj,
@@ -288,10 +289,12 @@ def test_task_validation_uses_task_context_view_before_live_context(tmp_path: Pa
             submission_translation_version=task.translation_version,
             enforce_task_version=True,
         )
-    except SubmissionValidationError:
-        pass
+    except BooktxError as exc:
+        assert exc.code == "task_context_policy_stale"
     else:  # pragma: no cover
-        raise AssertionError("expected submission validation failure from task view")
+        raise AssertionError(
+            "expected stale-task block after binding glossary mutation"
+        )
 
 
 def test_legacy_task_without_context_view_uses_live_context_fallback(tmp_path: Path):
@@ -314,12 +317,14 @@ def test_legacy_task_without_context_view_uses_live_context_fallback(tmp_path: P
     ctx.glossary[0].forbidden_targets = []
     write_context(proj, ctx)
 
+
     legacy_task = task.model_copy(deep=True)
     legacy_task.context_view_path = None
     legacy_task.context_view_sha256 = None
     legacy_task.context_notes_scope = None
     legacy_task.context_target_chapter_id = None
     legacy_task.context_notes_through_chapter_id = None
+    legacy_task.mandatory_glossary_sha256 = None  # legacy pre-fingerprint
 
     result = accept_translation_records(
         proj,
