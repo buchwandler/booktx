@@ -213,7 +213,7 @@ def test_build_require_complete_fails_when_records_missing(tmp_path: Path):
         build_project(proj, require_complete=True)
 
 
-def test_build_epub_without_translations_is_byte_identical(tmp_path: Path):
+def test_build_epub_without_translations_produces_valid_output(tmp_path: Path):
     proj = init_project(tmp_path / "book", target_language="en")
     epub_path = proj.source_dir / "book.epub"
     epub_fixtures._make_epub(epub_path)
@@ -225,10 +225,14 @@ def test_build_epub_without_translations_is_byte_identical(tmp_path: Path):
 
     assert result.format == "epub"
     assert result.output_path.is_file()
-    assert sha256_path(result.output_path) == sha256_path(epub_path)
+    # A translation profile applies the EPUB output policy (language rewrite +
+    # CSS), so output is no longer required to be byte-identical to source.
+    # Pass-through profiles carry the byte-identity guarantee instead.
+    assert result.report is not None
+    assert "epub_output_policy" in result.report
 
 
-def test_build_epub_identity_translations_are_byte_identical(tmp_path: Path):
+def test_build_epub_identity_translations_have_no_token_leaks(tmp_path: Path):
     proj = init_project(tmp_path / "book", target_language="en")
     epub_path = proj.source_dir / "book.epub"
     epub_fixtures._make_epub(epub_path)
@@ -249,7 +253,16 @@ def test_build_epub_identity_translations_are_byte_identical(tmp_path: Path):
 
     result = build_project(proj)
 
-    assert sha256_path(result.output_path) == sha256_path(epub_path)
+    # Identity translations must not leak placeholder tokens. Byte identity is
+    # no longer asserted for translation profiles (they now apply output policy).
+    assert result.output_path.is_file()
+    import zipfile
+
+    with zipfile.ZipFile(result.output_path) as archive:
+        for name in archive.namelist():
+            if name.lower().endswith((".xhtml", ".html")):
+                body = archive.read(name).decode("utf-8", "replace")
+                assert "__" not in body, f"placeholder leak in {name}"
 
 
 def test_build_epub_changed_translation_has_no_token_leaks(tmp_path: Path):
@@ -290,6 +303,96 @@ def test_build_epub_changed_translation_has_no_token_leaks(tmp_path: Path):
     assert "<strong>Bob</strong>" not in ch1
     for token in ("__TAG_", "__NAME_", "__SPANTX_"):
         assert token not in ch1
+
+
+def test_build_epub_report_has_output_policy_detail_for_translation(tmp_path: Path):
+    """A German translation build rewrites language and injects the policy CSS,
+    and the build report records the resolved policy detail."""
+    proj = init_project(
+        tmp_path / "book", target_language="de", profile_name="de_default"
+    )
+    # target_locale defaults to target_language; set an explicit de-DE locale.
+    epub_path = proj.source_dir / "book.epub"
+    epub_fixtures._make_epub(epub_path)
+    find_source_file(proj)
+    _extract_epub_project(proj.root)
+    proj = load_project(proj.root)
+    from booktx.config import write_profile_config
+    from booktx.models import EpubOutputConfig
+
+    cfg = proj.profile_config.model_copy(
+        update={
+            "target_locale": "de-DE",
+            "epub_output": EpubOutputConfig(language_policy="target"),
+        }
+    )
+    write_profile_config(proj.root, cfg)
+    proj = load_project(proj.root)
+
+    translations: dict[str, object] = {}
+    for chunk in _load_chunk_payloads(proj):
+        translations[str(chunk["chunk_id"])] = {
+            "chunk_id": chunk["chunk_id"],
+            "records": [
+                {"id": record["id"], "target": record["source"]}
+                for record in chunk["records"]
+            ],
+        }
+    _write_translations(proj, translations)
+
+    result = build_project(proj)
+    assert result.report is not None
+    policy = result.report["epub_output_policy"]
+    assert policy["applied"] is True
+    assert policy["language_policy"] == "target"
+    assert policy["language"] == "de-DE"
+    assert policy["hyphenation"] == "auto"
+
+    # The OPF primary language and at least one xhtml root must be de-DE.
+    with zipfile.ZipFile(result.output_path) as archive:
+        opf = next(n for n in archive.namelist() if n.endswith(".opf"))
+        opf_text = archive.read(opf).decode("utf-8", "replace")
+        assert "<dc:language>de-DE</dc:language>" in opf_text
+        ch1 = next(n for n in archive.namelist() if n.endswith("ch1.xhtml"))
+        ch1_text = archive.read(ch1).decode("utf-8", "replace")
+        assert 'lang="de-DE"' in ch1_text
+        assert 'xml:lang="de-DE"' in ch1_text
+
+
+def test_build_epub_failure_leaves_existing_output_untouched(tmp_path: Path):
+    """If a rebuild fails, the previously-published final output is preserved."""
+    proj = init_project(tmp_path / "book", target_language="de")
+    epub_path = proj.source_dir / "book.epub"
+    epub_fixtures._make_epub(epub_path)
+    find_source_file(proj)
+    _extract_epub_project(proj.root)
+    proj = load_project(proj.root)
+
+    # First, a successful build produces a valid output.
+    good = build_project(proj)
+    assert good.output_path.is_file()
+    good_sha = sha256_path(good.output_path)
+
+    # Now sabotage a translation to introduce an unresolved placeholder token,
+    # which makes the second build fail at the unresolved-token audit.
+    translations: dict[str, object] = {}
+    for chunk in _load_chunk_payloads(proj):
+        records = []
+        for record in chunk["records"]:
+            records.append({"id": record["id"], "target": "__BROKEN_TOKEN_42__"})
+        translations[str(chunk["chunk_id"])] = {
+            "chunk_id": chunk["chunk_id"],
+            "records": records,
+        }
+    _write_translations(proj, translations)
+
+    with pytest.raises(BuildError):
+        build_project(proj)
+
+    # The last good output is untouched and no temp file litters the dir.
+    assert good.output_path.is_file()
+    assert sha256_path(good.output_path) == good_sha
+    assert not good.output_path.with_suffix(good.output_path.suffix + ".tmp").exists()
 
 
 def test_build_epub_fails_on_unresolved_placeholder_token(tmp_path: Path):

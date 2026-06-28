@@ -5225,6 +5225,115 @@ def _render_validate_findings(report: ValidationReport) -> None:
         _render_finding(f)
 
 
+def _epub_output_audit_findings(proj) -> tuple[list[Finding], dict[str, object]]:
+    """Non-writing audit of the expected EPUB output path.
+
+    Returns validation-style findings plus a JSON payload. Errors clearly when
+    no output exists or the project is not an EPUB project.
+    """
+    from booktx.build import _output_path
+    from booktx.config import find_source_file
+    from booktx.epub_output_policy import (
+        PolicyError,
+        audit_epub_output_policy,
+        resolve_epub_output_policy,
+    )
+
+    findings: list[Finding] = []
+    if proj.config.format != "epub":
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="not_an_epub_project",
+                message="--epub-output is only valid for EPUB projects.",
+            )
+        )
+        return findings, {"findings": [f.as_dict() for f in findings]}
+
+    try:
+        source = find_source_file(proj, persist_discovery=False)
+    except Exception as exc:  # noqa: BLE001
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="source_not_found",
+                message=str(exc),
+            )
+        )
+        return findings, {"findings": [f.as_dict() for f in findings]}
+
+    out_path = _output_path(proj, source, suffix=".epub")
+    payload: dict[str, object] = {"output_path": str(out_path)}
+    if not out_path.is_file():
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_output_missing",
+                message=(
+                    f"no built EPUB output found at {out_path}; "
+                    "run `booktx build` first."
+                ),
+            )
+        )
+        payload["findings"] = [f.as_dict() for f in findings]
+        return findings, payload
+
+    try:
+        policy = resolve_epub_output_policy(proj)
+        report = audit_epub_output_policy(out_path, extraction_hrefs=[], policy=policy)
+    except PolicyError as exc:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_output_audit_failed",
+                message=str(exc),
+            )
+        )
+        payload["findings"] = [f.as_dict() for f in findings]
+        return findings, payload
+
+    if report.applied:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.INFO,
+                rule="epub_output_policy_applied",
+                message=(
+                    f"EPUB output policy applied: language={report.language!r}, "
+                    f"hyphenation={report.hyphenation!r}, "
+                    f"patched_xhtml={len(report.patched_xhtml_entries)}, "
+                    f"css_injected={len(report.css_injected_entries)}"
+                ),
+            )
+        )
+    for w in report.warnings:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.WARN,
+                rule="epub_output_css_conflict",
+                message=f"{w['entry']}: {w['declaration']}",
+                document_href=w.get("entry", ""),
+            )
+        )
+    payload["findings"] = [f.as_dict() for f in findings]
+    payload["policy"] = {
+        "applied": report.applied,
+        "language_policy": report.language_policy,
+        "language": report.language,
+        "hyphenation": report.hyphenation,
+        "patched_xhtml_entries": list(report.patched_xhtml_entries),
+        "css_injected_entries": list(report.css_injected_entries),
+        "fixed_layout_skipped_entries": list(report.fixed_layout_skipped_entries),
+        "warnings": list(report.warnings),
+    }
+    return findings, payload
+
+
 @app.command()
 def check(
     project_dir: Path = typer.Argument(..., help="Project directory."),
@@ -5243,14 +5352,42 @@ def check(
         "--fail-on-warnings/--no-fail-on-warnings",
         help="Exit non-zero when validation reports warnings.",
     ),
+    epub_output: bool = typer.Option(
+        False,
+        "--epub-output",
+        help="Audit the existing expected EPUB output for policy compliance without building.",
+    ),
 ) -> None:
     """Scoped build-preflight check for inline XHTML and translation contracts.
 
     A human-friendly alias for scoped validation + EPUB inline-XHTML preflight.
     Prefer this after each chapter translation and before build.
+
+    ``--epub-output`` audits the expected EPUB output path produced by a prior
+    build against the resolved EPUB output policy. It does not build or modify
+    the EPUB and emits the same findings in text and JSON modes.
     """
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+
+    if epub_output:
+        audit_findings, audit_payload = _epub_output_audit_findings(proj)
+        if as_json:
+            console.print_json(json.dumps(audit_payload, indent=2, ensure_ascii=False))
+        else:
+            _render_validate_findings(
+                type("R", (), {"findings": audit_findings})()
+            )
+            console.print(
+                f"errors={sum(1 for f in audit_findings if f.severity == Severity.ERROR)} "
+                f"warnings={sum(1 for f in audit_findings if f.severity == Severity.WARN)}"
+            )
+        has_blocking = any(f.severity == Severity.ERROR for f in audit_findings) or (
+            fail_on_warnings and any(f.severity == Severity.WARN for f in audit_findings)
+        )
+        if has_blocking:
+            raise typer.Exit(code=1)
+        return
 
     report = validate_project(proj, chapter_id=chapter, task_id=task_id)
 

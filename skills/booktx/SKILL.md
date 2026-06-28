@@ -263,6 +263,33 @@ booktx validate . --profile PROFILE --fail-on-warnings
 booktx build . --profile PROFILE --require-complete
 ```
 
+### EPUB output-language and hyphenation
+
+Translated EPUB builds resolve a target-language policy: the profile target
+locale is written to the primary OPF `dc:language` and targeted XHTML
+`lang`/`xml:lang`, and one deterministic best-effort hyphenation style sheet
+is injected. This is metadata/author-style correctness, not a guarantee of
+identical rendering; automatic hyphenation still depends on the reader and
+its dictionaries.
+
+Defaults: translation and legacy translation projects default to `target` +
+`auto`; pass-through profiles default to `preserve`/`preserve` and stay
+byte-identical. Override under `[epub_output]` in the profile config. The
+compatibility escape hatch for bad reader-side breaks is:
+
+```toml
+[epub_output]
+hyphenation = "none"
+```
+
+Build is transactional: a failed policy resolution, rebuild, or audit leaves
+the last good output untouched. The build report adds an `epub_output_policy`
+object. Audit an existing output without rebuilding with
+`booktx check . --profile PROFILE --epub-output --json`.
+
+Never promise identical hyphenation across readers; report source CSS
+conflict warnings as best-effort signals, not guarantees.
+
 ## Editor QA indexes
 
 After translation/review changes, run `booktx translate export-index` when the user wants editor-search artifacts current:

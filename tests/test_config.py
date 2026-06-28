@@ -511,6 +511,67 @@ def test_profile_config_quality_review_roundtrips_when_set(tmp_path: Path):
     assert loaded.quality_review.passes[1].base == "active_review"
 
 
+
+def test_profile_config_epub_output_omitted_when_unset(tmp_path: Path):
+    """A profile created without epub_output must not gain a table on write."""
+    from booktx.config import profile_config_path
+
+    proj = init_source_project(tmp_path / "book")
+    create_profile(proj.root, "de_default", target_language="de")
+    cfg = load_profile_config(proj.root, "de_default")
+    assert cfg.epub_output is None
+    # Re-writing must not introduce an [epub_output] table.
+    write_profile_config(proj.root, cfg)
+    raw = profile_config_path(proj.root, "de_default").read_text("utf-8")
+    assert "epub_output" not in raw
+    assert load_profile_config(proj.root, "de_default").epub_output is None
+
+
+def test_profile_config_epub_output_roundtrips_when_set(tmp_path: Path):
+    from booktx.models import EpubOutputConfig
+
+    proj = init_source_project(tmp_path / "book")
+    create_profile(proj.root, "de_default", target_language="de")
+    cfg = load_profile_config(proj.root, "de_default")
+    cfg = cfg.model_copy(
+        update={
+            "epub_output": EpubOutputConfig(
+                language_policy="target",
+                hyphenation="none",
+                inject_css=True,
+                patch_body_language=False,
+            )
+        }
+    )
+    write_profile_config(proj.root, cfg)
+    loaded = load_profile_config(proj.root, "de_default")
+    assert loaded.epub_output is not None
+    assert loaded.epub_output.language_policy == "target"
+    assert loaded.epub_output.hyphenation == "none"
+    assert loaded.epub_output.inject_css is True
+    assert loaded.epub_output.patch_body_language is False
+
+
+def test_profile_config_epub_output_explicit_language_roundtrips(tmp_path: Path):
+    from booktx.models import EpubOutputConfig
+
+    proj = init_source_project(tmp_path / "book")
+    create_profile(proj.root, "de_default", target_language="de")
+    cfg = load_profile_config(proj.root, "de_default")
+    cfg = cfg.model_copy(
+        update={
+            "epub_output": EpubOutputConfig(
+                language_policy="explicit",
+                language="de-DE",
+            )
+        }
+    )
+    write_profile_config(proj.root, cfg)
+    loaded = load_profile_config(proj.root, "de_default")
+    assert loaded.epub_output is not None
+    assert loaded.epub_output.language_policy == "explicit"
+    assert loaded.epub_output.language == "de-DE"
+
 def test_review_path_helpers_resolve_profile_local(tmp_path: Path):
     from booktx.models import TranslationReviewTask, TranslationReviewTaskRecord
 

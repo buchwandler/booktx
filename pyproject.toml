@@ -37,7 +37,7 @@ dependencies = [
     "markdown-it-py",
     "phrasplit>=0.3.3",
     "epub2text>=0.2.6",
-    "text2epub>=0.1.2",
+    "text2epub>=0.1.4",
 ]
 
 [project.optional-dependencies]

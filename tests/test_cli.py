@@ -645,3 +645,59 @@ def test_init_rejects_unsupported_source(tmp_path: Path):
         ["init", str(tmp_path / "p"), "--target", "de", "--source-file", str(bad)],
     )
     assert res.exit_code == 1
+
+
+def _epub_proj(tmp_path: Path, *, build: bool = False) -> Path:
+    import tests.test_epub_io as epub_fixtures
+    from booktx.config import create_profile, find_source_file, init_source_project
+
+    root = tmp_path / "book"
+    proj = init_source_project(root)
+    epub_fixtures._make_epub(str(proj.source_dir / "book.epub"))
+    find_source_file(proj)
+    create_profile(root, "p", target_language="de", target_locale="de-DE")
+    runner.invoke(app, ["extract", str(root)])
+    if build:
+        runner.invoke(app, ["build", str(root), "--profile", "p"])
+    return root
+
+
+def test_check_epub_output_errors_when_no_output(tmp_path: Path) -> None:
+    root = _epub_proj(tmp_path, build=False)
+    res = runner.invoke(
+        app, ["check", str(root), "--profile", "p", "--epub-output", "--json"]
+    )
+    assert res.exit_code == 1
+    payload = json.loads(res.output)
+    rules = [f["rule"] for f in payload["findings"]]
+    assert "epub_output_missing" in rules
+
+
+def test_check_epub_output_audits_existing_output(tmp_path: Path) -> None:
+    root = _epub_proj(tmp_path, build=True)
+    res = runner.invoke(
+        app, ["check", str(root), "--profile", "p", "--epub-output", "--json"]
+    )
+    # A built German translation output should audit cleanly (no errors).
+    payload = json.loads(res.output)
+    errors = [f for f in payload["findings"] if f["severity"] == "error"]
+    assert errors == []
+    assert payload["policy"]["applied"] is True
+    assert payload["policy"]["language"] == "de-DE"
+
+
+def test_check_epub_output_rejects_markdown_project(tmp_path: Path) -> None:
+    from booktx.config import create_profile, find_source_file, init_source_project
+
+    root = tmp_path / "book"
+    proj = init_source_project(root)
+    (proj.source_dir / "book.md").write_text("# Hi\n\nText.\n", encoding="utf-8")
+    find_source_file(proj)
+    create_profile(root, "p", target_language="de")
+    res = runner.invoke(
+        app, ["check", str(root), "--profile", "p", "--epub-output", "--json"]
+    )
+    assert res.exit_code == 1
+    payload = json.loads(res.output)
+    rules = [f["rule"] for f in payload["findings"]]
+    assert "not_an_epub_project" in rules

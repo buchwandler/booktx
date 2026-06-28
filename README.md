@@ -216,6 +216,14 @@ booktx validate ./demo --profile de_gpt5_5 --fail-on-warnings
 booktx build ./demo --profile de_gpt5_5 --require-complete
 ```
 
+Translated EPUB builds write the resolved target language to publication and
+content-document metadata and inject one deterministic best-effort
+hyphenation style sheet. This is a metadata/author-style correctness contract;
+actual hyphenation still depends on the reading system. If a reader produces
+bad breaks, set `hyphenation = "none"` under `[epub_output]` in the profile
+config and rebuild. Pass-through output stays byte-identical by default. See
+[EPUB output-language and hyphenation policy](docs/epub.md).
+
 ## Editor QA indexes
 
 Refresh editor-friendly indexes:

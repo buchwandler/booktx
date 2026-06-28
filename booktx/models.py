@@ -76,6 +76,7 @@ __all__ = [
     "ReviewTodo",
     "QualityReviewConfig",
     "IndexesConfig",
+    "EpubOutputConfig",
 ]
 
 
@@ -952,6 +953,42 @@ class IndexesConfig(BaseModel):
     write_jsonl: bool = True
 
 
+class EpubOutputConfig(BaseModel):
+    """Optional EPUB output-language and hyphenation policy.
+
+    Stored under ``[epub_output]`` in profile or legacy config.
+
+    When ``None`` (the default), booktx resolves effective policy from the
+    profile kind: translation and legacy translation projects default to
+    ``target`` language / ``auto`` hyphenation; pass-through profiles default to
+    ``preserve`` / ``preserve`` (byte-identical output). Storing the model
+    opts the project into an explicit policy.
+
+    See ``booktx.epub_output_policy`` for resolution and validation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    language_policy: Literal["target", "source", "preserve", "explicit"] = Field(
+        default="target",
+        description="How to resolve the primary OPF/XHTML output language.",
+    )
+    language: str | None = Field(
+        default=None,
+        description="Explicit BCP-47-style tag; required when language_policy='explicit'.",
+    )
+    hyphenation: Literal["auto", "manual", "none", "preserve"] = Field(
+        default="auto",
+        description="Deterministic CSS hyphenation policy.",
+    )
+    inject_css: bool = Field(default=True, description="Inject the generated policy CSS.")
+    patch_body_language: bool = Field(
+        default=False,
+        description="Also patch body@lang/xml:lang; root attributes are always patched for non-preserve policy.",
+    )
+
+
+
 class ProfileConfig(BaseModel):
     """Per-profile translation config stored in ``translations/<profile>/config.toml``."""
 
@@ -974,6 +1011,7 @@ class ProfileConfig(BaseModel):
     # table is present; existing config.toml files round-trip without one.
     quality_review: QualityReviewConfig | None = None
     indexes: IndexesConfig | None = None
+    epub_output: EpubOutputConfig | None = None
 
 
 class ProfileRootMarker(BaseModel):
@@ -1020,6 +1058,7 @@ class ProjectConfig(BaseModel):
         default="markdown", description="Document format: 'markdown' or 'epub'"
     )
     chunk_size: int = Field(default=50, ge=1, description="Max records per chunk")
+    epub_output: EpubOutputConfig | None = None
 
     @field_validator("format")
     @classmethod

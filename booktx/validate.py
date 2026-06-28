@@ -1407,6 +1407,107 @@ def _maybe_append_epub_toc_audit(
     report.findings.extend(_epub_toc_audit_findings(project))
 
 
+def _epub_output_policy_findings(project: Project) -> list[Finding]:
+    """Findings for the resolved EPUB output policy (pre-build, deterministic).
+
+    Covers invalid/explicit-missing language tags, translation profiles that
+    preserve a differing source language, and pass-through profiles that
+    explicitly opt into rewriting. These are warnings/errors only; CSS cascade
+    conflicts are reported by the build audit, not here.
+    """
+    if project.config.format != "epub":
+        return []
+    from booktx.epub_output_policy import PolicyError, resolve_epub_output_policy
+
+    findings: list[Finding] = []
+    try:
+        policy = resolve_epub_output_policy(project)
+    except PolicyError as exc:
+        msg = str(exc)
+        rule = "invalid_epub_output_language"
+        if "explicit" in msg and "language" in msg:
+            rule = "epub_output_explicit_language_missing"
+        elif "underscore" in msg or "not a valid" in msg:
+            rule = "invalid_epub_output_language"
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule=rule,
+                message=msg,
+            )
+        )
+        return findings
+
+    cfg = project.config
+    is_pass_through = (
+        project.profile_config is not None
+        and project.profile_config.kind == "pass-through"
+    )
+    if (
+        policy.language_policy == "preserve"
+        and not is_pass_through
+        and cfg.source_language
+        and cfg.target_language
+        and cfg.source_language != cfg.target_language
+    ):
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.WARN,
+                rule="epub_output_language_policy_preserves_source",
+                message=(
+                    "EPUB output language policy is 'preserve' but the target "
+                    f"language {cfg.target_language!r} differs from source "
+                    f"{cfg.source_language!r}; output will keep the source language."
+                ),
+            )
+        )
+    if is_pass_through and policy.language_policy != "preserve":
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.WARN,
+                rule="epub_output_pass_through_rewrite_enabled",
+                message=(
+                    "pass-through profile explicitly opts into EPUB output "
+                    "rewriting; default byte identity is lost."
+                ),
+            )
+        )
+    return findings
+
+
+def _soft_hyphen_findings(
+    project: Project, effective
+) -> list[Finding]:
+    """Warn once per record whose target text contains a soft hyphen (U+00AD).
+
+    Soft hyphens in target text cause unpredictable reader-side breaks. They
+    are warnings because a translator may insert them intentionally.
+    """
+    if project.config.format != "epub":
+        return []
+    soft_hyphen = "\u00ad"
+    findings: list[Finding] = []
+    for chunk in effective.chunks.values():
+        for record in chunk.records:
+            if soft_hyphen in record.target:
+                findings.append(
+                    Finding(
+                        chunk_id=chunk.chunk_id,
+                        severity=Severity.WARN,
+                        rule="target_contains_soft_hyphen",
+                        message=(
+                            f"target for record {record.id} contains a soft hyphen "
+                            "(U+00AD); this can cause unpredictable hyphenation."
+                        ),
+                        record_id=record.id,
+                    )
+                )
+    return findings
+
+
 def validate_project(
     project: Project,
     *,
@@ -1562,6 +1663,9 @@ def validate_project(
         drift_finding = _context_render_drift_finding(project, context)
         if drift_finding is not None:
             report.findings.append(drift_finding)
+
+    report.findings.extend(_epub_output_policy_findings(project))
+    report.findings.extend(_soft_hyphen_findings(project, effective))
 
     # Scope record-level findings to the resolved chapter/task/record set so a
     # bounded run is not blocked by findings in unrelated chapters. Structural

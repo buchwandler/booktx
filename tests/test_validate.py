@@ -1490,3 +1490,139 @@ def test_outer_quotation_marks_finding_carries_source_and_target():
     )
     assert finding.source == expected_src
     assert finding.target == expected_tgt
+
+
+# ---------------------------------------------------------------------------
+# EPUB output policy + soft hyphen findings
+# ---------------------------------------------------------------------------
+
+def _epub_project_with_policy(
+    tmp_path: Path,
+    *,
+    kind: str = "translation",
+    target_language: str = "de",
+    target_locale: str | None = None,
+    epub_output=None,
+):
+    import tests.test_epub_io as epub_fixtures
+    from booktx.cli import app as cli_app
+    from booktx.config import (
+        create_profile,
+        find_source_file,
+        init_source_project,
+        write_profile_config,
+    )
+
+    proj = init_source_project(tmp_path / "book")
+    create_profile(
+        proj.root,
+        "p",
+        target_language=target_language,
+        target_locale=target_locale or target_language,
+        kind=kind,
+    )
+    # Mark as EPUB source so validate treats it as an epub project.
+    epub_path = proj.source_dir / "book.epub"
+    epub_fixtures._make_epub(str(epub_path))
+    find_source_file(proj)
+    runner = CliRunner()
+    res = runner.invoke(cli_app, ["extract", str(proj.root)])
+    assert res.exit_code == 0, res.output
+    if epub_output is not None:
+        cfg = load_project(proj.root, profile="p").profile_config.model_copy(
+            update={"epub_output": epub_output}
+        )
+        write_profile_config(proj.root, cfg)
+    return load_project(proj.root, profile="p")
+
+
+def test_epub_output_policy_invalid_explicit_language_is_error(tmp_path: Path) -> None:
+    from booktx.models import EpubOutputConfig
+
+    proj = _epub_project_with_policy(
+        tmp_path,
+        epub_output=EpubOutputConfig(language_policy="explicit"),
+    )
+    report = validate_project(proj)
+    rules = [f.rule for f in report.findings if f.chunk_id == "epub_output"]
+    assert "epub_output_explicit_language_missing" in rules
+
+
+def test_epub_output_policy_invalid_tag_is_error(tmp_path: Path) -> None:
+    from booktx.models import EpubOutputConfig
+
+    proj = _epub_project_with_policy(
+        tmp_path,
+        epub_output=EpubOutputConfig(language_policy="explicit", language="de_DE"),
+    )
+    report = validate_project(proj)
+    rules = [f.rule for f in report.findings if f.chunk_id == "epub_output"]
+    assert "invalid_epub_output_language" in rules
+
+
+def test_epub_output_pass_through_rewrite_enabled_is_warning(tmp_path: Path) -> None:
+    from booktx.models import EpubOutputConfig
+
+    proj = _epub_project_with_policy(
+        tmp_path,
+        kind="pass-through",
+        epub_output=EpubOutputConfig(language_policy="target"),
+    )
+    report = validate_project(proj)
+    rules = [f.rule for f in report.findings if f.chunk_id == "epub_output"]
+    assert "epub_output_pass_through_rewrite_enabled" in rules
+
+
+def test_epub_output_translation_default_has_no_policy_error(tmp_path: Path) -> None:
+    # Default translation profile: target language resolves cleanly.
+    proj = _epub_project_with_policy(
+        tmp_path, target_language="de", target_locale="de-DE"
+    )
+    report = validate_project(proj)
+    epub_rules = [f.rule for f in report.findings if f.chunk_id == "epub_output"]
+    assert not any(
+        r in epub_rules
+        for r in (
+            "invalid_epub_output_language",
+            "epub_output_explicit_language_missing",
+            "epub_output_pass_through_rewrite_enabled",
+        )
+    )
+
+
+def test_target_contains_soft_hyphen_is_warning(tmp_path: Path) -> None:
+    from booktx.models import EpubOutputConfig
+
+    proj = _epub_project_with_policy(
+        tmp_path,
+        target_language="de",
+        target_locale="de-DE",
+        epub_output=EpubOutputConfig(language_policy="preserve"),
+    )
+    # Write a store-backed record whose target contains U+00AD.
+    from booktx.config import write_translation_store
+    from booktx.models import StoredTranslationRecord, TranslationStore
+    from booktx.progress import source_record_sha256
+
+    # Use the first extracted source record.
+    chunks = list(proj.chunks())
+    assert chunks
+    import json as _json
+
+    src_chunk = _json.loads(chunks[0].read_text("utf-8"))
+    record = src_chunk["records"][0]
+    store = TranslationStore(
+        records={
+            record["id"]: StoredTranslationRecord(
+                chunk_id=src_chunk["chunk_id"],
+                source_sha256=source_record_sha256(record["source"]),
+                target="Wort\u00adbrechung",
+                updated_at="2026-06-28T00:00:00Z",
+            )
+        }
+    )
+    write_translation_store(proj, store)
+    report = validate_project(proj)
+    soft = [f for f in report.findings if f.rule == "target_contains_soft_hyphen"]
+    assert soft
+    assert soft[0].record_id == record["id"]

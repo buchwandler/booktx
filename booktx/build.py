@@ -238,11 +238,20 @@ def _build_epub(
         rebuild_epub,
     )
     from text2epub.errors import (  # type: ignore[import-not-found]
+        PackageError,
         ReplacementError,
         ValidationError,
     )
     from text2epub.validation import (  # type: ignore[import-not-found]
         scan_epub_for_unresolved_tokens,
+    )
+
+    from booktx.epub_output_policy import (
+        PolicyError,
+        audit_epub_output_policy,
+        reconcile_css_injection,
+        resolve_epub_output_policy,
+        to_text2epub_output_rewrite,
     )
 
     source = find_source_file(project)
@@ -286,45 +295,132 @@ def _build_epub(
             )
         )
 
+    # Resolve booktx output policy and map it to text2epub output rewrite.
+    try:
+        policy = resolve_epub_output_policy(project)
+    except PolicyError as exc:
+        raise BuildError(str(exc)) from exc
+    output_rewrite = to_text2epub_output_rewrite(policy)
+
     out_path = _output_path(project, source, suffix=".epub")
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Build into a sibling temporary path so audits complete before the last
+    # good final output is replaced.
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    upstream_report = None
     try:
-        report = rebuild_epub(
-            ReplacementPlan(
-                source_epub=source,
-                extraction_manifest=epub_template.text2epub_manifest,
-                replacements=replacements,
-            ),
-            out_path,
-        )
-    except ValidationError as exc:
-        match = re.search(r"token '([^']+)'.*entry '([^']+)'", str(exc))
-        if match is not None:
-            token, entry_name = match.groups()
+        try:
+            upstream_report = rebuild_epub(
+                ReplacementPlan(
+                    source_epub=source,
+                    extraction_manifest=epub_template.text2epub_manifest,
+                    replacements=replacements,
+                    output_rewrite=output_rewrite,
+                ),
+                tmp_path,
+            )
+        except ValidationError as exc:
+            match = re.search(r"token '([^']+)'.*entry '([^']+)'", str(exc))
+            if match is not None:
+                token, entry_name = match.groups()
+                raise BuildError(
+                    f"built EPUB contains unresolved placeholder "
+                    f"{token} in {entry_name}"
+                ) from exc
+            raise BuildError(str(exc)) from exc
+        except ReplacementError as exc:
+            raise BuildError(str(exc)) from exc
+        except PackageError as exc:
+            raise BuildError(str(exc)) from exc
+
+        findings = scan_epub_for_unresolved_tokens(tmp_path)
+        if findings:
+            entry_name, token = findings[0]
             raise BuildError(
                 f"built EPUB contains unresolved placeholder {token} in {entry_name}"
-            ) from exc
-        raise BuildError(str(exc)) from exc
-    except ReplacementError as exc:
-        raise BuildError(str(exc)) from exc
+            )
 
-    findings = scan_epub_for_unresolved_tokens(out_path)
-    if findings:
-        entry_name, token = findings[0]
-        raise BuildError(
-            f"built EPUB contains unresolved placeholder {token} in {entry_name}"
+        # Post-build policy audit and reconciliation with the upstream report.
+        extraction_hrefs = list(
+            epub_template.text2epub_manifest.get("documents", {}).keys()  # type: ignore[union-attr]
         )
+        try:
+            audit = audit_epub_output_policy(
+                tmp_path, extraction_hrefs=extraction_hrefs, policy=policy
+            )
+            if (
+                output_rewrite is not None
+                and upstream_report is not None
+                and getattr(upstream_report, "output_rewrite", None) is not None
+            ):
+                upstream_css = list(
+                    upstream_report.output_rewrite.css_injected_entries  # type: ignore[union-attr]
+                )
+                reconcile_css_injection(
+                    tmp_path, upstream_css_entries=upstream_css
+                )
+        except PolicyError as exc:
+            raise BuildError(str(exc)) from exc
 
+        # All checks passed: atomically replace the final output.
+        tmp_path.replace(out_path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+    upstream = upstream_report
+    report: dict[str, object] = {
+        "changed_entries": list(upstream.changed_entries) if upstream else [],
+        "replacement_count": upstream.replacement_count if upstream else 0,
+        "unresolved_token_count": (
+            upstream.unresolved_token_count if upstream else 0
+        ),
+    }
+    report["epub_output_policy"] = _policy_report_dict(
+        policy, audit, upstream_report
+    )
     return BuildResult(
         output_path=out_path,
         format="epub",
         span_count=len(epub_template.spans),
-        report={
-            "changed_entries": report.changed_entries,
-            "replacement_count": report.replacement_count,
-            "unresolved_token_count": report.unresolved_token_count,
-        },
+        report=report,
     )
+
+
+def _policy_report_dict(
+    policy, audit, upstream_report
+) -> dict[str, object]:
+    """Serialize the resolved policy detail for the build report."""
+    serialized_text2epub: dict[str, object] | None = None
+    if (
+        upstream_report is not None
+        and getattr(upstream_report, "output_rewrite", None) is not None
+    ):
+        ow = upstream_report.output_rewrite
+        serialized_text2epub = {
+            "applied": ow.applied,
+            "opf_path": ow.opf_path,
+            "changed_entries": list(ow.changed_entries),
+            "targeted_content_entries": list(ow.targeted_content_entries),
+            "language_patched_entries": list(ow.language_patched_entries),
+            "css_injected_entries": list(ow.css_injected_entries),
+            "fixed_layout_skipped_entries": list(ow.fixed_layout_skipped_entries),
+            "old_primary_language": ow.old_primary_language,
+            "new_primary_language": ow.new_primary_language,
+            "warnings": list(ow.warnings),
+        }
+    return {
+        "applied": audit.applied,
+        "language_policy": policy.language_policy,
+        "language": policy.language,
+        "hyphenation": policy.hyphenation,
+        "changed_entries": list(audit.changed_entries),
+        "targeted_xhtml_entries": list(audit.targeted_xhtml_entries),
+        "css_injected_entries": list(audit.css_injected_entries),
+        "fixed_layout_skipped_entries": list(audit.fixed_layout_skipped_entries),
+        "warnings": list(audit.warnings),
+        "text2epub": serialized_text2epub,
+    }
 
 
 def _load_names(project: Project) -> list[str]:

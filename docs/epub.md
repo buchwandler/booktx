@@ -72,7 +72,57 @@ If the source changed, rebuild fails. Re-run extraction after intentional source
 
 ## Identity build
 
-The intended gold standard is that identity/no-op EPUB builds preserve the extracted source EPUB bytes. Tests cover no-translation and identity-translation paths.
+The intended gold standard is that pass-through EPUB builds preserve the
+extracted source EPUB bytes by default. Pass-through profiles resolve to a
+fully preserving EPUB output policy and so remain byte-identical.
+
+Translation profiles, by contrast, apply an EPUB output policy that rewrites
+publication/content language and injects a deterministic hyphenation style
+sheet, so a translated build is **not** expected to be byte-identical to the
+source. See *EPUB output-language and hyphenation policy* below.
+
+## EPUB output-language and hyphenation policy
+
+A translated EPUB build writes the resolved target language to the primary
+OPF `dc:language` and to the `lang`/`xml:lang` of targeted XHTML root
+elements, and injects one deterministic best-effort hyphenation/word-break
+style sheet into eligible reflowable documents. Descendant language
+annotations (for example a quoted passage in another language) are preserved.
+
+This is a **metadata and author-style correctness** contract, not a promise
+of identical rendering across reading systems. Automatic hyphenation depends
+on the reader and its installed dictionaries; booktx cannot control computed
+style. CSS cascade conflicts (source `!important`, higher-specificity rules,
+or reader styles) are reported as warnings because they can override the
+injected policy.
+
+Defaults depend on profile kind:
+
+- translation and legacy translation projects default to `target` language
+  and `auto` hyphenation;
+- pass-through profiles default to `preserve`/`preserve` (byte-identical
+  output).
+
+Override the policy explicitly under `[epub_output]` in the profile (or
+legacy) config:
+
+```toml
+[epub_output]
+language_policy = "target"
+language = "de-DE"        # required only when language_policy = "explicit"
+hyphenation = "auto"      # auto | manual | none | preserve
+inject_css = true
+patch_body_language = false
+```
+
+`hyphenation = "none"` is the compatibility escape hatch: it disables the
+generated automatic hyphenation when a reader keeps producing bad breaks.
+
+The build is transactional: a failed policy resolution, rebuild, or audit
+leaves the last successful output untouched. The build report keeps the
+existing top-level keys (`changed_entries`, `replacement_count`,
+`unresolved_token_count`) and adds an `epub_output_policy` object with the
+resolved language, hyphenation mode, patched XHTML count, and warning count.
 
 ## Reconstruction validation
 

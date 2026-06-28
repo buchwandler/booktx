@@ -186,6 +186,16 @@ translations/<profile>/reports/
 translations/<profile>/output/
 ```
 
+`check --epub-output` audits the existing expected EPUB output path against the
+resolved EPUB output policy **without building or modifying it**. It errors
+clearly when no output exists and emits the same findings in text and JSON
+modes. Use it after a build to confirm the output's language contract and
+review reported CSS cascade conflicts:
+
+```bash
+booktx check ./book --profile de_gpt5_5 --epub-output --json
+```
+
 ## Pass-through validation
 
 `booktx pass-through` generates source-as-target translated chunks from the

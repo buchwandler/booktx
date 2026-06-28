@@ -233,3 +233,31 @@ Interpret the findings:
 
 Run `booktx chapters .` to refresh the map after fixing the source or
 re-extracting.
+
+
+## Bad hyphenation in a translated EPUB, for example `le-icht`
+
+Build a complete output and inspect the reported EPUB policy:
+
+```bash
+booktx build ./book --profile de_default --require-complete
+```
+
+booktx writes the profile target locale to the publication metadata and content
+document language attributes. Automatic hyphenation still depends on the
+reading system and its dictionaries; booktx cannot guarantee identical breaks.
+
+If a reader continues to produce bad breaks, disable automatic hyphenation:
+
+```toml
+[epub_output]
+hyphenation = "none"
+```
+
+Then rebuild. Source CSS conflict warnings in the build report may identify
+styles that still override the generated policy. To audit an existing output
+without rebuilding, run:
+
+```bash
+booktx check ./book --profile de_default --epub-output --json
+```

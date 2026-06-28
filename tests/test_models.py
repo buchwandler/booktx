@@ -868,3 +868,69 @@ def test_profile_config_with_quality_review_round_trips():
     dumped = cfg.model_dump(mode="json", exclude_none=True)
     assert dumped["quality_review"]["enabled"] is True
     assert [p["pass_number"] for p in dumped["quality_review"]["passes"]] == [1, 2]
+
+
+def test_epub_output_config_defaults():
+    from booktx.models import EpubOutputConfig
+
+    cfg = EpubOutputConfig()
+    assert cfg.language_policy == "target"
+    assert cfg.language is None
+    assert cfg.hyphenation == "auto"
+    assert cfg.inject_css is True
+    assert cfg.patch_body_language is False
+
+
+def test_epub_output_config_rejects_unknown_fields():
+    from booktx.models import EpubOutputConfig
+
+    with pytest.raises(ValidationError):
+        EpubOutputConfig(unknown_key="x")
+
+
+def test_epub_output_config_invalid_enum_rejected():
+    from booktx.models import EpubOutputConfig
+
+    with pytest.raises(ValidationError):
+        EpubOutputConfig(language_policy="bogus")
+    with pytest.raises(ValidationError):
+        EpubOutputConfig(hyphenation="bogus")
+
+
+def test_profile_config_without_epub_output_has_no_key():
+    cfg = ProfileConfig(profile="p", target_language="de")
+    assert "epub_output" not in cfg.model_dump(mode="json", exclude_none=True)
+
+
+def test_profile_config_with_epub_output_round_trips():
+    from booktx.models import EpubOutputConfig
+
+    cfg = ProfileConfig(
+        profile="p",
+        target_language="de",
+        epub_output=EpubOutputConfig(hyphenation="none", patch_body_language=True),
+    )
+    dumped = cfg.model_dump(mode="json", exclude_none=True)
+    assert dumped["epub_output"]["hyphenation"] == "none"
+    assert dumped["epub_output"]["patch_body_language"] is True
+    # Re-validate from dict (simulates a TOML load).
+    reloaded = ProfileConfig.model_validate(dumped)
+    assert reloaded.epub_output is not None
+    assert reloaded.epub_output.hyphenation == "none"
+    assert reloaded.epub_output.patch_body_language is True
+
+
+def test_project_config_epub_output_optional():
+    from booktx.models import EpubOutputConfig
+
+    legacy = ProjectConfig(target_language="de")
+    assert legacy.epub_output is None
+    assert "epub_output" not in legacy.model_dump(mode="json", exclude_none=True)
+    legacy = ProjectConfig(
+        target_language="de",
+        epub_output=EpubOutputConfig(
+            language_policy="preserve", hyphenation="preserve"
+        ),
+    )
+    dumped = legacy.model_dump(mode="json", exclude_none=True)
+    assert dumped["epub_output"]["language_policy"] == "preserve"
