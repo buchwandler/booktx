@@ -17,7 +17,6 @@ booktx never translates text; it extracts, validates, and rebuilds.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import sys
 from collections.abc import Callable
@@ -28,7 +27,6 @@ from typing import Any
 
 import typer
 from pydantic import ValidationError
-from rich.console import Console
 from rich.table import Table
 
 from booktx import __version__
@@ -46,6 +44,21 @@ from booktx.chapters import (
     write_chapter_map,
 )
 from booktx.chunking import RECORD_ID_SCHEME, segmenter_metadata, spans_to_chunks
+
+# Shared CLI helpers (console, error/exit mapping, project loading). Lives in a
+# neutral module so command modules under booktx/commands/ can import these
+# without importing booktx.cli (which would create a cycle).
+from booktx.cli_support import (
+    _die,
+    _handle_booktx_error,
+    _load_project_or_exit,
+    _load_runtime_or_exit,
+    _print_identity,
+    _project_status_snapshot,
+    _reject_if_isolated,
+    _render_profiles_overview_human,
+    console,
+)
 from booktx.command_hints import (
     build_command,
     check_command,
@@ -54,27 +67,37 @@ from booktx.command_hints import (
     translate_todo_resume_command,
     translate_todo_status_command,
 )
+from booktx.commands.epub import epub_app
+
+# --- Phase 3 slice 1: identity command module --------------------------------
+# Imported with the other first-party imports; the sub-apps are registered
+# onto the root ``app`` further below. booktx/commands/identity.py delegates
+# to booktx/workflows/identity.py and booktx/cli_support.py (never booktx.cli).
+from booktx.commands.identity import (
+    actor_app,
+    harness_app,
+    identity_app,
+    model_app,
+)
+from booktx.commands.profile import profile_app
+from booktx.commands.source import source_app
+from booktx.commands.version import version_app
 from booktx.config import (
     BooktxError,
     Project,
     _err,
-    create_profile,
     find_source_file,
     identity_path,
     init_project,
     load_identity,
     load_manifest,
-    load_profile_config,
-    load_profile_project,
     load_project,
     load_source_project,
     load_translation_store,
     load_translation_task,
     load_translation_version_ledger,
-    migrate_current_project,
     project_source_sha256,
     protected_terms_sha256,
-    select_profile,
     translation_ingest_block_path,
     translation_ingest_path,
     translation_store_path,
@@ -127,7 +150,6 @@ from booktx.editor_indexes import (
 from booktx.epub_io import EpubExtraction, extract_epub
 from booktx.epub_manifest import EPUB2TEXT_SCHEMA, EPUB_TEMPLATE_PIPELINE
 from booktx.html_io import build_xhtml  # noqa: F401  (kept for downstream use)
-from booktx.identity import identity_payload
 from booktx.markdown_io import extract_markdown
 from booktx.models import (
     Chunk,
@@ -156,10 +178,9 @@ from booktx.progress import (
     source_record_sha256,
 )
 from booktx.record_refs import parse_record_ref, resolve_record_range
-from booktx.runtime import RuntimeContext, RuntimeMode, resolve_runtime
+from booktx.runtime import RuntimeContext, RuntimeMode
 from booktx.status import (
     ChapterProgress,
-    ProfilesOverview,
     StatusBundle,
     build_profiles_overview,
     build_status_snapshot,
@@ -194,12 +215,9 @@ from booktx.validate import (
 )
 from booktx.versioning import (
     default_identity,
-    fork_current_context,
     lookup_version,
     resolve_current_version,
     resolve_identity,
-    select_active_version,
-    set_track_label,
 )
 
 app = typer.Typer(
@@ -212,42 +230,26 @@ app = typer.Typer(
     add_completion=False,
 )
 
-console = Console()
 context_app = typer.Typer(help="Build, inspect, and render translation context.")
 translate_app = typer.Typer(help="Command-based translation workflow.")
-source_app = typer.Typer(help="Inspect brokered source records without path leaks.")
 doctor_app = typer.Typer(help="Diagnostic commands.")
-actor_app = typer.Typer(help="Manage translation actor defaults.")
-harness_app = typer.Typer(help="Manage translation harness defaults.")
-model_app = typer.Typer(help="Manage translation model defaults.")
-identity_app = typer.Typer(
-    help="Inspect resolved translation identity and project state."
-)
-version_app = typer.Typer(help="Inspect and manage translation version tracks.")
-profile_app = typer.Typer(help="Manage isolated translation profiles.")
 review_app = typer.Typer(help="Quality review pass workflow.")
 app.add_typer(context_app, name="context")
 app.add_typer(translate_app, name="translate")
 app.add_typer(translate_app, name="translation")
 app.add_typer(source_app, name="source")
 app.add_typer(doctor_app, name="doctor")
+app.add_typer(review_app, name="review")
+app.add_typer(version_app, name="version")
+app.add_typer(profile_app, name="profile")
+app.add_typer(epub_app, name="epub")
+
+# --- Phase 3 slice 1: identity (actor / harness / model / identity-whoami)
+# commands registered below; cli.py stays the stable app-assembly entrypoint.
 app.add_typer(actor_app, name="actor")
 app.add_typer(harness_app, name="harness")
 app.add_typer(model_app, name="model")
 app.add_typer(identity_app, name="identity")
-app.add_typer(version_app, name="version")
-app.add_typer(profile_app, name="profile")
-app.add_typer(review_app, name="review")
-
-
-def _die(message: str, code: int = 1) -> None:
-    """Print an error and exit with ``code``."""
-    console.print(f"[red]error:[/red] {message}")
-    raise typer.Exit(code=code)
-
-
-def _handle_booktx_error(exc: BooktxError) -> None:
-    _die(str(exc))
 
 
 def _maybe_auto_export_indexes(
@@ -287,39 +289,10 @@ def _maybe_auto_export_indexes(
         console.print(f"[yellow]warning:[/yellow] index export failed: {exc}")
 
 
-def _isolated_mode_error() -> str:
-    return (
-        "command is not available in profile-root isolated mode.\n"
-        "Run this from the project root for collaborative/admin workflows."
-    )
-
-
-def _reject_if_isolated(runtime: RuntimeContext) -> None:
-    if runtime.mode.isolated_output:
-        _die(_isolated_mode_error())
-
-
 def _display_path(path: Path, mode: RuntimeMode | None) -> str:
     if mode is not None:
         return display_path(path, mode)
     return path.as_posix()
-
-
-def _load_runtime_or_exit(
-    project_dir: Path,
-    *,
-    profile: str | None = None,
-    require_profile: bool = False,
-) -> RuntimeContext:
-    try:
-        return resolve_runtime(
-            project_dir,
-            profile=profile,
-            require_profile=require_profile,
-        )
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        raise typer.Exit(code=1) from exc
 
 
 def _submission_ingest_hint(
@@ -343,999 +316,6 @@ def _submission_ingest_hint(
         if mode is not None
         else _project_relative(translation_ingest_block_path(proj, task_id), proj.root)
     )
-
-
-def _resolve_project_value_args(
-    arg1: str,
-    arg2: str | None,
-    *,
-    value_name: str,
-    project_dir: Path | None = None,
-) -> tuple[Path, str]:
-    """Accept VALUE, VALUE PROJECT_DIR, or PROJECT_DIR VALUE."""
-    if project_dir is not None:
-        if arg2 is not None:
-            _die(f"--project cannot be combined with a second positional {value_name}")
-        return project_dir.expanduser(), arg1
-
-    if arg2 is None:
-        return Path("."), arg1
-
-    p1 = Path(arg1).expanduser()
-    p2 = Path(arg2).expanduser()
-    p1_is_project = (p1 / ".booktx" / "config.toml").is_file() or (
-        p1 / ".booktx" / "source-config.toml"
-    ).is_file()
-    p2_is_project = (p2 / ".booktx" / "config.toml").is_file() or (
-        p2 / ".booktx" / "source-config.toml"
-    ).is_file()
-
-    if p1_is_project and not p2_is_project:
-        return p1, arg2
-    if p2_is_project and not p1_is_project:
-        return p2, arg1
-    return p1, arg2
-
-
-def _render_identity_human(payload: dict[str, Any]) -> None:
-    context_payload = payload["context"]
-    store_payload = payload["store"]
-    context_state = {
-        "ready": "READY",
-        "not_ready": "NOT_READY",
-        "missing": "MISSING",
-        "invalid": "INVALID",
-    }[str(context_payload["status"])]
-    rows = [
-        ("actor", payload["actor"]),
-        ("harness", payload["harness"]),
-        ("model", payload["model"]),
-        ("active_version", payload["active_version"] or "none"),
-        ("context", f"{context_state} {context_payload['path']}"),
-        ("context_sha256", context_payload["sha256"] or "none"),
-        ("source_sha256", payload["source_sha256"] or "none"),
-        (
-            "store_version",
-            store_payload["version"]
-            if store_payload["version"] is not None
-            else "none",
-        ),
-        (
-            "store_records",
-            store_payload["record_count"]
-            if store_payload["record_count"] is not None
-            else "none",
-        ),
-    ]
-    width = max(len(label) for label, _ in rows)
-    console.print(f"booktx identity: {payload['project_dir']}", soft_wrap=True)
-    for label, value in rows:
-        console.print(f"{label + ':':<{width + 2}} {value}", soft_wrap=True)
-
-
-def _print_identity(project_dir: Path, *, profile: str | None, as_json: bool) -> None:
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
-    payload = identity_payload(runtime.project, mode=runtime.mode)
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    _render_identity_human(payload)
-
-
-# --- version -----------------------------------------------------------------
-
-
-@version_app.callback(invoke_without_command=True)
-def version_root(ctx: typer.Context) -> None:
-    """Translation-version command group."""
-    if ctx.invoked_subcommand is None:
-        console.print(
-            "[red]error:[/red] `booktx version` is a translation-version command "
-            "group. Use `booktx --version` for the CLI package version, or "
-            "`booktx version current PROJECT_DIR` for the active translation "
-            "version.",
-            soft_wrap=True,
-        )
-        raise typer.Exit(code=2)
-
-
-@app.command(name="whoami")
-def whoami(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    """Show resolved translation identity and project status."""
-    _print_identity(project_dir, profile=profile, as_json=as_json)
-
-
-@identity_app.command(name="whoami")
-def identity_whoami(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    """Alias for the top-level whoami command."""
-    _print_identity(project_dir, profile=profile, as_json=as_json)
-
-
-@app.command(name="mode")
-def mode_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    """Show how booktx resolved the current working path."""
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=False)
-    payload = {
-        "mode": runtime.mode.kind,
-        "profile": runtime.mode.profile_name,
-        "profiles_visible": not runtime.mode.isolated_output,
-        "cross_profile_access": not runtime.mode.isolated_output,
-        "safe_for_model_evaluation": runtime.mode.isolated_output,
-        "source_access": runtime.mode.source_access,
-    }
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    console.print(f"mode: {payload['mode']}")
-    if payload["profile"]:
-        console.print(f"profile: {payload['profile']}")
-    console.print(f"profiles visible: {'yes' if payload['profiles_visible'] else 'no'}")
-    console.print(
-        f"cross-profile access: {'yes' if payload['cross_profile_access'] else 'no'}"
-    )
-    console.print(
-        "safe for model evaluation: "
-        f"{'yes' if payload['safe_for_model_evaluation'] else 'no'}"
-    )
-
-
-@source_app.command(name="status")
-def source_status_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    """Show a safe summary of extracted source state."""
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=False)
-    proj = runtime.project
-    manifest = load_manifest(proj)
-    source_records = load_source_records(proj)
-    chapter_map = load_chapter_map(proj) or detect_chapters(proj)
-    payload = {
-        "source": "available" if proj.chunks() else "missing",
-        "format": proj.config.format,
-        "source_language": proj.config.source_language,
-        "records": len(source_records),
-        "chunks": len(proj.chunks()),
-        "chapters": len(chapter_map.chapters),
-        "source_sha256": manifest.source.sha256 if manifest is not None else "",
-    }
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    console.print(f"source: {payload['source']}")
-    console.print(f"format: {payload['format']}")
-    console.print(f"source language: {payload['source_language']}")
-    console.print(f"records: {payload['records']}")
-    console.print(f"chunks: {payload['chunks']}")
-    console.print(f"chapters: {payload['chapters']}")
-
-
-@source_app.command(name="record")
-def source_record_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
-    record_ref: str = typer.Argument(..., help="Record id or record ref."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    output_format: str = typer.Option(
-        "block",
-        "--format",
-        help="Output format: block, text, or json.",
-    ),
-) -> None:
-    """Print one source record without exposing chunk paths."""
-    if output_format not in {"block", "text", "json"}:
-        _die("--format must be block, text, or json")
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=False)
-    proj = runtime.project
-    canonical_id = parse_record_ref(record_ref).canonical_id
-    source_by_id = {record.record_id: record for record in load_source_records(proj)}
-    record = source_by_id.get(canonical_id)
-    if record is None:
-        _die(f"unknown source record id: {canonical_id}")
-        return
-    payload = {"id": record.record_id, "source": record.source}
-    if output_format == "json":
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-    elif output_format == "text":
-        console.print(f"{record.record_id}\t{record.source}")
-    else:
-        console.print(f">>> {record.record_id}")
-        console.print(record.source)
-
-
-@source_app.command(name="chapter")
-def source_chapter_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
-    chapter_id: str = typer.Argument(..., help="Chapter id, e.g. 0001."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    output_format: str = typer.Option(
-        "block",
-        "--format",
-        help="Output format: block, text, or json.",
-    ),
-) -> None:
-    """Print all source records for one chapter without exposing chunk paths."""
-    if output_format not in {"block", "text", "json"}:
-        _die("--format must be block, text, or json")
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=False)
-    proj = runtime.project
-    bundle = _project_status_snapshot(proj)
-    record_ids = bundle.index.record_ids_by_chapter.get(chapter_id)
-    chapter = bundle.index.chapters_by_id.get(chapter_id)
-    if not record_ids or chapter is None:
-        _die(f"unknown chapter id: {chapter_id}")
-        return
-    records = [
-        {"id": record_id, "source": bundle.index.source_by_id[record_id].source}
-        for record_id in record_ids
-    ]
-    if output_format == "json":
-        console.print_json(
-            json.dumps(
-                {
-                    "chapter_id": chapter.chapter_id,
-                    "title": chapter.title,
-                    "records": records,
-                },
-                ensure_ascii=False,
-            )
-        )
-        return
-    for item in records:
-        if output_format == "text":
-            console.print(f"{item['id']}\t{item['source']}")
-        else:
-            console.print(f">>> {item['id']}")
-            console.print(item["source"])
-            if item != records[-1]:
-                console.print()
-
-
-@doctor_app.command(name="isolation")
-def doctor_isolation_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    """Check whether the current path is ready for isolated evaluation."""
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=False)
-    proj = runtime.project
-    marker_exists = bool(
-        runtime.mode.profile_root
-        and (runtime.mode.profile_root / ".booktx-profile.json").is_file()
-    )
-    profile_local_context = bool(
-        proj.context_json_path is not None
-        and runtime.mode.profile_root is not None
-        and proj.context_json_path.parent == runtime.mode.profile_root
-    )
-    profile_local_store = bool(
-        proj.store_path is not None
-        and runtime.mode.profile_root is not None
-        and proj.store_path.parent == runtime.mode.profile_root
-    )
-    profile_local_ledger = bool(
-        proj.ledger_path is not None
-        and runtime.mode.profile_root is not None
-        and proj.ledger_path.parent == runtime.mode.profile_root
-    )
-    redacted_samples = [
-        display_path(proj.root, runtime.mode),
-        display_path(proj.chunks_dir, runtime.mode),
-        display_path(proj.profile_dir or proj.root, runtime.mode),
-    ]
-    path_redaction_pass = all(
-        not sample.startswith("/")
-        and "../" not in sample
-        and (runtime.mode.profile_name or "") not in sample.replace(".", "")
-        for sample in redacted_samples[:2]
-    )
-    source_available = bool(proj.chunks())
-    passed = (
-        runtime.mode.isolated_output
-        and marker_exists
-        and source_available
-        and profile_local_context
-        and profile_local_store
-        and profile_local_ledger
-        and path_redaction_pass
-    )
-    payload = {
-        "isolation": "PASS" if passed else "FAIL",
-        "mode": runtime.mode.kind,
-        "profile": runtime.mode.profile_name,
-        "source_broker": "available" if source_available else "unavailable",
-        "cross_profile_commands": "blocked"
-        if runtime.mode.isolated_output
-        else "available",
-        "path_redaction": "PASS" if path_redaction_pass else "FAIL",
-        "source_access": runtime.mode.source_access,
-    }
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-    else:
-        console.print(f"isolation: {payload['isolation']}")
-        console.print(f"mode: {payload['mode']}")
-        if payload["profile"]:
-            console.print(f"profile: {payload['profile']}")
-        console.print(f"source broker: {payload['source_broker']}")
-        console.print(f"cross-profile commands: {payload['cross_profile_commands']}")
-        console.print(f"path redaction: {payload['path_redaction']}")
-    if not passed:
-        raise typer.Exit(code=1)
-
-
-@actor_app.command(name="whoami")
-def actor_whoami(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Show the resolved actor default for translation versioning."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    console.print(_resolved_identity(proj).actor)
-
-
-@actor_app.command(name="set")
-def actor_set(
-    arg1: str = typer.Argument(
-        ..., help="Actor value, or project directory when using the legacy order."
-    ),
-    arg2: str | None = typer.Argument(
-        None, help="Optional project directory or actor value."
-    ),
-    project: Path | None = typer.Option(None, "--project", help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Persist the actor default used for new version tracks."""
-    project_dir, actor = _resolve_project_value_args(
-        arg1, arg2, value_name="actor", project_dir=project
-    )
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    identity = _write_identity_defaults(proj, actor=actor)
-    console.print(identity.actor)
-
-
-@actor_app.command(name="clear")
-def actor_clear(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Clear the stored actor default back to the local fallback."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    identity = _clear_identity_field(proj, "actor")
-    console.print(identity.actor)
-
-
-@harness_app.command(name="whoami")
-def harness_whoami(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Show the resolved harness default for translation versioning."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    console.print(_resolved_identity(proj).harness)
-
-
-@harness_app.command(name="set")
-def harness_set(
-    arg1: str = typer.Argument(
-        ..., help="Harness value, or project directory when using the legacy order."
-    ),
-    arg2: str | None = typer.Argument(
-        None, help="Optional project directory or harness value."
-    ),
-    project: Path | None = typer.Option(None, "--project", help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Persist the harness default used for new version tracks."""
-    project_dir, harness = _resolve_project_value_args(
-        arg1, arg2, value_name="harness", project_dir=project
-    )
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    identity = _write_identity_defaults(proj, harness=harness)
-    console.print(identity.harness)
-
-
-@harness_app.command(name="clear")
-def harness_clear(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Clear the stored harness default back to the local fallback."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    identity = _clear_identity_field(proj, "harness")
-    console.print(identity.harness)
-
-
-@model_app.command(name="whoami")
-def model_whoami(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Show the resolved model default for translation versioning."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    console.print(_resolved_identity(proj).model)
-
-
-@model_app.command(name="set")
-def model_set(
-    arg1: str = typer.Argument(
-        ..., help="Model value, or project directory when using the legacy order."
-    ),
-    arg2: str | None = typer.Argument(
-        None, help="Optional project directory or model value."
-    ),
-    project: Path | None = typer.Option(None, "--project", help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Persist the model default used for new version tracks."""
-    project_dir, model = _resolve_project_value_args(
-        arg1, arg2, value_name="model", project_dir=project
-    )
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    identity = _write_identity_defaults(proj, model=model)
-    console.print(identity.model)
-
-
-@model_app.command(name="clear")
-def model_clear(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Clear the stored model default back to the local fallback."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    identity = _clear_identity_field(proj, "model")
-    console.print(identity.model)
-
-
-@version_app.command(name="current")
-def version_current(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    """Show the current ledger-wide active version."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    ledger = load_translation_version_ledger(proj)
-    payload = {
-        "active_version": ledger.active_version,
-        "track_count": len(ledger.tracks),
-    }
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    console.print(ledger.active_version or "none")
-
-
-@version_app.command(name="list")
-def version_list(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """List all known major tracks and subversions."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    ledger = load_translation_version_ledger(proj)
-    if not ledger.tracks:
-        console.print("no versions")
-        return
-    for track_id in sorted(ledger.tracks, key=int):
-        track = ledger.tracks[track_id]
-        active_marker = (
-            "*"
-            if ledger.active_version
-            and ledger.active_version.startswith(f"{track.version}.")
-            else " "
-        )
-        console.print(
-            f"{active_marker} track {track.version}: {track.actor} / {track.harness} / "
-            f"{track.model}{f' [{track.label}]' if track.label else ''}"
-        )
-        for sub_id in sorted(track.subversions, key=int):
-            sub = track.subversions[sub_id]
-            current_marker = (
-                " (active)" if ledger.active_version == sub.version_ref else ""
-            )
-            scope_label = (
-                f"baseline:{sub.baseline_sha256}"
-                if sub.baseline_sha256 is not None
-                else f"legacy-context:{sub.context_sha256}"
-            )
-            console.print(f"    {sub.version_ref}  {scope_label}{current_marker}")
-
-
-@version_app.command(name="select")
-def version_select(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    version_ref: str = typer.Argument(..., help="Version ref such as 1.2."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Select the ledger-wide active version."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    ledger = select_active_version(proj, version_ref)
-    console.print(ledger.active_version or "none")
-
-
-@version_app.command(name="set-label")
-def version_set_label(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    major_version: int = typer.Argument(..., help="Major track number."),
-    label: str = typer.Argument(..., help="Human label for the track."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Set the label for one major version track."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    ledger = set_track_label(proj, major_version, label)
-    console.print(ledger.tracks[str(major_version)].label or "")
-
-
-@version_app.command(name="fork-context")
-def version_fork_context(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    note: str | None = typer.Option(None, "--note", help="Reason for the forced fork."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-) -> None:
-    """Force a new subversion for the current track even when context hash matches."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    resolution = fork_current_context(proj, note=note)
-    console.print(resolution.version_ref)
-
-
-@version_app.command(name="show")
-def version_show(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    selector: str = typer.Argument(..., help="Track number or dotted version ref."),
-    profile: str | None = typer.Option(
-        None, "--profile", help="Translation profile name."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    """Show one major track or one specific dotted version entry."""
-    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    ledger = load_translation_version_ledger(proj)
-    if "." in selector:
-        track, sub = lookup_version(ledger, selector)
-        payload = {
-            "version_ref": sub.version_ref,
-            "version": track.version,
-            "subversion": sub.subversion,
-            "actor": track.actor,
-            "harness": track.harness,
-            "model": track.model,
-            "label": track.label,
-            "context_sha256": sub.context_sha256,
-            "baseline_sha256": sub.baseline_sha256,
-            "baseline_path": sub.baseline_path,
-            "legacy_full_context_sha256": sub.legacy_full_context_sha256,
-            "legacy_full_context_path": sub.legacy_full_context_path,
-            "context_label": sub.context_label,
-            "forced": sub.forced,
-        }
-    else:
-        track_entry = ledger.tracks.get(str(int(selector)))
-        if track_entry is None:
-            _die(f"track {selector} not found")
-            return
-        payload = {
-            "version": track_entry.version,
-            "actor": track_entry.actor,
-            "harness": track_entry.harness,
-            "model": track_entry.model,
-            "label": track_entry.label,
-            "subversions": [
-                sub.model_dump(mode="json") for sub in track_entry.subversions.values()
-            ],
-        }
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    console.print_json(json.dumps(payload, ensure_ascii=False, indent=2))
-
-
-# --- profile ------------------------------------------------------------------
-
-
-def _render_profiles_overview_human(overview: ProfilesOverview) -> None:
-    console.print(f"project: {overview.project}")
-    if overview.source:
-        console.print(f"source: {overview.source}")
-    if overview.source_records:
-        console.print(f"source records: {overview.source_records}")
-    if not overview.profiles:
-        console.print("profiles: none")
-        return
-    console.print("profiles:")
-    for item in overview.profiles:
-        marker = "*" if item.active else " "
-        coverage = (
-            f"translated={item.translated_records}/{item.total_records}"
-            if item.total_records
-            else "translated=0/0"
-        )
-        console.print(
-            f"  {marker} {item.profile}   kind={item.kind}  "
-            f"target={item.target_locale or item.target_language}  "
-            f"model={item.model or 'human'}  {coverage}"
-        )
-    if overview.active_profile:
-        console.print()
-        console.print(f"active profile: {overview.active_profile}")
-
-
-def _profile_detail_payload(project_dir: Path, profile_name: str) -> dict[str, Any]:
-    profile_project = load_profile_project(project_dir, profile_name)
-    profile_cfg = load_profile_config(project_dir, profile_name)
-    resolved_identity = resolve_identity(profile_project)
-    context = load_context(profile_project)
-    active_version = load_translation_version_ledger(profile_project).active_version
-    records_translated = 0
-    records_total = 0
-    chapters_complete = 0
-    chapters_total = 0
-    if profile_project.chunks():
-        bundle = build_status_snapshot(
-            profile_project,
-            context_exists=context is not None,
-            context_ready=bool(context and context.ready),
-        )
-        records_translated = bundle.snapshot.totals.records_translated
-        records_total = bundle.snapshot.totals.records_total
-        chapters_complete = bundle.snapshot.totals.chapters_complete
-        chapters_total = bundle.snapshot.totals.chapters_total
-    return {
-        "profile": profile_name,
-        "kind": profile_cfg.kind,
-        "path": _project_relative(profile_project.profile_dir, profile_project.root)
-        if profile_project.profile_dir is not None
-        else "",
-        "target_language": profile_cfg.target_language,
-        "target_locale": profile_cfg.target_locale or profile_cfg.target_language,
-        "output_filename": profile_cfg.output_filename,
-        # Live identity comes from translations/<profile>/identity.json;
-        # profile_cfg.identity is only the initial default captured at creation.
-        "actor": resolved_identity.actor,
-        "harness": resolved_identity.harness,
-        "model": resolved_identity.model,
-        "context_ready": bool(context and context.ready),
-        "active_version": active_version,
-        "records_translated": records_translated,
-        "records_total": records_total,
-        "chapters_complete": chapters_complete,
-        "chapters_total": chapters_total,
-    }
-
-
-@profile_app.command(name="create")
-def profile_create_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile_name: str = typer.Argument(..., help="Translation profile name."),
-    target: str = typer.Option(..., "--target", help="Target language code, e.g. de."),
-    target_locale: str | None = typer.Option(
-        None, "--target-locale", help="Target locale code, e.g. de-DE."
-    ),
-    model: str | None = typer.Option(None, "--model", help="Profile model label."),
-    harness: str | None = typer.Option(
-        None, "--harness", help="Profile harness label."
-    ),
-    actor: str | None = typer.Option(None, "--actor", help="Profile actor label."),
-    output_filename: str | None = typer.Option(
-        None, "--output-filename", help="Optional output filename override."
-    ),
-    select: bool = typer.Option(False, "--select", help="Select the created profile."),
-) -> None:
-    try:
-        project = create_profile(
-            project_dir,
-            profile_name,
-            target_language=target,
-            target_locale=target_locale,
-            actor=actor,
-            harness=harness,
-            model=model,
-            output_filename=output_filename,
-            select=select,
-        )
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        return
-    console.print(f"created profile: {project.profile}")
-    if select:
-        console.print(f"selected active profile: {project.profile}")
-
-
-@profile_app.command(name="list")
-def profile_list_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
-    if runtime.mode.isolated_output:
-        profile_name = runtime.mode.profile_name or ""
-        payload = {
-            "isolated": True,
-            "profiles": [
-                {
-                    "profile": profile_name,
-                }
-            ],
-        }
-        if as_json:
-            console.print_json(json.dumps(payload, ensure_ascii=False))
-            return
-        console.print(
-            "isolated mode: showing current profile only; run from project root for all profiles"
-        )
-        console.print(f"  * {profile_name}")
-        return
-    project = load_source_project(runtime.project.root)
-    overview = build_profiles_overview(project)
-    if as_json:
-        console.print_json(
-            json.dumps(overview.model_dump(mode="json"), ensure_ascii=False)
-        )
-        return
-    _render_profiles_overview_human(overview)
-
-
-@profile_app.command(name="select")
-def profile_select_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile_name: str = typer.Argument(..., help="Translation profile name."),
-) -> None:
-    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
-    _reject_if_isolated(runtime)
-    try:
-        project = select_profile(runtime.project.root, profile_name)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        return
-    console.print(project.profile or profile_name)
-
-
-@profile_app.command(name="show")
-def profile_show_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile_name: str = typer.Argument(..., help="Translation profile name."),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
-    if runtime.mode.isolated_output:
-        current = runtime.mode.profile_name or ""
-        # In profile-root mode, "." means the current profile; reject others.
-        if profile_name != "." and profile_name != current:
-            _die(
-                f"profile {profile_name!r} is not accessible in isolated mode; "
-                "only the current profile is available"
-            )
-        profile_name = current
-    try:
-        payload = _profile_detail_payload(runtime.project.root, profile_name)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        return
-    if runtime.mode.isolated_output:
-        # Sanitize paths for isolated output.
-        payload["path"] = "."
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    console.print(f"profile: {payload['profile']}")
-    console.print(f"kind: {payload['kind']}")
-    console.print(f"path: {payload['path']}")
-    console.print(f"target: {payload['target_locale']}")
-    console.print(f"model: {payload['model']}")
-    console.print(f"context: {'ready' if payload['context_ready'] else 'not ready'}")
-    console.print(f"active version: {payload['active_version'] or 'none'}")
-    console.print(
-        f"records translated: {payload['records_translated']}/{payload['records_total']}"
-    )
-    console.print(
-        f"chapters complete: {payload['chapters_complete']}/{payload['chapters_total']}"
-    )
-
-
-@profile_app.command(name="compare")
-def profile_compare_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profiles: str = typer.Option(
-        ..., "--profiles", help="Comma-separated profile names."
-    ),
-    record: str = typer.Option(
-        ..., "--record", help="Record ref or canonical record id."
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
-) -> None:
-    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
-    _reject_if_isolated(runtime)
-    source_project = load_source_project(runtime.project.root)
-    requested = [item.strip() for item in profiles.split(",") if item.strip()]
-    if len(requested) < 2:
-        _die("--profiles must contain at least two profile names")
-        return
-    canonical_id = parse_record_ref(record).canonical_id
-    source_by_id = {
-        item.record_id: item for item in load_source_records(source_project)
-    }
-    source_record = source_by_id.get(canonical_id)
-    if source_record is None:
-        _die(f"unknown source record id: {canonical_id}")
-        return
-    comparisons: list[dict[str, Any]] = []
-    for profile_name in requested:
-        try:
-            profile_project = load_profile_project(runtime.project.root, profile_name)
-        except BooktxError as exc:
-            _handle_booktx_error(exc)
-            return
-        store = load_translation_store(profile_project)
-        stored = store.records.get(canonical_id)
-        candidate = active_candidate(stored) if stored is not None else None
-        comparisons.append(
-            {
-                "profile": profile_name,
-                "target_language": profile_project.config.target_language,
-                "target_locale": profile_project.config.target_locale,
-                "active_version": stored.active_version if stored is not None else None,
-                "target": candidate.target if candidate is not None else None,
-                "status": candidate.status if candidate is not None else None,
-            }
-        )
-    payload = {
-        "record_ref": canonical_id,
-        "source": source_record.source,
-        "comparisons": comparisons,
-    }
-    if as_json:
-        console.print_json(json.dumps(payload, ensure_ascii=False))
-        return
-    console.print(f"record: {canonical_id}")
-    console.print(f"source: {source_record.source}")
-    for item in comparisons:
-        console.print(
-            f"{item['profile']} ({item['target_locale'] or item['target_language']}): "
-            f"{item['target'] or '<missing>'}"
-        )
-
-
-@profile_app.command(name="migrate-current")
-def profile_migrate_current_cmd(
-    project_dir: Path = typer.Argument(..., help="Legacy project directory."),
-    profile_name: str = typer.Argument(..., help="Target translation profile name."),
-    target: str | None = typer.Option(
-        None, "--target", help="Override target language."
-    ),
-    target_locale: str | None = typer.Option(
-        None, "--target-locale", help="Target locale code, e.g. de-DE."
-    ),
-    actor: str | None = typer.Option(None, "--actor", help="Profile actor label."),
-    harness: str | None = typer.Option(
-        None, "--harness", help="Profile harness label."
-    ),
-    model: str | None = typer.Option(None, "--model", help="Profile model label."),
-    select: bool = typer.Option(False, "--select", help="Select the migrated profile."),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Print the migration plan only."
-    ),
-) -> None:
-    try:
-        payload = migrate_current_project(
-            project_dir,
-            profile_name,
-            target_language=target,
-            target_locale=target_locale,
-            actor=actor,
-            harness=harness,
-            model=model,
-            select=select,
-            dry_run=dry_run,
-        )
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        return
-    if dry_run:
-        console.print(
-            f"dry-run: would migrate legacy project to profile {profile_name}"
-        )
-        moves = payload.get("moves", [])
-        if isinstance(moves, list):
-            for move in moves:
-                console.print(f"{move}")
-        return
-    console.print(f"migrated profile: {payload['profile']}")
-    if "migration_manifest" in payload:
-        console.print(f"migration manifest: {payload['migration_manifest']}")
-    if select:
-        console.print(f"selected active profile: {profile_name}")
-    console.print(f"next: booktx status {project_dir} --profile {profile_name}")
-    console.print(
-        f"next: booktx translate next {project_dir} --profile {profile_name} --unit batch --max-words 500 --format block"
-    )
-
-
-@profile_app.command(name="create-pass-through")
-def profile_create_pass_through_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile_name: str = typer.Argument(..., help="Pass-through profile name."),
-    output_filename: str | None = typer.Option(
-        None, "--output-filename", help="Optional output filename override."
-    ),
-    select: bool = typer.Option(False, "--select", help="Select the created profile."),
-) -> None:
-    """Create a pass-through profile whose target language equals the source language."""
-    try:
-        source_project = load_source_project(project_dir)
-        target = source_project.source_config.source_language
-        project = create_profile(
-            project_dir,
-            profile_name,
-            target_language=target,
-            target_locale=target,
-            actor="booktx:pass-through",
-            harness="booktx",
-            model="booktx/pass-through",
-            output_filename=output_filename,
-            select=select,
-            kind="pass-through",
-        )
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        return
-    console.print(f"created pass-through profile: {project.profile}")
-    if select:
-        console.print(f"selected active profile: {project.profile}")
 
 
 # --- context helpers (glossary) ----------------------------------------------
@@ -1398,19 +378,6 @@ def _die_disable_enforcement_guard(
 
 
 # --- context -----------------------------------------------------------------
-
-
-def _load_project_or_exit(
-    project_dir: Path,
-    *,
-    profile: str | None = None,
-    require_profile: bool = False,
-) -> Project:
-    return _load_runtime_or_exit(
-        project_dir,
-        profile=profile,
-        require_profile=require_profile,
-    ).project
 
 
 def _load_context_or_exit(proj: Project) -> TranslationContext:
@@ -3385,14 +2352,6 @@ def _format_chunk_span(chunk_ids: list[str]) -> str:
     return format_chunk_span(chunk_ids)
 
 
-def _load_context_status(proj: Project) -> tuple[bool, bool]:
-    try:
-        ctx = load_context(proj)
-    except Exception as exc:  # noqa: BLE001
-        _die(f"translation context is invalid: {exc}")
-    return (ctx is not None, bool(ctx and ctx.ready))
-
-
 def _chapter_map_for_workflow(proj: Project) -> ChapterMap:
     """Refresh-and-load helper retained for direct callers outside status.py."""
     source_sha256 = project_source_sha256(proj)
@@ -3401,20 +2360,6 @@ def _chapter_map_for_workflow(proj: Project) -> ChapterMap:
         chapter_map = detect_chapters(proj)
         write_chapter_map(proj, chapter_map)
     return chapter_map
-
-
-def _project_status_snapshot(proj: Project) -> StatusBundle:
-    """Build the typed status snapshot + runtime index for ``proj``.
-
-    Thin wrapper over :func:`booktx.status.build_status_snapshot`; the CLI
-    owns the invalid-context error UX here.
-    """
-    from booktx.status import build_status_snapshot
-
-    context_exists, context_ready = _load_context_status(proj)
-    return build_status_snapshot(
-        proj, context_exists=context_exists, context_ready=context_ready
-    )
 
 
 def _render_epub_audit_summary(audit: Any) -> None:
@@ -7343,153 +6288,129 @@ def translation_search_cmd(
             console.print(f"  {disp}", soft_wrap=True, markup=False)
 
 
-# --- epub inspect command group --------------------------------------------
+# --- root + doctor commands (extracted to commands/root.py in slice 8) -------
 
 
-epub_app = typer.Typer()
-app.add_typer(epub_app, name="epub")
-
-
-@epub_app.command(name="inspect")
-def epub_inspect_cmd(
+@app.command(name="whoami")
+def whoami(
     project_dir: Path = typer.Argument(..., help="Project directory."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
-    chapter: str | None = typer.Option(
-        None, "--chapter", help="Chapter id to inspect."
-    ),
-    contains: str | None = typer.Option(
-        None, "--contains", help="Only show content containing this text."
-    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
-    """Inspect built EPUB XHTML output."""
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
-    proj = runtime.project
-
-    output_dir = proj.output_dir
-    if output_dir is None or not output_dir.is_dir():
-        _die(
-            "no EPUB output directory; run `booktx build .` first. "
-            f"Expected: translations/{proj.profile or '?'}/output/"
-        )
-        return
-
-    xhtml_files = sorted(output_dir.glob("**/*.xhtml"))
-    if not xhtml_files:
-        _die(f"no XHTML files found in {output_dir}")
-        return
-
-    if chapter is not None:
-        xhtml_files = [
-            f
-            for f in xhtml_files
-            if f"chapter_{chapter}" in f.name or f"ch_{chapter}" in f.name
-        ]
-        if not xhtml_files:
-            _die(f"no XHTML files found for chapter {chapter}")
-            return
-
-    for xhtml_path in xhtml_files:
-        text = xhtml_path.read_text("utf-8", errors="replace")
-        if contains is not None and contains.lower() not in text.lower():
-            continue
-        console.print(f"--- {xhtml_path.name} ---")
-        if contains is not None:
-            for line in text.splitlines():
-                if contains.lower() in line.lower():
-                    console.print(line.strip(), soft_wrap=True, markup=False)
-        else:
-            console.print(text[:2000], soft_wrap=True, markup=False)
-            if len(text) > 2000:
-                console.print("... (truncated)")
+    """Show resolved translation identity and project status."""
+    _print_identity(project_dir, profile=profile, as_json=as_json)
 
 
-@epub_app.command(name="grep")
-def epub_grep_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    text_pattern: str = typer.Argument(..., help="Text to search for."),
+@app.command(name="mode")
+def mode_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
-    """Grep built EPUB XHTML output for text."""
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
-    proj = runtime.project
-
-    output_dir = proj.output_dir
-    if output_dir is None or not output_dir.is_dir():
-        _die(
-            "no EPUB output directory; run `booktx build .` first. "
-            f"Expected: translations/{proj.profile or '?'}/output/"
-        )
+    """Show how booktx resolved the current working path."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=False)
+    payload = {
+        "mode": runtime.mode.kind,
+        "profile": runtime.mode.profile_name,
+        "profiles_visible": not runtime.mode.isolated_output,
+        "cross_profile_access": not runtime.mode.isolated_output,
+        "safe_for_model_evaluation": runtime.mode.isolated_output,
+        "source_access": runtime.mode.source_access,
+    }
+    if as_json:
+        console.print_json(json.dumps(payload, ensure_ascii=False))
         return
-
-    xhtml_files = sorted(output_dir.glob("**/*.xhtml"))
-    if not xhtml_files:
-        _die(f"no XHTML files found in {output_dir}")
-        return
-
-    for xhtml_path in xhtml_files:
-        try:
-            text = xhtml_path.read_text("utf-8", errors="replace")
-            for lineno, line in enumerate(text.splitlines(), start=1):
-                if text_pattern.lower() in line.lower():
-                    rel = xhtml_path.relative_to(output_dir)
-                    console.print(
-                        f"{rel}:{lineno}: {line.strip()}",
-                        soft_wrap=True,
-                        markup=False,
-                    )
-        except Exception as exc:
-            console.print(f"error reading {xhtml_path.name}: {exc}")
+    console.print(f"mode: {payload['mode']}")
+    if payload["profile"]:
+        console.print(f"profile: {payload['profile']}")
+    console.print(f"profiles visible: {'yes' if payload['profiles_visible'] else 'no'}")
+    console.print(
+        f"cross-profile access: {'yes' if payload['cross_profile_access'] else 'no'}"
+    )
+    console.print(
+        "safe for model evaluation: "
+        f"{'yes' if payload['safe_for_model_evaluation'] else 'no'}"
+    )
 
 
-@epub_app.command(name="extract-text")
-def epub_extract_text_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
+@doctor_app.command(name="isolation")
+def doctor_isolation_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
-    chapter: str | None = typer.Option(
-        None, "--chapter", help="Chapter id to extract text from."
-    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
-    """Extract plain text from built EPUB XHTML."""
-    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    """Check whether the current path is ready for isolated evaluation."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=False)
     proj = runtime.project
-
-    output_dir = proj.output_dir
-    if output_dir is None or not output_dir.is_dir():
-        _die(
-            "no EPUB output directory; run `booktx build .` first. "
-            f"Expected: translations/{proj.profile or '?'}/output/"
-        )
-        return
-
-    xhtml_files = sorted(output_dir.glob("**/*.xhtml"))
-    if not xhtml_files:
-        _die(f"no XHTML files found in {output_dir}")
-        return
-
-    if chapter is not None:
-        xhtml_files = [
-            f
-            for f in xhtml_files
-            if f"chapter_{chapter}" in f.name or f"ch_{chapter}" in f.name
-        ]
-        if not xhtml_files:
-            _die(f"no XHTML files found for chapter {chapter}")
-            return
-
-    for xhtml_path in xhtml_files:
-        text = xhtml_path.read_text("utf-8", errors="replace")
-        stripped = re.sub(r"<[^>]+>", "", text)
-        console.print(
-            stripped.strip(),
-            soft_wrap=True,
-            markup=False,
-        )
+    marker_exists = bool(
+        runtime.mode.profile_root
+        and (runtime.mode.profile_root / ".booktx-profile.json").is_file()
+    )
+    profile_local_context = bool(
+        proj.context_json_path is not None
+        and runtime.mode.profile_root is not None
+        and proj.context_json_path.parent == runtime.mode.profile_root
+    )
+    profile_local_store = bool(
+        proj.store_path is not None
+        and runtime.mode.profile_root is not None
+        and proj.store_path.parent == runtime.mode.profile_root
+    )
+    profile_local_ledger = bool(
+        proj.ledger_path is not None
+        and runtime.mode.profile_root is not None
+        and proj.ledger_path.parent == runtime.mode.profile_root
+    )
+    redacted_samples = [
+        display_path(proj.root, runtime.mode),
+        display_path(proj.chunks_dir, runtime.mode),
+        display_path(proj.profile_dir or proj.root, runtime.mode),
+    ]
+    path_redaction_pass = all(
+        not sample.startswith("/")
+        and "../" not in sample
+        and (runtime.mode.profile_name or "") not in sample.replace(".", "")
+        for sample in redacted_samples[:2]
+    )
+    source_available = bool(proj.chunks())
+    passed = (
+        runtime.mode.isolated_output
+        and marker_exists
+        and source_available
+        and profile_local_context
+        and profile_local_store
+        and profile_local_ledger
+        and path_redaction_pass
+    )
+    payload = {
+        "isolation": "PASS" if passed else "FAIL",
+        "mode": runtime.mode.kind,
+        "profile": runtime.mode.profile_name,
+        "source_broker": "available" if source_available else "unavailable",
+        "cross_profile_commands": "blocked"
+        if runtime.mode.isolated_output
+        else "available",
+        "path_redaction": "PASS" if path_redaction_pass else "FAIL",
+        "source_access": runtime.mode.source_access,
+    }
+    if as_json:
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    else:
+        console.print(f"isolation: {payload['isolation']}")
+        console.print(f"mode: {payload['mode']}")
+        if payload["profile"]:
+            console.print(f"profile: {payload['profile']}")
+        console.print(f"source broker: {payload['source_broker']}")
+        console.print(f"cross-profile commands: {payload['cross_profile_commands']}")
+        console.print(f"path redaction: {payload['path_redaction']}")
+    if not passed:
+        raise typer.Exit(code=1)
 
 
 def main() -> None:
