@@ -8,6 +8,7 @@ import typer
 
 from booktx import __version__
 from booktx.cli_support import _project_status_snapshot, console
+from booktx.commands.agents import agents_app
 from booktx.commands.context import context_app
 from booktx.commands.epub import epub_app
 from booktx.commands.identity import actor_app, harness_app, identity_app, model_app
@@ -44,6 +45,7 @@ app.add_typer(actor_app, name="actor")
 app.add_typer(harness_app, name="harness")
 app.add_typer(model_app, name="model")
 app.add_typer(identity_app, name="identity")
+app.add_typer(agents_app, name="agents")
 
 
 @app.callback()

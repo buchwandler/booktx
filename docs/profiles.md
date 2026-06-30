@@ -86,6 +86,20 @@ booktx build .
 If a command in profile-root mode suggests `../`, prints an absolute path, or
 reveals another profile, stop and report a booktx isolation bug.
 
+Before starting the harness inside a profile, prepare the matching harness
+instructions so the agent does not have to rediscover them:
+
+```bash
+booktx agents write . --mode isolated --profile PROFILE
+```
+
+This writes a profile-local `AGENTS.md` (safe to read from inside the profile
+root: no parent paths, absolute paths, sibling profile names, or `--profile`)
+and removes project-root/collaborative generated instructions. From inside the
+profile root, `booktx agents write . --mode isolated` refreshes the local file
+without printing parent paths. `booktx agents status .` reports ownership and
+staleness for the local file only.
+
 ## What is isolated?
 
 Each profile owns its own copy of all mutable translation state under

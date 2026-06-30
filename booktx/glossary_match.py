@@ -32,7 +32,9 @@ def _edge_suffix(term: str) -> str:
     return r"(?!\w)" if term[-1].isalnum() or term[-1] == "_" else ""
 
 
-def iter_term_matches(text: str, term: str, *, case_sensitive: bool) -> list[re.Match[str]]:
+def iter_term_matches(
+    text: str, term: str, *, case_sensitive: bool
+) -> list[re.Match[str]]:
     """Return boundary-delimited matches for ``term`` in ``text``."""
     term = term.strip()
     if not term:
@@ -83,7 +85,9 @@ class TermSpan:
     shadowed: bool = False
 
 
-def source_glossary_matches(source_text: str, glossary: list[GlossaryEntry]) -> list[TermSpan]:
+def source_glossary_matches(
+    source_text: str, glossary: list[GlossaryEntry]
+) -> list[TermSpan]:
     """Return source glossary spans with global longest-match suppression.
 
     All candidate primary/variant terms are discovered first.  Spans are then
@@ -94,7 +98,9 @@ def source_glossary_matches(source_text: str, glossary: list[GlossaryEntry]) -> 
     candidates: list[TermSpan] = []
     for entry_index, entry in enumerate(glossary):
         for term_index, term in enumerate(source_terms(entry)):
-            for match in iter_term_matches(source_text, term, case_sensitive=entry.case_sensitive):
+            for match in iter_term_matches(
+                source_text, term, case_sensitive=entry.case_sensitive
+            ):
                 candidates.append(
                     TermSpan(
                         entry_index=entry_index,
@@ -122,17 +128,32 @@ def source_glossary_matches(source_text: str, glossary: list[GlossaryEntry]) -> 
         if contained:
             result.append(
                 TermSpan(
-                    span.entry_index, span.term_index, span.matched_term, span.start, span.end, span.is_primary, True
+                    span.entry_index,
+                    span.term_index,
+                    span.matched_term,
+                    span.start,
+                    span.end,
+                    span.is_primary,
+                    True,
                 )
             )
         else:
             accepted.append(span)
             result.append(span)
-    return sorted(result, key=lambda span: (span.start, span.end, span.entry_index, span.term_index))
+    return sorted(
+        result,
+        key=lambda span: (span.start, span.end, span.entry_index, span.term_index),
+    )
 
 
-def applicable_entry_indexes(source_text: str, glossary: list[GlossaryEntry]) -> set[int]:
-    return {span.entry_index for span in source_glossary_matches(source_text, glossary) if not span.shadowed}
+def applicable_entry_indexes(
+    source_text: str, glossary: list[GlossaryEntry]
+) -> set[int]:
+    return {
+        span.entry_index
+        for span in source_glossary_matches(source_text, glossary)
+        if not span.shadowed
+    }
 
 
 def source_rule_applies(source_text: str, entry: GlossaryEntry) -> bool:

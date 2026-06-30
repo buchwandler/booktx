@@ -729,6 +729,7 @@ def test_command_tree_top_level_snapshot():
     top, _ = _command_tree()
     expected = {
         "actor",
+        "agents",
         "build",
         "chapters",
         "check",
@@ -774,6 +775,7 @@ def test_translation_alias_matches_translate():
 def test_command_tree_group_snapshots():
     _, sub = _command_tree()
     expected = {
+        "agents": {"clean", "status", "write"},
         "actor": {"clear", "set", "whoami"},
         "harness": {"clear", "set", "whoami"},
         "model": {"clear", "set", "whoami"},

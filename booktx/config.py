@@ -440,12 +440,12 @@ def write_profile_root_marker(
         target_language=cfg.target_language,
         target_locale=cfg.target_locale or cfg.target_language,
     )
+    from booktx.io_utils import write_json_text_atomic
+
     path = profile_root_marker_path(source_project, profile_name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        marker.model_dump_json(indent=2, by_alias=True) + "\n",
-        encoding="utf-8",
-    )
+    # Atomic write so an interrupted preparation command never leaves a
+    # half-written marker behind; booktx AGENTS.md preparation relies on this.
+    write_json_text_atomic(path, marker.model_dump_json(indent=2, by_alias=True))
     return marker
 
 

@@ -573,3 +573,619 @@ def test_epub_inspect_grep_extract_isolated_from_profile_root(
     ):
         res = runner.invoke(app, args)
         _assert_no_leak(res, project_dir)
+
+
+# ---------------------------------------------------------------------------
+# booktx agents write / status / clean
+# ---------------------------------------------------------------------------
+
+
+AGENTS = "AGENTS.md"
+
+
+def _agents_file(project_dir: Path, profile: str | None = None) -> Path:
+    if profile is None:
+        return project_dir / AGENTS
+    return project_dir / "translations" / profile / AGENTS
+
+
+def _assert_isolated_content_safe(path: Path, project_dir: Path) -> None:
+    """The generated isolated file must never leak parent/sibling identity."""
+    text = path.read_text("utf-8")
+    assert "../" not in text
+    assert "translations/" not in text
+    assert "--profile" not in text
+    assert "fr_default" not in text  # sibling profile name
+    assert str(project_dir) not in text
+
+
+def _seed_isolated_agents(project_dir: Path, profile: str) -> Path:
+    """Write a managed isolated AGENTS.md directly, bypassing cross-profile cleanup.
+
+    Sequential `agents write --mode isolated` calls remove each other's files, so
+    tests that need several managed profile files present at once seed them directly.
+    """
+    from booktx.agents_md import render_agents_md, write_managed_agents_md
+    from booktx.config import (
+        load_profile_config,
+        load_source_project,
+        profile_dir,
+        project_source_id_or_unavailable,
+    )
+
+    source_project = load_source_project(project_dir)
+    source_id = project_source_id_or_unavailable(source_project)
+    cfg = load_profile_config(source_project, profile)
+    target = profile_dir(project_dir, profile) / AGENTS
+    text = render_agents_md(
+        mode="isolated",
+        profile=profile,
+        source_id=source_id,
+        target_locale=cfg.target_locale or cfg.target_language,
+    )
+    write_managed_agents_md(target, text)
+    return target
+
+
+def test_agents_write_isolated_from_project_root(tmp_path: Path):
+    project_dir, _ = _make_project(tmp_path)
+    # Seed a managed collaborative root file to prove it is removed.
+    collab = runner.invoke(
+        app, ["agents", "write", str(project_dir), "--mode", "collaborative"]
+    )
+    assert collab.exit_code == 0, collab.output
+    assert _agents_file(project_dir).is_file()
+
+    res = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    target = _agents_file(project_dir, "de_default")
+    assert target.is_file()
+    # Managed project-root AGENTS.md is removed.
+    assert not _agents_file(project_dir).exists()
+    _assert_isolated_content_safe(target, project_dir)
+
+
+def test_agents_write_isolated_from_profile_root(monkeypatch, tmp_path: Path):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+    res = runner.invoke(app, ["agents", "write", ".", "--mode", "isolated"])
+    assert res.exit_code == 0, res.output
+    target = profile_root / AGENTS
+    assert target.is_file()
+    assert "written: AGENTS.md" in res.output
+    assert str(project_dir) not in res.output
+    assert "../" not in res.output
+    assert "translations/" not in res.output
+    _assert_isolated_content_safe(target, project_dir)
+
+
+def test_agents_write_collaborative_from_project_root_removes_profile_files(
+    tmp_path: Path,
+):
+    project_dir, _ = _make_project(tmp_path)
+    # Seed managed isolated files in both profiles directly (sequential writes
+    # would otherwise remove each other's files).
+    _seed_isolated_agents(project_dir, "de_default")
+    _seed_isolated_agents(project_dir, "fr_default")
+    assert _agents_file(project_dir, "de_default").is_file()
+    assert _agents_file(project_dir, "fr_default").is_file()
+
+    res = runner.invoke(
+        app, ["agents", "write", str(project_dir), "--mode", "collaborative"]
+    )
+    assert res.exit_code == 0, res.output
+    assert _agents_file(project_dir).is_file()
+    # All managed profile-local files are removed.
+    assert not _agents_file(project_dir, "de_default").exists()
+    assert not _agents_file(project_dir, "fr_default").exists()
+
+
+def test_agents_write_collaborative_from_profile_root_rejected_sanitized(
+    monkeypatch, tmp_path: Path
+):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+    res = runner.invoke(app, ["agents", "write", ".", "--mode", "collaborative"])
+    assert res.exit_code != 0
+    assert "../" not in res.output
+    assert str(project_dir) not in res.output
+    assert "translations/" not in res.output
+
+
+def test_agents_write_unmanaged_target_requires_replace_flag(tmp_path: Path):
+    project_dir, _ = _make_project(tmp_path)
+
+    # Collaborative root target, unmanaged.
+    root_file = _agents_file(project_dir)
+    root_file.write_text("# user harness file\n", encoding="utf-8")
+    blocked = runner.invoke(
+        app, ["agents", "write", str(project_dir), "--mode", "collaborative"]
+    )
+    assert blocked.exit_code != 0
+    assert root_file.read_text() == "# user harness file\n"
+    replaced = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "collaborative",
+            "--replace-unmanaged",
+        ],
+    )
+    assert replaced.exit_code == 0, replaced.output
+    assert "<!-- booktx-agents-md" in root_file.read_text("utf-8")
+
+    # Isolated profile target, unmanaged, with no ancestor conflict.
+    profile_file = _agents_file(project_dir, "de_default")
+    profile_file.parent.mkdir(parents=True, exist_ok=True)
+    profile_file.write_text("# user profile file\n", encoding="utf-8")
+    # Remove the now-managed root file so there is no ancestor conflict.
+    root_file.unlink()
+    blocked_p = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert blocked_p.exit_code != 0
+    assert profile_file.read_text() == "# user profile file\n"
+    replaced_p = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+            "--replace-unmanaged",
+        ],
+    )
+    assert replaced_p.exit_code == 0, replaced_p.output
+    assert "<!-- booktx-agents-md" in profile_file.read_text("utf-8")
+
+
+def test_agents_collaborative_write_skips_unmanaged_profile_file(tmp_path: Path):
+    project_dir, _ = _make_project(tmp_path)
+    sibling = _agents_file(project_dir, "fr_default")
+    sibling.parent.mkdir(parents=True, exist_ok=True)
+    sibling.write_text("# user file in sibling profile\n", encoding="utf-8")
+
+    res = runner.invoke(
+        app, ["agents", "write", str(project_dir), "--mode", "collaborative"]
+    )
+    assert res.exit_code == 0, res.output
+    assert "skipped" in res.output
+    # The unmanaged sibling file is left untouched.
+    assert sibling.read_text() == "# user file in sibling profile\n"
+    assert _agents_file(project_dir).is_file()
+
+
+def test_agents_status_project_root_json_uses_project_relative_paths(tmp_path: Path):
+    import json as _json
+
+    project_dir, _ = _make_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    res = runner.invoke(app, ["agents", "status", str(project_dir), "--json"])
+    assert res.exit_code == 0, res.output
+    payload = _json.loads(res.output)
+    by_path = {entry["path"]: entry for entry in payload}
+    assert "AGENTS.md" in by_path  # project-root entry
+    assert by_path["AGENTS.md"]["scope"] == "project"
+    assert "translations/de_default/AGENTS.md" in by_path
+    de = by_path["translations/de_default/AGENTS.md"]
+    assert de["scope"] == "profile"
+    assert de["profile"] == "de_default"
+    assert de["state"] == "managed-valid"
+    assert de["mode"] == "isolated"
+    assert de["source_id"].startswith("sha256:")
+    assert de["stale"] is False
+    # No absolute paths leak into JSON.
+    assert str(project_dir) not in res.output
+
+
+def test_agents_status_profile_root_reports_only_local(monkeypatch, tmp_path: Path):
+    import json as _json
+
+    project_dir, profile_root = _make_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    monkeypatch.chdir(profile_root)
+
+    human = runner.invoke(app, ["agents", "status", "."])
+    assert human.exit_code == 0, human.output
+    assert "AGENTS.md (profile de_default)" in human.output
+    assert "fr_default" not in human.output
+    assert "project)" not in human.output
+    assert str(project_dir) not in human.output
+    assert "../" not in human.output
+    assert "translations/" not in human.output
+
+    json_res = runner.invoke(app, ["agents", "status", ".", "--json"])
+    assert json_res.exit_code == 0, json_res.output
+    payload = _json.loads(json_res.output)
+    assert len(payload) == 1
+    entry = payload[0]
+    assert entry["path"] == "AGENTS.md"
+    assert entry["scope"] == "profile"
+    assert entry["profile"] == "de_default"
+    assert "fr_default" not in json_res.output
+    assert "translations/" not in json_res.output
+    assert str(project_dir) not in json_res.output
+
+
+def test_agents_clean_matrix(tmp_path: Path):
+    project_dir, _ = _make_project(tmp_path)
+
+    # Seed managed root (collaborative) + isolated files for both profiles directly.
+    runner.invoke(app, ["agents", "write", str(project_dir), "--mode", "collaborative"])
+    _seed_isolated_agents(project_dir, "de_default")
+    _seed_isolated_agents(project_dir, "fr_default")
+    assert _agents_file(project_dir).is_file()
+    assert _agents_file(project_dir, "de_default").is_file()
+    assert _agents_file(project_dir, "fr_default").is_file()
+
+    # --mode collaborative cleans only the collaborative root file.
+    collab_clean = runner.invoke(
+        app, ["agents", "clean", str(project_dir), "--mode", "collaborative"]
+    )
+    assert collab_clean.exit_code == 0, collab_clean.output
+    assert not _agents_file(project_dir).exists()
+    assert _agents_file(project_dir, "de_default").is_file()
+
+    # --mode isolated --profile de_default cleans only that profile file.
+    iso_clean = runner.invoke(
+        app,
+        [
+            "agents",
+            "clean",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert iso_clean.exit_code == 0, iso_clean.output
+    assert not _agents_file(project_dir, "de_default").exists()
+    assert _agents_file(project_dir, "fr_default").is_file()
+
+    # --mode all --profile is rejected as ambiguous.
+    amb = runner.invoke(
+        app,
+        [
+            "agents",
+            "clean",
+            str(project_dir),
+            "--mode",
+            "all",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert amb.exit_code != 0
+
+    # --mode collaborative --profile is rejected.
+    cp = runner.invoke(
+        app,
+        [
+            "agents",
+            "clean",
+            str(project_dir),
+            "--mode",
+            "collaborative",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert cp.exit_code != 0
+
+    # --mode all removes every remaining managed file.
+    all_clean = runner.invoke(
+        app, ["agents", "clean", str(project_dir), "--mode", "all"]
+    )
+    assert all_clean.exit_code == 0, all_clean.output
+    assert not _agents_file(project_dir, "fr_default").exists()
+
+    # Absent files are a successful no-op (idempotent).
+    again = runner.invoke(app, ["agents", "clean", str(project_dir), "--mode", "all"])
+    assert again.exit_code == 0, again.output
+    assert "deleted: (none)" in again.output
+
+    # Mode filtering: clean --mode collaborative never touches profile files,
+    # even when they are managed with a different mode.
+    _seed_isolated_agents(project_dir, "de_default")
+    wrong = runner.invoke(
+        app, ["agents", "clean", str(project_dir), "--mode", "collaborative"]
+    )
+    assert wrong.exit_code == 0, wrong.output
+    assert _agents_file(project_dir, "de_default").is_file()
+
+
+def test_agents_clean_profile_root_matrix(monkeypatch, tmp_path: Path):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+    runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    monkeypatch.chdir(profile_root)
+
+    # isolated clean deletes the local file.
+    iso = runner.invoke(app, ["agents", "clean", ".", "--mode", "isolated"])
+    assert iso.exit_code == 0, iso.output
+    assert not (profile_root / AGENTS).exists()
+
+    # collaborative clean from profile root is rejected, sanitized.
+    runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    monkeypatch.chdir(profile_root)
+    collab = runner.invoke(app, ["agents", "clean", ".", "--mode", "collaborative"])
+    assert collab.exit_code != 0
+    assert str(project_dir) not in collab.output
+    assert "../" not in collab.output
+
+    # --profile is rejected in profile root.
+    prof = runner.invoke(
+        app, ["agents", "clean", ".", "--mode", "isolated", "--profile", "de_default"]
+    )
+    assert prof.exit_code != 0
+    assert str(project_dir) not in prof.output
+
+
+def test_agents_isolated_blocked_by_unmanaged_ancestor(tmp_path: Path, monkeypatch):
+    project_dir, profile_root = _make_project(tmp_path)
+    # Unmanaged project-root AGENTS.md blocks isolated preparation.
+    _agents_file(project_dir).write_text("# user root file\n", encoding="utf-8")
+    res = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert res.exit_code != 0
+    assert _agents_file(project_dir).read_text() == "# user root file\n"
+    assert not _agents_file(project_dir, "de_default").exists()
+
+    # From the profile root, the same conflict is reported without leaking parent.
+    monkeypatch.chdir(profile_root)
+    res2 = runner.invoke(app, ["agents", "write", ".", "--mode", "isolated"])
+    assert res2.exit_code != 0
+    assert str(project_dir) not in res2.output
+    assert "../" not in res2.output
+    assert "translations/" not in res2.output
+
+
+def test_agents_write_is_idempotent(tmp_path: Path):
+    project_dir, _ = _make_project(tmp_path)
+    for _ in range(3):
+        res = runner.invoke(
+            app,
+            [
+                "agents",
+                "write",
+                str(project_dir),
+                "--mode",
+                "isolated",
+                "--profile",
+                "de_default",
+            ],
+        )
+        assert res.exit_code == 0, res.output
+    target = _agents_file(project_dir, "de_default")
+    assert target.is_file()
+    assert not _agents_file(project_dir).exists()
+    assert not _agents_file(project_dir, "fr_default").exists()
+
+
+def test_agents_target_write_failure_performs_no_cleanup(monkeypatch, tmp_path: Path):
+    project_dir, _ = _make_project(tmp_path)
+    # Seed a managed collaborative root file plus a managed sibling profile file.
+    # Direct seeding avoids isolated-write cleanup removing the root file.
+    runner.invoke(app, ["agents", "write", str(project_dir), "--mode", "collaborative"])
+    _seed_isolated_agents(project_dir, "fr_default")
+    root_before = _agents_file(project_dir).read_text("utf-8")
+    sibling_before = _agents_file(project_dir, "fr_default").read_text("utf-8")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated target write failure")
+
+    monkeypatch.setattr("booktx.workflows.agents.write_managed_agents_md", boom)
+    res = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert res.exit_code != 0
+    # No cleanup ran: the seeded managed files are untouched.
+    assert _agents_file(project_dir).read_text("utf-8") == root_before
+    assert _agents_file(project_dir, "fr_default").read_text("utf-8") == sibling_before
+
+
+def test_agents_cleanup_failure_is_recoverable(monkeypatch, tmp_path: Path):
+    project_dir, _ = _make_project(tmp_path)
+    # Seed a managed collaborative root file that isolated cleanup must remove.
+    runner.invoke(app, ["agents", "write", str(project_dir), "--mode", "collaborative"])
+
+    import booktx.workflows.agents as wagents
+
+    real = wagents.delete_managed_agents_md
+    calls = {"n": 0}
+
+    def flaky_delete(path, *, expected_mode=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("simulated cleanup failure")
+        return real(path, expected_mode=expected_mode)
+
+    monkeypatch.setattr(wagents, "delete_managed_agents_md", flaky_delete)
+    res = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    # Cleanup failed -> nonzero, but the new target was written.
+    assert res.exit_code != 0
+    assert _agents_file(project_dir, "de_default").is_file()
+    # The root file was not deleted yet.
+    assert _agents_file(project_dir).is_file()
+
+    # Rerun without the flaky patch completes cleanup.
+    monkeypatch.undo()
+    res2 = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert res2.exit_code == 0, res2.output
+    assert _agents_file(project_dir, "de_default").is_file()
+    assert not _agents_file(project_dir).exists()
+
+
+def test_agents_marker_refresh_failure_leaves_state_unchanged(
+    monkeypatch, tmp_path: Path
+):
+    project_dir, _ = _make_project(tmp_path)
+    marker_path = project_dir / "translations" / "de_default" / ".booktx-profile.json"
+    assert marker_path.is_file()
+    marker_before = marker_path.read_text("utf-8")
+    # Seed a managed root file to prove it is not cleaned up either.
+    runner.invoke(app, ["agents", "write", str(project_dir), "--mode", "collaborative"])
+    root_before = _agents_file(project_dir).read_text("utf-8")
+
+    def boom(*args, **kwargs):
+        raise OSError("simulated marker write failure")
+
+    monkeypatch.setattr("booktx.workflows.agents.write_profile_root_marker", boom)
+    res = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert res.exit_code != 0
+    # Marker is unchanged (atomic refresh aborted before any mutation).
+    assert marker_path.read_text("utf-8") == marker_before
+    # Target was never written and no cleanup ran.
+    assert not _agents_file(project_dir, "de_default").exists()
+    assert _agents_file(project_dir).read_text("utf-8") == root_before
+
+
+def test_agents_isolated_template_distinguishes_bounded_and_complete_book(
+    tmp_path: Path,
+):
+    project_dir, _ = _make_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "agents",
+            "write",
+            str(project_dir),
+            "--mode",
+            "isolated",
+            "--profile",
+            "de_default",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    text = _agents_file(project_dir, "de_default").read_text("utf-8")
+    # Bounded-todo completion does NOT mandate a whole-book build by default.
+    assert (
+        "Do not run a whole-book build merely because the bounded todo finished" in text
+    )
+    # Complete-book completion includes validate/build and conditional review.
+    assert "booktx validate . --fail-on-warnings" in text
+    assert "booktx build . --require-complete" in text
+    assert "--require-reviewed" in text

@@ -74,6 +74,14 @@ follow the same rule. A `translate insert` EPUB inline-XHTML preflight staging
 failure is reported as a compact `error:`/`hint:` message, never a raw Pydantic
 traceback.
 
+When preparing a new harness run, prefer writing the matching harness
+instructions first: `booktx agents write . --mode isolated --profile PROFILE`
+(then start inside the profile) or `booktx agents write . --mode collaborative`
+(stay at the project root). In isolated profile-root mode, trust the local
+`AGENTS.md` as the mode contract but still apply all booktx invariants. booktx
+only ever deletes `AGENTS.md` files it generated itself; user-authored files
+are never overwritten or removed without `--replace-unmanaged`.
+
 ## First commands in any existing project
 
 Run:

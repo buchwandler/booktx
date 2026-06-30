@@ -1416,8 +1416,15 @@ class CurrentWriteContext:
     context_notes_through_chapter_id: str | None
 
 
-def _current_write_contexts_for_records(proj: Any, *, bundle: Any, record_ids: set[str]) -> dict[str, CurrentWriteContext]:
-    missing = sorted(rid for rid in record_ids if rid not in bundle.index.source_by_id or rid not in bundle.index.record_to_chapter)
+def _current_write_contexts_for_records(
+    proj: Any, *, bundle: Any, record_ids: set[str]
+) -> dict[str, CurrentWriteContext]:
+    missing = sorted(
+        rid
+        for rid in record_ids
+        if rid not in bundle.index.source_by_id
+        or rid not in bundle.index.record_to_chapter
+    )
     if missing:
         _die("unknown or unmapped record(s): " + ", ".join(missing))
         raise typer.Exit(code=1)
@@ -1535,9 +1542,9 @@ def translation_revise_record_workflow(
     )
 
     # Resolve provenance and create chapter context snapshots before mutating the store.
-    write_context = _current_write_contexts_for_records(proj, bundle=bundle, record_ids={record_id})[
-        bundle.index.record_to_chapter[record_id]
-    ]
+    write_context = _current_write_contexts_for_records(
+        proj, bundle=bundle, record_ids={record_id}
+    )[bundle.index.record_to_chapter[record_id]]
     version_ref = write_context.version_ref
     ensure_store_record(
         store,
@@ -1677,7 +1684,9 @@ def translation_revise_block_workflow(
         raise typer.Exit(code=1)
     _staged_preflight_check(proj, submitted, submitted_ids, fail_on_warnings=True)
 
-    write_contexts = _current_write_contexts_for_records(proj, bundle=bundle, record_ids=submitted_ids)
+    write_contexts = _current_write_contexts_for_records(
+        proj, bundle=bundle, record_ids=submitted_ids
+    )
     version_ref = next(iter(write_contexts.values())).version_ref
     for item in submitted:
         source_view = source_views[item.id]
@@ -1803,10 +1812,15 @@ def translation_search_cmd_workflow(
         _die("--match must be 'any' or 'all'")
         return
     import re as _re
+
     try:
         source_pat = _re.compile(source_regex, _re.IGNORECASE) if source_regex else None
         target_pat = _re.compile(target_regex, _re.IGNORECASE) if target_regex else None
-        exclude_source_pat = _re.compile(exclude_source_regex, _re.IGNORECASE) if exclude_source_regex else None
+        exclude_source_pat = (
+            _re.compile(exclude_source_regex, _re.IGNORECASE)
+            if exclude_source_regex
+            else None
+        )
     except _re.error as exc:
         _die(f"invalid regex: {exc}")
         return
@@ -1896,9 +1910,14 @@ def translation_search_cmd_workflow(
                 target_hits.append(target)
             if target_pat is not None and target_pat.search(target_text):
                 target_hits.append(target_regex or "")
-            if exclude_source is not None and exclude_source.lower() in source_text.lower():
+            if (
+                exclude_source is not None
+                and exclude_source.lower() in source_text.lower()
+            ):
                 continue
-            if exclude_source_pat is not None and exclude_source_pat.search(source_text):
+            if exclude_source_pat is not None and exclude_source_pat.search(
+                source_text
+            ):
                 continue
             groups: list[bool] = []
             if source is not None or source_pat is not None:
@@ -1911,7 +1930,11 @@ def translation_search_cmd_workflow(
                 match_item = {
                     "id": record_id,
                     "chapter_id": cid,
-                    "source": source_text if not (target is not None and source is None and source_pat is None) else "",
+                    "source": source_text
+                    if not (
+                        target is not None and source is None and source_pat is None
+                    )
+                    else "",
                     "target": target_text,
                     "effective_ref": (
                         getattr(eff, "review_ref", None)
@@ -1959,9 +1982,18 @@ def translation_search_cmd_workflow(
         for item in matches:
             rid = str(item["id"])
             lines.extend([f">>> {rid}", str(item["target"]), ""])
-            source_lines.extend([f">>> {rid}", f"source: {item.get('source', '')}", f"target: {item.get('target', '')}", ""])
+            source_lines.extend(
+                [
+                    f">>> {rid}",
+                    f"source: {item.get('source', '')}",
+                    f"target: {item.get('target', '')}",
+                    "",
+                ]
+            )
         block_path.write_text("\n".join(lines).rstrip() + "\n", "utf-8")
-        block_path.with_suffix(block_path.suffix + ".sources.txt").write_text("\n".join(source_lines).rstrip() + "\n", "utf-8")
+        block_path.with_suffix(block_path.suffix + ".sources.txt").write_text(
+            "\n".join(source_lines).rstrip() + "\n", "utf-8"
+        )
         console.print(f"wrote block: {write_block}")
 
     if jsonl:

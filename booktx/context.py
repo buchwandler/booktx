@@ -666,7 +666,11 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
     from booktx.glossary_match import entry_is_binding
 
     binding = [e for e in glossary if entry_is_binding(e)]
-    disabled = [e for e in glossary if e.enforce == "off" and (e.require_target or e.forbidden_targets)]
+    disabled = [
+        e
+        for e in glossary
+        if e.enforce == "off" and (e.require_target or e.forbidden_targets)
+    ]
     advisory = [e for e in glossary if e not in binding and e not in disabled]
 
     def _forbidden(entry: GlossaryEntry) -> str:
@@ -676,15 +680,28 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
         return entry.target if entry.target else "<open>"
 
     lines: list[str] = []
-    lines += ["## Binding glossary", "", "| Source | Approved target | Required | Forbidden targets | Enforcement | Status | Notes |", "|---|---|---|---|---|---|---|"]
+    lines += [
+        "## Binding glossary",
+        "",
+        "| Source | Approved target | Required | Forbidden targets | Enforcement | Status | Notes |",
+        "|---|---|---|---|---|---|---|",
+    ]
     if binding:
         for entry in binding:
             lines.append(
                 f"| {_escape_cell(entry.source)} | {_escape_cell(_approved(entry))} | {str(entry.require_target).lower()} | {_escape_cell(_forbidden(entry))} | {entry.enforce} | {entry.status} | {_escape_cell(entry.notes or '')} |"
             )
     else:
-        lines.append("| _(no glossary entries yet; no binding glossary entries)_ | | | | | | |")
-    lines += ["", "## Advisory glossary", "", "| Source | Approved target | Enforcement | Status | Notes |", "|---|---|---|---|---|"]
+        lines.append(
+            "| _(no glossary entries yet; no binding glossary entries)_ | | | | | | |"
+        )
+    lines += [
+        "",
+        "## Advisory glossary",
+        "",
+        "| Source | Approved target | Enforcement | Status | Notes |",
+        "|---|---|---|---|---|",
+    ]
     if advisory:
         for entry in advisory:
             lines.append(
@@ -692,7 +709,13 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
             )
     else:
         lines.append("| _(no advisory glossary entries)_ | | | | |")
-    lines += ["", "## Disabled glossary rules", "", "| Source | Approved target | Required | Forbidden targets | Status | Notes |", "|---|---|---|---|---|---|"]
+    lines += [
+        "",
+        "## Disabled glossary rules",
+        "",
+        "| Source | Approved target | Required | Forbidden targets | Status | Notes |",
+        "|---|---|---|---|---|---|",
+    ]
     if disabled:
         for entry in disabled:
             lines.append(

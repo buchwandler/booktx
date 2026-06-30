@@ -13,15 +13,13 @@ from typing import TYPE_CHECKING
 
 from booktx.config import Project, load_translation_store
 from booktx.glossary_match import (
-    contains_term as glossary_contains_term,
-)
-from booktx.glossary_match import (
     applicable_entry_indexes,
     entry_is_binding,
     source_glossary_matches,
-    source_rule_applies,
     target_contains_approved,
-    target_terms,
+)
+from booktx.glossary_match import (
+    contains_term as glossary_contains_term,
 )
 from booktx.translation_store import effective_target_candidate
 
@@ -286,29 +284,57 @@ def _collect_record_findings(
     """Run all enabled checks for one record and return the findings."""
     findings: list[QaScanFinding] = []
 
-    applicable = applicable_entry_indexes(source_text, glossary_entries) if glossary_entries else set()
-    spans = source_glossary_matches(source_text, glossary_entries) if glossary_entries else []
+    applicable = (
+        applicable_entry_indexes(source_text, glossary_entries)
+        if glossary_entries
+        else set()
+    )
+    spans = (
+        source_glossary_matches(source_text, glossary_entries)
+        if glossary_entries
+        else []
+    )
     shadowed_by_entry = {span.entry_index for span in spans if span.shadowed}
     if forbidden:
         for idx, entry in enumerate(glossary_entries):
-            if entry.enforce == "off" or not entry.forbidden_targets or idx not in applicable:
+            if (
+                entry.enforce == "off"
+                or not entry.forbidden_targets
+                or idx not in applicable
+            ):
                 continue
             ambiguous_terms = set()
             if idx in applicable and idx in shadowed_by_entry:
                 ambiguous_terms.update(entry.forbidden_targets)
             for ft in entry.forbidden_targets:
-                if glossary_contains_term(target, ft, case_sensitive=entry.case_sensitive):
-                    rule = "glossary_alignment_ambiguous" if ft in ambiguous_terms else "forbidden_target"
+                if glossary_contains_term(
+                    target, ft, case_sensitive=entry.case_sensitive
+                ):
+                    rule = (
+                        "glossary_alignment_ambiguous"
+                        if ft in ambiguous_terms
+                        else "forbidden_target"
+                    )
                     findings.append(
                         _finding(
-                            record_id, chapter_id, source_text, target, target_only,
-                            rule=rule, term=ft, severity="warn" if rule.endswith("ambiguous") else "error",
+                            record_id,
+                            chapter_id,
+                            source_text,
+                            target,
+                            target_only,
+                            rule=rule,
+                            term=ft,
+                            severity="warn" if rule.endswith("ambiguous") else "error",
                         )
                     )
 
     if glossary:
         for idx, entry in enumerate(glossary_entries):
-            if entry.status != "approved" or entry.target is None or idx not in applicable:
+            if (
+                entry.status != "approved"
+                or entry.target is None
+                or idx not in applicable
+            ):
                 continue
             if entry.enforce == "off":
                 continue
@@ -316,16 +342,27 @@ def _collect_record_findings(
                 if not target_contains_approved(target, entry):
                     findings.append(
                         _finding(
-                            record_id, chapter_id, source_text, target, target_only,
-                            rule="glossary_mismatch", term=f"{entry.source} -> {entry.target}",
+                            record_id,
+                            chapter_id,
+                            source_text,
+                            target,
+                            target_only,
+                            rule="glossary_mismatch",
+                            term=f"{entry.source} -> {entry.target}",
                         )
                     )
             elif include_advisory and not entry_is_binding(entry):
                 if not target_contains_approved(target, entry):
                     findings.append(
                         _finding(
-                            record_id, chapter_id, source_text, target, target_only,
-                            rule="advisory_glossary", term=f"{entry.source} -> {entry.target}", severity="info",
+                            record_id,
+                            chapter_id,
+                            source_text,
+                            target,
+                            target_only,
+                            rule="advisory_glossary",
+                            term=f"{entry.source} -> {entry.target}",
+                            severity="info",
                         )
                     )
 

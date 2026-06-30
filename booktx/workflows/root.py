@@ -1032,7 +1032,9 @@ def qa_scan_cmd(
         False, "--glossary", help="Report required glossary target mismatches."
     ),
     include_advisory: bool = typer.Option(
-        False, "--include-advisory", help="Include non-binding approved glossary suggestions."
+        False,
+        "--include-advisory",
+        help="Include non-binding approved glossary suggestions.",
     ),
     target_contains: str | None = typer.Option(
         None,

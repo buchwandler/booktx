@@ -27,6 +27,28 @@ booktx profile migrate-current ./book de_gpt5_5 --select
 booktx profile create-pass-through ./book passthrough_en --select
 ```
 
+## Generated AGENTS.md files
+
+Before starting an agent harness, write the matching harness instructions:
+
+```bash
+booktx agents write . --mode isolated --profile de_gpt5_5
+cd translations/de_gpt5_5
+```
+
+For project-root collaboration:
+
+```bash
+booktx agents write . --mode collaborative
+```
+
+`booktx agents status .` reports which `AGENTS.md` files are present and whether
+they are stale, and `booktx agents clean . --mode all` removes only the files
+booktx generated. booktx deletes only `AGENTS.md` files it generated itself;
+user-authored files are never silently overwritten or removed. In isolated
+profile-root mode, `agents status`/`clean`/errors expose only the local
+`AGENTS.md` and never print parent paths, `../`, or sibling profile names.
+
 ## Context commands
 
 All context files are profile-local:

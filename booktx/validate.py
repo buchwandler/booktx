@@ -51,7 +51,6 @@ from booktx.glossary_match import (
     applicable_entry_indexes,
     contains_term,
     source_glossary_matches,
-    source_rule_applies,
     target_contains_approved,
     target_terms,
 )
@@ -643,10 +642,16 @@ def _check_forbidden_terms(
     spans = source_glossary_matches(source_rec.source, context.glossary)
     shadowed_entries = {span.entry_index for span in spans if span.shadowed}
     for idx, entry in enumerate(context.glossary):
-        if entry.enforce == "off" or not entry.forbidden_targets or idx not in applicable:
+        if (
+            entry.enforce == "off"
+            or not entry.forbidden_targets
+            or idx not in applicable
+        ):
             continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
-        entry_findings = _forbidden_target_findings(entry, target_rec, chunk_id, severity)
+        entry_findings = _forbidden_target_findings(
+            entry, target_rec, chunk_id, severity
+        )
         if idx in shadowed_entries and entry_findings:
             for finding in entry_findings:
                 finding.severity = Severity.WARN

@@ -152,6 +152,26 @@ In this mode, `booktx` automatically binds the current profile, brokers source
 access internally, and renders profile-local paths such as `tasks/...`,
 `ingest/...`, `reports/...`, and `output/...`.
 
+## Generated AGENTS.md files
+
+Before starting an agent harness, write the matching harness instructions:
+
+```bash
+booktx agents write . --mode isolated --profile de_gpt5_5
+cd translations/de_gpt5_5
+```
+
+For project-root collaboration:
+
+```bash
+booktx agents write . --mode collaborative
+```
+
+booktx deletes only `AGENTS.md` files it generated itself. User-authored files
+are never silently overwritten or removed. Use `booktx agents status .` to
+inspect ownership and `booktx agents clean . --mode all` to remove generated
+files.
+
 ## Bounded agent runs
 
 When asking an agent to continue for several chapters, create a durable todo:

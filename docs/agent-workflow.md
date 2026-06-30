@@ -1,5 +1,17 @@
 # Agent workflow
 
+Before any of the workflows below, the human prepares the matching harness
+instructions so the agent starts with the correct mode contract:
+
+```bash
+booktx agents write . --mode isolated --profile PROFILE   # then cd translations/<profile>
+booktx agents write . --mode collaborative                 # stay at the project root
+```
+
+The agent then starts in the matching directory and runs `booktx mode .` and
+`booktx doctor isolation .` to confirm the mode. The generated `AGENTS.md` is
+the local entry contract; it does not replace the installed booktx skill.
+
 ## 1. Choose the access mode
 
 ### Collaborative translation workflow
