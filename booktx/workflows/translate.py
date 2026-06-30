@@ -1,3 +1,4 @@
+# ruff: noqa: B006,C901,E501
 """Domain workflow functions for the translation workflow (Phase 3 slice 7).
 
 Wraps the translation_store / config / agent_todo / todo_resume / submissions

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Phase 3 slice 7 behavioral tests: translate/translation commands.
 
 Covers the translate_app (alias translation) commands and workflow functions.
@@ -21,7 +22,9 @@ def _make_project(tmp_path: Path) -> Path:
     src = tmp_path / "book.md"
     src.write_text(DOC, encoding="utf-8")
     project_dir = tmp_path / "book"
-    r = runner.invoke(app, ["init", str(project_dir), "--target", "de", "--source-file", str(src)])
+    r = runner.invoke(
+        app, ["init", str(project_dir), "--target", "de", "--source-file", str(src)]
+    )
     assert r.exit_code == 0, r.output
     return project_dir
 
@@ -41,7 +44,9 @@ def _init_context(project_dir: Path) -> None:
 def test_translation_activate_unknown_record_errors(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     _init_context(project_dir)
-    res = runner.invoke(app, ["translation", "activate", str(project_dir), "9999-999999", "1.1"])
+    res = runner.invoke(
+        app, ["translation", "activate", str(project_dir), "9999-999999", "1.1"]
+    )
     assert res.exit_code != 0
     assert "error:" in res.output
     assert "has no stored translations" in res.output
@@ -59,7 +64,11 @@ def test_translation_review_unknown_record_errors(tmp_path: Path) -> None:
 def test_translate_insert_requires_input(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     _init_context(project_dir)
-    res = runner.invoke(app, ["translate", "insert", str(project_dir), "--stdin", "--format", "block"], input="")
+    res = runner.invoke(
+        app,
+        ["translate", "insert", str(project_dir), "--stdin", "--format", "block"],
+        input="",
+    )
     assert res.exit_code != 0
     assert "error:" in res.output
 

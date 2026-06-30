@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Typer commands for the translation workflow (Phase 3 slice 7).
 
 Thin command layer for the ``translate`` group (registered twice as

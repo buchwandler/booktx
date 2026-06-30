@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Shared CLI-layer helpers used by ``booktx/cli.py`` and the per-slice
 command modules under ``booktx/commands/``.
 
@@ -476,6 +477,7 @@ def _staged_preflight_check(
 
 # --- additional CLI helpers moved from cli.py (slice 6/7) ---------------
 
+
 def _display_path(path: Path, mode: RuntimeMode | None) -> str:
     if mode is not None:
         return display_path(path, mode)
@@ -880,9 +882,8 @@ def _print_todo_status_human(status: Any) -> None:
         )
 
 
-
-
 # --- helpers moved from cli.py for translate slice (slice 7) -----------
+
 
 def _resolved_identity(proj: Project) -> TranslationIdentity:
     return resolve_identity(proj)
@@ -956,5 +957,3 @@ def _store_record_payload(
         "active_version": active_version,
     }
     return selected, {"versions": versions, "store": store, "ordered": ordered}
-
-
