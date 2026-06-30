@@ -117,9 +117,7 @@ def test_compare_profile_record_requires_two_profiles(tmp_path: Path) -> None:
 def test_version_current_command(tmp_path: Path) -> None:
     project_dir = _make_source_project(tmp_path)
     _add_profile(project_dir)
-    res = runner.invoke(
-        app, ["version", "current", str(project_dir), "--json"]
-    )
+    res = runner.invoke(app, ["version", "current", str(project_dir), "--json"])
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
     assert payload["track_count"] == 0
@@ -129,9 +127,7 @@ def test_version_current_command(tmp_path: Path) -> None:
 def test_version_show_unknown_track_command_errors(tmp_path: Path) -> None:
     project_dir = _make_source_project(tmp_path)
     _add_profile(project_dir)
-    res = runner.invoke(
-        app, ["version", "show", str(project_dir), "999"]
-    )
+    res = runner.invoke(app, ["version", "show", str(project_dir), "999"])
     assert res.exit_code != 0
     assert "not found" in res.output
 
