@@ -74,6 +74,17 @@ __all__ = [
     "ReviewTodoPass",
     "ReviewTodoChapter",
     "ReviewTodo",
+    "SelectionConfig",
+    "ContextSyncLedgerFinding",
+    "ContextSyncLedgerEntry",
+    "ContextSyncLedger",
+    "JudgeTaskFinding",
+    "JudgeTaskCandidate",
+    "JudgeTaskRecord",
+    "JudgeTask",
+    "JudgeCandidateEvidence",
+    "JudgeDecision",
+    "TranslationSelectionLedger",
     "QualityReviewConfig",
     "IndexesConfig",
     "EpubOutputConfig",
@@ -951,6 +962,183 @@ class ReviewTodo(BaseModel):
     chapters: list[ReviewTodoChapter] = Field(default_factory=list)
 
 
+class SelectionConfig(BaseModel):
+    """Selection-profile configuration stored under ``[selection]``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sources: list[str] = Field(default_factory=list)
+    allow_edited_targets: bool = True
+    require_all_sources: bool = False
+
+
+class ContextSyncLedgerFinding(BaseModel):
+    """One persisted finding for a context-sync ledger entry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    section: str = ""
+    key: str = ""
+    action: str = ""
+    message: str = ""
+
+
+class ContextSyncLedgerEntry(BaseModel):
+    """One applied multi-profile context-sync event for a target profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sync_id: str
+    source_profile: str
+    source_context_sha256: str = ""
+    source_baseline_sha256: str = ""
+    pack_sha256: str = ""
+    sections: list[str] = Field(default_factory=list)
+    terms: list[str] = Field(default_factory=list)
+    question_ids: list[str] = Field(default_factory=list)
+    conflict: Literal["fail", "keep-local", "replace"] = "fail"
+    old_baseline_sha256: str = ""
+    new_baseline_sha256: str = ""
+    changed: bool = False
+    applied_at: str
+    findings: list[ContextSyncLedgerFinding] = Field(default_factory=list)
+
+
+class ContextSyncLedger(BaseModel):
+    """Profile-local audit log for applied context sync operations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    profile: str
+    entries: list[ContextSyncLedgerEntry] = Field(default_factory=list)
+
+
+class JudgeTaskFinding(BaseModel):
+    """Compact validation finding stored in judge task artifacts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    severity: Literal["info", "warn", "error"] = "info"
+    rule: str = ""
+    message: str = ""
+
+
+class JudgeTaskCandidate(BaseModel):
+    """One candidate translation shown to the judge for a record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    profile: str
+    target_language: str
+    target_locale: str = ""
+    selected_kind: Literal["translation", "review"]
+    selected_ref: str
+    version_ref: str | None = None
+    review_ref: str | None = None
+    target: str
+    target_sha256: str
+    validation_findings: list[JudgeTaskFinding] = Field(default_factory=list)
+
+
+class JudgeTaskRecord(BaseModel):
+    """One source record plus all judge candidates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    chunk_id: str
+    source: str
+    source_sha256: str
+    candidates: list[JudgeTaskCandidate] = Field(default_factory=list)
+    missing_profiles: list[str] = Field(default_factory=list)
+    output_version_ref: str
+
+
+class JudgeTask(BaseModel):
+    """Durable task artifact for a cross-profile judge run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    judge_task_id: str
+    profile: str
+    source_profiles: list[str] = Field(default_factory=list)
+    source_language: str
+    target_language: str
+    target_locale: str = ""
+    chapter_id: str = ""
+    chapter_title: str = ""
+    created_at: str
+    source_sha256: str
+    profile_config_sha256: str | None = None
+    source_config_sha256: str | None = None
+    context_view_sha256: str | None = None
+    context_view_path: str | None = None
+    mandatory_glossary_sha256: str | None = None
+    records: list[JudgeTaskRecord] = Field(default_factory=list)
+
+
+class JudgeCandidateEvidence(BaseModel):
+    """Persisted provenance for one candidate considered by the judge."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    profile: str
+    selected_kind: Literal["translation", "review"]
+    selected_ref: str
+    version_ref: str | None = None
+    review_ref: str | None = None
+    target_sha256: str
+    target: str = ""
+    validation_status: Literal["ok", "warning", "error", "missing"] = "ok"
+    findings: list[str] = Field(default_factory=list)
+
+
+class JudgeDecision(BaseModel):
+    """Persisted judge decision for one selected record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str
+    output_version_ref: str
+    decision_kind: Literal["copy", "edited"]
+    selected_profile: str | None = None
+    selected_kind: Literal["translation", "review"] | None = None
+    selected_ref: str | None = None
+    selected_target_sha256: str | None = None
+    judge_task_id: str
+    judge_model: str = ""
+    reason: str = ""
+    candidate_evidence_sha256: str = ""
+    candidate_evidence: list[JudgeCandidateEvidence] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
+class TranslationSelectionLedger(BaseModel):
+    """Profile-local provenance ledger for a selection profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    profile: str
+    source_sha256: str
+    source_profiles: list[str] = Field(default_factory=list)
+    records: dict[str, JudgeDecision] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_record_keys(self) -> TranslationSelectionLedger:
+        for record_id, decision in self.records.items():
+            if record_id != decision.record_id:
+                raise ValueError(
+                    f"record key {record_id!r} must equal decision.record_id {decision.record_id!r}"
+                )
+        return self
+
+
 class IndexesConfig(BaseModel):
     """Optional auto-export index configuration.
 
@@ -1008,9 +1196,9 @@ class ProfileConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: Literal[1] = 1
-    kind: Literal["translation", "pass-through"] = Field(
+    kind: Literal["translation", "pass-through", "selection"] = Field(
         default="translation",
-        description="Profile kind: 'translation' or 'pass-through' fixture.",
+        description="Profile kind: 'translation', 'pass-through', or 'selection'.",
     )
     profile: str
     source_language: str = "en"
@@ -1022,6 +1210,7 @@ class ProfileConfig(BaseModel):
 
     # Optional quality-review configuration. ``None`` means no [quality_review]
     # table is present; existing config.toml files round-trip without one.
+    selection: SelectionConfig | None = None
     quality_review: QualityReviewConfig | None = None
     indexes: IndexesConfig | None = None
     epub_output: EpubOutputConfig | None = None

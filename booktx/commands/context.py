@@ -22,6 +22,7 @@ from booktx.cli_support import (
     _load_project_or_exit,
     _load_runtime_or_exit,
     _project_status_snapshot,
+    _reject_if_isolated,
     console,
 )
 from booktx.context_packs import ContextPackImportResult, SeriesContextPack
@@ -37,6 +38,7 @@ from booktx.workflows.context import (
     build_context_status_payload,
     context_pack_import_has_failures,
     context_pack_import_payload,
+    context_sync_workflow,
     export_context_pack_workflow,
     import_context_pack_workflow,
     import_md_workflow,
@@ -104,6 +106,52 @@ def _render_pack_import_human(
         console.print("No files changed.")
     else:
         console.print("No files written.")
+
+
+def _render_context_sync_human(plan: object) -> None:
+    sections = ",".join(getattr(plan, "sections", [])) or "glossary"
+    glossary_terms = getattr(plan, "glossary_terms", [])
+    term_text = ", ".join(glossary_terms) if glossary_terms else "all"
+    console.print(
+        f"context sync: source={plan.source.profile} "
+        f"sections={sections} terms={term_text}"
+    )
+    for target in getattr(plan, "targets", []):
+        if not getattr(target, "eligible", True):
+            console.print(
+                f"target {target.profile}: skipped, "
+                f"{target.skipped_reason or 'not eligible'}"
+            )
+            continue
+        status = "blocked"
+        if not (target.errors or target.conflicts):
+            status = "changed" if target.changed else "unchanged"
+        console.print(
+            f"target {target.profile}: {status}, add={target.added} "
+            f"update={target.updated} skip={target.skipped} "
+            f"conflict={target.conflicts} warning={target.warnings} "
+            f"error={target.errors}"
+        )
+        for finding in target.findings:
+            console.print(f"  - {finding.action}: {finding.message}")
+    if getattr(plan, "blocked", False):
+        console.print("")
+        console.print("Blocked by conflicts or errors. Nothing written.")
+        console.print(
+            "Re-run with --conflict keep-local or --conflict replace after review."
+        )
+        return
+    if getattr(plan, "write", False):
+        profiles = getattr(plan, "would_write_profiles", [])
+        if profiles:
+            console.print("")
+            console.print("Wrote target contexts: " + ", ".join(profiles))
+        else:
+            console.print("")
+            console.print("No target contexts changed.")
+        return
+    console.print("")
+    console.print("Dry run. Re-run with --write to apply the planned sync.")
 
 
 @context_app.command(name="init")
@@ -829,6 +877,104 @@ def context_import_pack(
     else:
         _render_pack_import_human(pack, result, runtime, write=wrote)
     if context_pack_import_has_failures(result):
+        raise typer.Exit(code=1)
+
+
+@context_app.command(name="sync")
+def context_sync(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    source_profile: str = typer.Option(..., "--from", help="Source profile name."),
+    target_profiles: list[str] | None = typer.Option(
+        None, "--to", help="Explicit target profile(s)."
+    ),
+    all_compatible: bool = typer.Option(
+        False,
+        "--all-compatible",
+        help="Target all compatible sibling profiles automatically.",
+    ),
+    section: list[str] | None = typer.Option(
+        None,
+        "--section",
+        help="Section(s) to sync: glossary, style, global-rules, questions.",
+    ),
+    term: list[str] | None = typer.Option(
+        None,
+        "--term",
+        help="Glossary source term(s) to sync when glossary is selected.",
+    ),
+    question_id: list[str] | None = typer.Option(
+        None,
+        "--question-id",
+        help="Reusable question id(s) to sync when questions are selected.",
+    ),
+    conflict: str = typer.Option(
+        "fail",
+        "--conflict",
+        help="Conflict mode: fail, keep-local, replace.",
+    ),
+    same_locale: bool = typer.Option(
+        False,
+        "--same-locale",
+        help="Require the target locale to match the source profile locale.",
+    ),
+    include_pass_through: bool = typer.Option(
+        False,
+        "--include-pass-through",
+        help="Allow pass-through targets when explicitly requested or discovered.",
+    ),
+    include_selection: bool = typer.Option(
+        False,
+        "--include-selection",
+        help="Include selection profiles in --all-compatible discovery.",
+    ),
+    init_missing_context: bool = typer.Option(
+        False,
+        "--init-missing-context",
+        help="Create a default target context when one is missing.",
+    ),
+    allow_not_ready: bool = typer.Option(
+        False,
+        "--allow-not-ready",
+        help="Allow syncing from a source profile whose context is not ready.",
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Apply the sync after a successful full preflight."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """Plan or apply controlled same-book context sync across sibling profiles."""
+
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    _reject_if_isolated(runtime)
+    try:
+        plan = context_sync_workflow(
+            runtime,
+            source_profile=source_profile,
+            target_profiles=target_profiles,
+            all_compatible=all_compatible,
+            sections=set(section or ["glossary"]),
+            terms=list(term or []),
+            question_ids=list(question_id or []),
+            conflict=conflict,
+            same_locale=same_locale,
+            include_pass_through=include_pass_through,
+            include_selection=include_selection,
+            allow_not_ready=allow_not_ready,
+            init_missing_context=init_missing_context,
+            write=write,
+        )
+    except BooktxError as exc:
+        if as_json:
+            typer.echo(json.dumps({"error": exc.code, "message": str(exc)}))
+        else:
+            _handle_booktx_error(exc)
+        raise typer.Exit(code=1) from exc
+
+    if as_json:
+        typer.echo(json.dumps(plan.model_dump(mode="json"), ensure_ascii=False))
+    else:
+        _render_context_sync_human(plan)
+    if plan.blocked:
         raise typer.Exit(code=1)
 
 

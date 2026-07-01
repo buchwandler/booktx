@@ -64,7 +64,7 @@ booktx validate .
 booktx build .
 ```
 
-`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile select`, `profile create`, `profile migrate-current`) remain blocked in isolated mode.
+`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile select`, `profile create`, `profile migrate-current`, `context sync`, and the entire `judge` group) remain blocked in isolated mode.
 
 The todo commands (`todo-next`, `todo-status`, `todo-resume`) are runtime-aware: in
 profile-root mode they omit `--profile`, use profile-local paths (`todos/`,
@@ -202,6 +202,20 @@ tasks, stores, ledgers, identity, or source state. Changed policy clears
 readiness, so re-run `booktx context mark-ready` after approval. A task
 created before a binding glossary import is rejected as stale; create a fresh
 task to use the imported policy.
+
+For sibling profiles inside the same book project, prefer the dedicated
+same-book sync command from project-root collaborative mode:
+
+```bash
+booktx context sync ./book \
+  --from PROFILE \
+  --all-compatible \
+  --section glossary \
+  --term "TERM"
+```
+
+This is dry run by default, reuses the context-pack merge rules, and never
+shares mutable files directly across profiles.
 
 ## Translation workflow
 
@@ -658,3 +672,36 @@ booktx build .
 Use booktx commands, not raw Python/store scripts. In isolated profile-root mode, if a needed search or inspection requires parent `.booktx/` data, use a profile-local booktx command (`source record`, `source chapter`, `translation search`, `translate export-index`). If no command exists, stop and report the missing booktx command instead of reading parent files directly.
 
 Glossary entries are binding only when `enforce != "off"` and `require_target` or `forbidden_targets` is set. `enforce` alone is advisory. If `glossary_alignment_ambiguous` is reported, inspect the companion `.sources.txt` block before revising; booktx is warning that a mixed compound/standalone record cannot be deterministically aligned at target-occurrence level.
+
+## Judge / selection profiles
+
+Judge workflows are cross-profile and must run from the project root. They are
+not available in isolated profile-root mode.
+
+Create a buildable selection profile with configured source profiles:
+
+```bash
+booktx judge create-profile ./book de_judge_gpt5_5 \
+  --target de \
+  --target-locale de-DE \
+  --sources de_gpt5_5,de_glm_5_2 \
+  --model gpt-5.5 \
+  --select
+```
+
+Run judging with:
+
+```bash
+booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
+booktx judge next ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --format block
+booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file translations/de_judge_gpt5_5/judge-ingest/TASK.block.txt --format block
+```
+
+Rules:
+
+- Prefer exact candidate copy when one source profile already has a good target.
+- Use `decision_kind: edited` only when the candidate needs a real correction.
+- Treat `translation-selection-ledger.json` as provenance; never hand-edit it.
+- Judge tasks compare sibling profiles and write accepted output into the
+  selection profile's normal `translation-store.json`, so normal
+  `booktx validate` and `booktx build` still apply.

@@ -353,6 +353,23 @@ booktx context export-pack ./book1 --profile de_gpt5_5 \
   --series-id shadows-of-apt --output ./soa.en-de.booktx-context-pack.json
 booktx context import-pack ./book2 --profile de_gpt5_5 \
   --file ./soa.en-de.booktx-context-pack.json --write
+
+# Same-book sibling profile policy sync:
+booktx context sync ./demo \
+  --from de_gpt5_5 \
+  --all-compatible \
+  --section glossary \
+  --term "Empire"
+
+# Build a judge/selection profile from sibling outputs:
+booktx judge create-profile ./demo de_judge_gpt5_5 \
+  --target de \
+  --target-locale de-DE \
+  --sources de_gpt5_5,de_glm_5_2 \
+  --model gpt-5.5 \
+  --select
+booktx judge status ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
+booktx judge next ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --format block
 ```
 
 `booktx translate next` also snapshots the exact effective task context under

@@ -9,8 +9,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from booktx.cli import app
-from booktx.config import load_project
-from booktx.context import context_markdown_path, context_path
+from booktx.config import create_profile, load_profile_project, load_project
+from booktx.context import context_markdown_path, context_path, load_context
 
 runner = CliRunner(env={"COLUMNS": "120"})
 
@@ -1108,3 +1108,164 @@ def test_chapter_note_replace_all_preserves_chunk_ids(tmp_path: Path):
     note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
     assert note["chunk_ids"] == ["0006"]
     assert note["title"] == "New"
+
+
+def _make_sync_project(tmp_path: Path) -> Path:
+    project_dir = tmp_path / "sync-book"
+    src = tmp_path / "sync.md"
+    src.write_text(MARKDOWN_DOC, encoding="utf-8")
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--source-file",
+            str(src),
+            "--source-lang",
+            "en",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    create_profile(project_dir, "de_source", target_language="de")
+    create_profile(project_dir, "de_flash", target_language="de")
+    create_profile(project_dir, "de_mimo", target_language="de")
+    create_profile(
+        project_dir, "passthrough_en", target_language="en", kind="pass-through"
+    )
+    return project_dir
+
+
+def _ready_profile_context(project_dir: Path, profile: str) -> None:
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            profile,
+            "--non-interactive",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    for qid, text in (
+        ("Q001", "de-DE"),
+        ("Q002", "balanced"),
+        ("Q003", "neutral"),
+        ("Q004", "natural dialogue"),
+        ("Q005", "keep Apt names"),
+        ("Q006", "translate world terms"),
+        ("Q012", "error"),
+    ):
+        res = runner.invoke(
+            app,
+            [
+                "context",
+                "answer",
+                str(project_dir),
+                qid,
+                "--profile",
+                profile,
+                "--text",
+                text,
+            ],
+        )
+        assert res.exit_code == 0, res.output
+    res = runner.invoke(
+        app, ["context", "mark-ready", str(project_dir), "--profile", profile]
+    )
+    assert res.exit_code == 0, res.output
+
+
+def _reset_term(project_dir: Path, profile: str, source: str, target: str) -> None:
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            source,
+            "--profile",
+            profile,
+            "--target",
+            target,
+            "--create",
+            "--enforce",
+            "error",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+
+def test_context_sync_json_payload_is_stable(tmp_path: Path):
+    project_dir = _make_sync_project(tmp_path)
+    _ready_profile_context(project_dir, "de_source")
+    _ready_profile_context(project_dir, "de_flash")
+    _reset_term(project_dir, "de_source", "empire", "Imperium")
+
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "sync",
+            str(project_dir),
+            "--from",
+            "de_source",
+            "--to",
+            "de_flash",
+            "--section",
+            "glossary",
+            "--term",
+            "empire",
+            "--json",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["version"] == 1
+    assert payload["source"]["profile"] == "de_source"
+    assert payload["sections"] == ["glossary"]
+    assert payload["glossary_terms"] == ["empire"]
+    assert payload["write"] is False
+    assert payload["blocked"] is False
+    assert payload["targets"][0]["profile"] == "de_flash"
+    assert "would_write_profiles" in payload
+
+
+def test_context_sync_write_blocks_on_conflict_without_mutation(tmp_path: Path):
+    project_dir = _make_sync_project(tmp_path)
+    for profile in ("de_source", "de_flash", "de_mimo"):
+        _ready_profile_context(project_dir, profile)
+    _reset_term(project_dir, "de_source", "empire", "Imperium")
+    _reset_term(project_dir, "de_flash", "empire", "Kaiserreich")
+
+    before = load_context(load_profile_project(project_dir, "de_mimo")).model_dump(
+        mode="json"
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "sync",
+            str(project_dir),
+            "--from",
+            "de_source",
+            "--to",
+            "de_flash",
+            "--to",
+            "de_mimo",
+            "--section",
+            "glossary",
+            "--term",
+            "empire",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 1
+    assert "Blocked by conflicts or errors. Nothing written." in res.output
+    after = load_context(load_profile_project(project_dir, "de_mimo")).model_dump(
+        mode="json"
+    )
+    assert after == before

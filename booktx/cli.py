@@ -12,6 +12,7 @@ from booktx.commands.agents import agents_app
 from booktx.commands.context import context_app
 from booktx.commands.epub import epub_app
 from booktx.commands.identity import actor_app, harness_app, identity_app, model_app
+from booktx.commands.judge import judge_app
 from booktx.commands.profile import profile_app
 from booktx.commands.review import review_app
 from booktx.commands.root import doctor_app, root_app
@@ -38,6 +39,7 @@ app.add_typer(translate_app, name="translation")
 app.add_typer(source_app, name="source")
 app.add_typer(doctor_app, name="doctor")
 app.add_typer(review_app, name="review")
+app.add_typer(judge_app, name="judge")
 app.add_typer(version_app, name="version")
 app.add_typer(profile_app, name="profile")
 app.add_typer(epub_app, name="epub")

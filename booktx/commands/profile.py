@@ -189,9 +189,20 @@ def profile_compare_cmd(
     console.print(f"record: {payload['record_ref']}")
     console.print(f"source: {payload['source']}")
     for item in payload["comparisons"]:
+        provenance = item.get("selection_provenance")
+        suffix = ""
+        if (
+            provenance
+            and provenance.get("selected_profile")
+            and provenance.get("selected_ref")
+        ):
+            suffix = (
+                f" [copied from {provenance['selected_profile']} "
+                f"{provenance['selected_ref']}]"
+            )
         console.print(
             f"{item['profile']} ({item['target_locale'] or item['target_language']}): "
-            f"{item['target'] or '<missing>'}"
+            f"{item['target'] or '<missing>'}{suffix}"
         )
 
 

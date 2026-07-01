@@ -9,17 +9,27 @@ import pytest
 
 from booktx.config import (
     BooktxError,
+    context_sync_ledger_path,
     create_profile,
     detect_format,
     find_source_file,
     identity_path,
     init_project,
     init_source_project,
+    judge_ingest_block_path,
+    judge_ingest_dir,
+    judge_ingest_json_path,
+    judge_task_dir,
+    judge_task_path,
+    judge_task_source_block_path,
+    load_context_sync_ledger,
     load_identity,
+    load_judge_task,
     load_names,
     load_profile_config,
     load_project,
     load_source_project,
+    load_translation_selection_ledger,
     load_translation_store,
     load_translation_task,
     load_translation_version_ledger,
@@ -30,12 +40,16 @@ from booktx.config import (
     translation_review_ingest_block_path,
     translation_review_source_block_path,
     translation_review_task_path,
+    translation_selection_ledger_path,
     translation_store_path,
     translation_task_path,
     translation_task_source_block_path,
     translation_version_ledger_path,
+    write_context_sync_ledger,
     write_identity,
+    write_judge_task,
     write_profile_config,
+    write_translation_selection_ledger,
     write_translation_store,
     write_translation_task,
     write_translation_version_ledger,
@@ -48,9 +62,13 @@ from booktx.context import (
     write_context,
 )
 from booktx.models import (
+    ContextSyncLedger,
+    ContextSyncLedgerEntry,
+    JudgeTask,
     StoredTranslationRecordV2,
     TranslationCandidate,
     TranslationIdentity,
+    TranslationSelectionLedger,
     TranslationStoreV2,
     TranslationSubversionLedgerEntry,
     TranslationTask,
@@ -460,6 +478,63 @@ def test_profile_config_kind_roundtrips_through_toml(tmp_path: Path):
     # Normal profiles continue to serialize as translation.
     create_profile(proj.root, "de_default", target_language="de")
     assert load_profile_config(proj.root, "de_default").kind == "translation"
+    create_profile(proj.root, "de_judge", target_language="de", kind="selection")
+    assert load_profile_config(proj.root, "de_judge").kind == "selection"
+
+
+def test_selection_profile_ledgers_and_judge_paths_roundtrip(tmp_path: Path):
+    proj = init_source_project(tmp_path / "book")
+    create_profile(proj.root, "de_judge", target_language="de", kind="selection")
+    selection_proj = load_project(proj.root, profile="de_judge")
+
+    sync_ledger = ContextSyncLedger(
+        profile="de_judge",
+        entries=[
+            ContextSyncLedgerEntry(
+                sync_id="ctxsync-1",
+                source_profile="de_source",
+                applied_at="2026-07-01T12:00:00Z",
+            )
+        ],
+    )
+    write_context_sync_ledger(selection_proj, sync_ledger)
+    assert context_sync_ledger_path(selection_proj).is_file()
+    assert load_context_sync_ledger(selection_proj).entries[0].sync_id == "ctxsync-1"
+
+    selection_ledger = TranslationSelectionLedger(
+        profile="de_judge",
+        source_sha256="sha256:source",
+    )
+    write_translation_selection_ledger(selection_proj, selection_ledger)
+    assert translation_selection_ledger_path(selection_proj).is_file()
+    assert load_translation_selection_ledger(selection_proj).profile == "de_judge"
+
+    task = JudgeTask(
+        judge_task_id="judge-task-1",
+        profile="de_judge",
+        source_profiles=["de_a", "de_b"],
+        source_language="en",
+        target_language="de",
+        created_at="2026-07-01T12:00:00Z",
+        source_sha256="sha256:source",
+    )
+    write_judge_task(selection_proj, task)
+    assert judge_task_dir(selection_proj).name == "judge-tasks"
+    assert judge_ingest_dir(selection_proj).name == "judge-ingest"
+    assert judge_task_path(selection_proj, "judge-task-1").name == "judge-task-1.json"
+    assert (
+        judge_task_source_block_path(selection_proj, "judge-task-1").name
+        == "judge-task-1.source.block.txt"
+    )
+    assert (
+        judge_ingest_block_path(selection_proj, "judge-task-1").name
+        == "judge-task-1.block.txt"
+    )
+    assert (
+        judge_ingest_json_path(selection_proj, "judge-task-1").name
+        == "judge-task-1.json"
+    )
+    assert load_judge_task(selection_proj, "judge-task-1") is not None
 
 
 def test_profile_config_quality_review_omitted_when_unset(tmp_path: Path):

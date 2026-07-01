@@ -19,6 +19,35 @@ translations/<profile>/context-history/views/<sha>/{context.json,context.md,mani
 7. Chapter-note appends change the next task's effective context, but they do not create a new dotted version by themselves.
 8. Each new translation task snapshots its composed effective context view under `context-history/views/<sha>/` and accepted candidates preserve that task-time evidence.
 
+## Same-book multi-profile context sync
+
+When several sibling profiles translate the same book and language pair, keep
+their reusable policy aligned with an explicit sync from project-root
+collaborative mode:
+
+```bash
+booktx context sync ./book \
+  --from de_gpt5_5 \
+  --all-compatible \
+  --section glossary \
+  --term "Empire"
+```
+
+- `context sync` is a **same-book cross-profile** workflow. It is rejected in
+  isolated profile-root mode.
+- It reuses the context-pack merge rules, but discovers sibling targets and
+  renders one consolidated plan across them.
+- It is a dry run by default. Re-run with `--write` only after reviewing the
+  plan.
+- It never shares mutable files. Each target profile still keeps its own
+  `context.json` and `context.md`.
+- By default, `--all-compatible` excludes pass-through profiles and selection
+  profiles.
+
+Use `context export-pack` / `import-pack` when you need to move reusable policy
+between different books. Use `context sync` when the source and targets are
+sibling profiles inside the same book project.
+
 ## Typical workflow
 
 ```bash

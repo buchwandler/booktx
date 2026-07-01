@@ -130,10 +130,15 @@ budget runs low. `--max-run-words` is advisory only.
 - Never mix files between profiles.
 - Cross-profile reference work is allowed only from project-root collaborative
   mode.
+- Use `booktx context sync` for same-book sibling policy propagation instead of
+  copying context files or hand-repeating glossary decisions.
 - Never edit `.booktx/chunks/*.json` directly during normal translation work.
 - Never edit `translations/<profile>/translation-store.json` directly. If validation flags an old accepted record, use `booktx translation revise-record` to fix it.
 - Never edit `translations/<profile>/translated/*.json` directly; use `booktx translate export`.
 - Use `booktx profile compare` for cross-profile review instead of mixing store files manually.
+- Use `booktx judge ...` only from project-root collaborative mode. Judge tasks
+  compare sibling profiles and write accepted output into a selection profile;
+  they are not available in isolated profile-root mode.
 - If a `todo-status`, `todo-resume`, or `todo-next` command fails with an internal
   booktx error, stop and report the tool failure. Do not silently switch to a
   large unbounded `translate next --unit chapter` task. Bounded todos exist to
@@ -187,3 +192,32 @@ After validation passes, optional quality review improves the accepted target:
 During review pass tasks, review the existing target critically. Preserve meaning,
 placeholders, protected terms, and inline XHTML. If the current target is already
 good, submit it unchanged -- booktx stores an explicit review candidate either way.
+
+## Judge / selection workflow
+
+When the user wants to assemble a best-of profile from several sibling
+translations, stay at the project root and use the dedicated judge workflow:
+
+```bash
+booktx judge create-profile ./book de_judge_gpt5_5 \
+  --target de \
+  --target-locale de-DE \
+  --sources de_gpt5_5,de_glm_5_2 \
+  --model gpt-5.5 \
+  --select
+
+booktx judge next ./book \
+  --profile de_judge_gpt5_5 \
+  --sources de_gpt5_5,de_glm_5_2 \
+  --unit chapter \
+  --chapter 0001 \
+  --max-words 900 \
+  --format block
+```
+
+Judge tasks expose the original source plus each source profile's effective
+candidate. Prefer exact candidate copy when one option is already correct.
+Choose `decision_kind: edited` only when every available candidate needs a
+repair. Submit the completed judge ingest file with `booktx judge insert ...`;
+booktx writes the chosen target into the selection profile's normal translation
+store and records provenance in `translation-selection-ledger.json`.

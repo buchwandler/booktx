@@ -53,6 +53,13 @@ from booktx.context_packs import (
     read_context_pack,
     write_context_pack,
 )
+from booktx.context_sync import ContextSyncError, ContextSyncPlan
+from booktx.context_sync import (
+    apply_context_sync as apply_context_sync_service,
+)
+from booktx.context_sync import (
+    plan_context_sync as plan_context_sync_service,
+)
 from booktx.errors import BooktxError
 from booktx.glossary_audit import (
     audit_glossary_term,
@@ -1032,6 +1039,53 @@ def context_pack_import_has_failures(result: ContextPackImportResult) -> bool:
     return bool(result.errors or result.conflicts)
 
 
+def context_sync_workflow(
+    runtime: RuntimeContext,
+    *,
+    source_profile: str,
+    target_profiles: list[str] | None,
+    all_compatible: bool,
+    sections: set[str],
+    terms: list[str],
+    question_ids: list[str],
+    conflict: str,
+    same_locale: bool,
+    include_pass_through: bool,
+    include_selection: bool,
+    allow_not_ready: bool,
+    init_missing_context: bool,
+    write: bool,
+) -> ContextSyncPlan:
+    """Plan and optionally apply a multi-profile context sync."""
+
+    if conflict not in {"fail", "keep-local", "replace"}:
+        raise _err(
+            "sync_conflict",
+            "--conflict must be fail, keep-local, or replace",
+        )
+    try:
+        plan = plan_context_sync_service(
+            runtime.project.root,
+            source_profile=source_profile,
+            target_profiles=target_profiles,
+            all_compatible=all_compatible,
+            sections=sections,
+            terms=terms,
+            question_ids=question_ids,
+            conflict=conflict,  # type: ignore[arg-type]
+            same_locale=same_locale,
+            include_pass_through=include_pass_through,
+            include_selection=include_selection,
+            allow_not_ready=allow_not_ready,
+            init_missing_context=init_missing_context,
+        )
+        if write and not plan.blocked:
+            return apply_context_sync_service(plan, runtime.project.root)
+        return plan.model_copy(update={"write": write})
+    except ContextSyncError as exc:
+        raise BooktxError(exc.code, str(exc)) from exc
+
+
 def import_md_workflow(
     proj: Project,
     ctx: TranslationContext,
@@ -1137,6 +1191,7 @@ __all__ = [
     "build_context_status_payload",
     "context_pack_import_has_failures",
     "context_pack_import_payload",
+    "context_sync_workflow",
     "export_context_pack_workflow",
     "import_context_pack_workflow",
     "import_md_workflow",

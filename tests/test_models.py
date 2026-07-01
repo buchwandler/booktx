@@ -13,9 +13,11 @@ from pydantic import ValidationError
 
 from booktx.models import (
     Chunk,
+    ContextSyncLedger,
     EpubNavigationRef,
     EpubSpanRef,
     EpubTemplateData,
+    JudgeTask,
     Manifest,
     ManifestSource,
     NamesFile,
@@ -23,12 +25,14 @@ from booktx.models import (
     ProfileConfig,
     ProjectConfig,
     Record,
+    SelectionConfig,
     StoredTranslationRecord,
     StoredTranslationRecordV2,
     TranslatedChunk,
     TranslatedRecord,
     TranslationCandidate,
     TranslationIdentity,
+    TranslationSelectionLedger,
     TranslationStore,
     TranslationStoreV2,
     TranslationSubversionLedgerEntry,
@@ -436,12 +440,44 @@ def test_profile_config_kind_defaults_and_validation():
     pt = ProfileConfig(profile="pt", target_language="en", kind="pass-through")
     assert pt.kind == "pass-through"
 
+    selection = ProfileConfig(
+        profile="de_judge",
+        target_language="de",
+        kind="selection",
+        selection=SelectionConfig(sources=["de_a", "de_b"]),
+    )
+    assert selection.kind == "selection"
+    assert selection.selection is not None
+    assert selection.selection.sources == ["de_a", "de_b"]
+
     with pytest.raises(ValidationError):
         ProfileConfig(profile="pt", target_language="en", kind="bogus")
 
     # A legacy config.toml without `kind` still loads.
     legacy = ProfileConfig.model_validate({"profile": "de", "target_language": "de"})
     assert legacy.kind == "translation"
+
+
+def test_selection_and_sync_models_have_safe_defaults():
+    sync = ContextSyncLedger(profile="de_profile")
+    assert sync.entries == []
+
+    task = JudgeTask(
+        judge_task_id="jt-1",
+        profile="de_judge",
+        source_profiles=["de_a", "de_b"],
+        source_language="en",
+        target_language="de",
+        created_at="2026-07-01T12:00:00Z",
+        source_sha256="abc",
+    )
+    assert task.records == []
+
+    ledger = TranslationSelectionLedger(
+        profile="de_judge",
+        source_sha256="sha256:source",
+    )
+    assert ledger.records == {}
 
 
 def test_names_file_default():

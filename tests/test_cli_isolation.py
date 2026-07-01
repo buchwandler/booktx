@@ -123,6 +123,40 @@ def test_profile_commands_are_blocked_in_profile_root_mode(monkeypatch, tmp_path
         assert str(profile_root.parent.parent) not in res.output
 
 
+def test_context_sync_is_blocked_in_profile_root_mode(monkeypatch, tmp_path: Path):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "sync",
+            ".",
+            "--from",
+            "de_default",
+            "--all-compatible",
+        ],
+    )
+
+    assert res.exit_code != 0, res.output
+    assert "project root" in res.output
+    assert "../" not in res.output
+    assert str(project_dir) not in res.output
+
+
+def test_judge_group_is_blocked_in_profile_root_mode(monkeypatch, tmp_path: Path):
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+
+    res = runner.invoke(app, ["judge", "status", ".", "--profile", "de_default"])
+
+    assert res.exit_code != 0, res.output
+    assert "project root" in res.output
+    assert "../" not in res.output
+    assert str(project_dir) not in res.output
+
+
 def test_profile_list_from_profile_root_shows_current_profile_only(
     monkeypatch, tmp_path: Path
 ):

@@ -740,6 +740,7 @@ def test_command_tree_top_level_snapshot():
         "identity",
         "init",
         "inspect",
+        "judge",
         "mode",
         "model",
         "next",
@@ -813,6 +814,14 @@ def test_command_tree_group_snapshots():
             "remove-term",
             "render",
             "reset-term",
+            "status",
+            "sync",
+        },
+        "judge": {
+            "create-profile",
+            "insert",
+            "next",
+            "record",
             "status",
         },
         "profile": {

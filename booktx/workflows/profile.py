@@ -15,6 +15,7 @@ from booktx.config import (
     load_profile_config,
     load_profile_project,
     load_source_project,
+    load_translation_selection_ledger,
     load_translation_store,
     load_translation_version_ledger,
     migrate_current_project,
@@ -192,6 +193,20 @@ def compare_profile_record(root: Path, profiles: str, record: str) -> dict[str, 
         store = load_translation_store(profile_project)
         stored = store.records.get(canonical_id)
         candidate = active_candidate(stored) if stored is not None else None
+        provenance = None
+        if (
+            profile_project.profile_config is not None
+            and profile_project.profile_config.kind == "selection"
+        ):
+            decision = load_translation_selection_ledger(profile_project).records.get(
+                canonical_id
+            )
+            if decision is not None:
+                provenance = {
+                    "selected_profile": decision.selected_profile,
+                    "selected_ref": decision.selected_ref,
+                    "selected_kind": decision.selected_kind,
+                }
         comparisons.append(
             {
                 "profile": profile_name,
@@ -200,6 +215,7 @@ def compare_profile_record(root: Path, profiles: str, record: str) -> dict[str, 
                 "active_version": stored.active_version if stored is not None else None,
                 "target": candidate.target if candidate is not None else None,
                 "status": candidate.status if candidate is not None else None,
+                "selection_provenance": provenance,
             }
         )
     return {

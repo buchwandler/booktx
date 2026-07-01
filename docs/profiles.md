@@ -147,6 +147,11 @@ approved profile and import it into another with `booktx context export-pack`
 and `booktx context import-pack`. The pack carries reusable policy only; it
 never carries records, tasks, stores, ledgers, identity, or chapter contexts.
 
+For sibling profiles inside the **same** book project, use `booktx context sync`
+from project-root collaborative mode instead of repeatedly exporting and
+re-importing pack files. Sync still copies policy into each target profile's
+own context files; it does not make context shared.
+
 ## When to create a new profile?
 
 Create a new profile whenever you want a hard isolation boundary:
@@ -178,6 +183,38 @@ reconstruction include all content before involving a translator.
 A non-empty translation store can silently override generated chunks, so
 pass-through refuses a profile with store records unless you pass
 `--clear-store` (which rewrites only `translation-store.json`).
+
+## Selection profiles
+
+A selection profile is a normal buildable profile whose accepted output is
+assembled from cross-profile judge decisions.
+
+- `kind = "selection"` in `translations/<profile>/config.toml`
+- it keeps its own `context.json`, `translation-store.json`, and output files
+- accepted judge output is written into the normal translation store so
+  `booktx validate` and `booktx build` work without special build rules
+- provenance is stored separately in
+  `translation-selection-ledger.json`
+- durable judge task artifacts live under `judge-tasks/` and `judge-ingest/`
+
+Create one with:
+
+```bash
+booktx judge create-profile ./book de_judge_gpt5_5 \
+  --target de \
+  --target-locale de-DE \
+  --sources de_gpt5_5,de_glm_5_2 \
+  --model gpt-5.5 \
+  --select
+```
+
+Judge workflows are cross-profile and therefore project-root only:
+
+```bash
+booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
+booktx judge next ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001
+booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file translations/de_judge_gpt5_5/judge-ingest/TASK.block.txt --format block
+```
 
 ## What stays a version?
 

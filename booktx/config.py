@@ -74,6 +74,8 @@ except ModuleNotFoundError:  # Python 3.10
 
 from booktx.epub_manifest import sha256_path
 from booktx.models import (
+    ContextSyncLedger,
+    JudgeTask,
     Manifest,
     NamesFile,
     ProfileConfig,
@@ -84,6 +86,7 @@ from booktx.models import (
     SourceConfig,
     TranslationIdentity,
     TranslationReviewTask,
+    TranslationSelectionLedger,
     TranslationStore,
     TranslationStoreV2,
     TranslationTask,
@@ -159,6 +162,20 @@ __all__ = [
     "translation_source_index_path",
     "translation_target_index_path",
     "translation_source_target_index_path",
+    "context_sync_ledger_path",
+    "load_context_sync_ledger",
+    "write_context_sync_ledger",
+    "translation_selection_ledger_path",
+    "load_translation_selection_ledger",
+    "write_translation_selection_ledger",
+    "judge_task_dir",
+    "judge_task_path",
+    "judge_task_source_block_path",
+    "judge_ingest_dir",
+    "judge_ingest_block_path",
+    "judge_ingest_json_path",
+    "load_judge_task",
+    "write_judge_task",
     "load_translation_review_task",
     "write_translation_review_task",
     "find_source_file",
@@ -351,6 +368,18 @@ def _profile_output_dir(
     root_or_project: Project | Path | str, profile_name: str
 ) -> Path:
     return profile_dir(root_or_project, profile_name) / "output"
+
+
+def _profile_judge_tasks_dir(
+    root_or_project: Project | Path | str, profile_name: str
+) -> Path:
+    return profile_dir(root_or_project, profile_name) / "judge-tasks"
+
+
+def _profile_judge_ingest_dir(
+    root_or_project: Project | Path | str, profile_name: str
+) -> Path:
+    return profile_dir(root_or_project, profile_name) / "judge-ingest"
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
@@ -846,7 +875,7 @@ def create_profile(
     model: str | None = None,
     output_filename: str | None = None,
     select: bool = False,
-    kind: Literal["translation", "pass-through"] = "translation",
+    kind: Literal["translation", "pass-through", "selection"] = "translation",
 ) -> Project:
     validate_profile_name(profile_name)
     source_project = load_source_project(root)
@@ -1096,6 +1125,20 @@ def translation_source_target_index_path(project: Project) -> Path:
     return project.profile_dir / "source-target-index.json"
 
 
+def context_sync_ledger_path(project: Project) -> Path:
+    """Profile-local context-sync audit ledger path."""
+    _require_profile_paths(project, "context sync ledger access")
+    assert project.profile_dir is not None
+    return project.profile_dir / "context-sync-ledger.json"
+
+
+def translation_selection_ledger_path(project: Project) -> Path:
+    """Profile-local selection provenance ledger path."""
+    _require_profile_paths(project, "translation selection ledger access")
+    assert project.profile_dir is not None
+    return project.profile_dir / "translation-selection-ledger.json"
+
+
 def identity_path(project: Project) -> Path:
     if project.identity_json_path is not None:
         return project.identity_json_path
@@ -1134,6 +1177,23 @@ def load_identity(project: Project) -> TranslationIdentity | None:
     return TranslationIdentity.model_validate_json(path.read_text("utf-8"))
 
 
+def load_context_sync_ledger(project: Project) -> ContextSyncLedger:
+    path = context_sync_ledger_path(project)
+    if not path.is_file():
+        return ContextSyncLedger(profile=project.profile or "")
+    return ContextSyncLedger.model_validate_json(path.read_text("utf-8"))
+
+
+def load_translation_selection_ledger(project: Project) -> TranslationSelectionLedger:
+    path = translation_selection_ledger_path(project)
+    if not path.is_file():
+        return TranslationSelectionLedger(
+            profile=project.profile or "",
+            source_sha256=project_source_sha256(project),
+        )
+    return TranslationSelectionLedger.model_validate_json(path.read_text("utf-8"))
+
+
 def write_translation_store(project: Project, store: TranslationStoreV2) -> None:
     from booktx.io_utils import write_json_model_atomic
 
@@ -1152,6 +1212,20 @@ def write_identity(project: Project, identity: TranslationIdentity) -> None:
     from booktx.io_utils import write_json_model_atomic
 
     write_json_model_atomic(identity_path(project), identity)
+
+
+def write_context_sync_ledger(project: Project, ledger: ContextSyncLedger) -> None:
+    from booktx.io_utils import write_json_model_atomic
+
+    write_json_model_atomic(context_sync_ledger_path(project), ledger)
+
+
+def write_translation_selection_ledger(
+    project: Project, ledger: TranslationSelectionLedger
+) -> None:
+    from booktx.io_utils import write_json_model_atomic
+
+    write_json_model_atomic(translation_selection_ledger_path(project), ledger)
 
 
 def translation_task_dir(project: Project) -> Path:
@@ -1295,6 +1369,51 @@ def write_translation_review_task(
     write_json_model_atomic(
         translation_review_task_path(project, task.review_task_id), task
     )
+
+
+def judge_task_dir(project: Project) -> Path:
+    """Profile-local directory for durable judge task artifacts."""
+    _require_profile_paths(project, "judge task access")
+    return _profile_judge_tasks_dir(project.root, project.profile or "")
+
+
+def judge_task_path(project: Project, judge_task_id: str) -> Path:
+    safe = safe_artifact_id(judge_task_id, kind="judge_task")
+    return judge_task_dir(project) / f"{safe}.json"
+
+
+def judge_task_source_block_path(project: Project, judge_task_id: str) -> Path:
+    safe = safe_artifact_id(judge_task_id, kind="judge_task")
+    return judge_task_dir(project) / f"{safe}.source.block.txt"
+
+
+def judge_ingest_dir(project: Project) -> Path:
+    """Profile-local directory for editable judge ingest artifacts."""
+    _require_profile_paths(project, "judge ingest access")
+    return _profile_judge_ingest_dir(project.root, project.profile or "")
+
+
+def judge_ingest_block_path(project: Project, judge_task_id: str) -> Path:
+    safe = safe_artifact_id(judge_task_id, kind="judge_task")
+    return judge_ingest_dir(project) / f"{safe}.block.txt"
+
+
+def judge_ingest_json_path(project: Project, judge_task_id: str) -> Path:
+    safe = safe_artifact_id(judge_task_id, kind="judge_task")
+    return judge_ingest_dir(project) / f"{safe}.json"
+
+
+def load_judge_task(project: Project, judge_task_id: str) -> JudgeTask | None:
+    path = judge_task_path(project, judge_task_id)
+    if not path.is_file():
+        return None
+    return JudgeTask.model_validate_json(path.read_text("utf-8"))
+
+
+def write_judge_task(project: Project, task: JudgeTask) -> None:
+    from booktx.io_utils import write_json_model_atomic
+
+    write_json_model_atomic(judge_task_path(project, task.judge_task_id), task)
 
 
 def _persist_source_config(project: Project) -> None:
