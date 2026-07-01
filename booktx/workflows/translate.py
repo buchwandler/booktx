@@ -59,6 +59,7 @@ from booktx.cli_support import (
     _store_record_payload,
     _submission_ingest_hint,
     console,
+    resolve_profile_local_path,
 )
 from booktx.command_hints import (
     build_command,
@@ -1612,13 +1613,10 @@ def translation_revise_block_workflow(
         text = sys.stdin.read()
     else:
         assert file is not None
-        if file.is_absolute() or ".." in file.parts:
-            _die("--file must be a profile-local relative path")
-            return
-        file_path = (proj.root / file).resolve()
-        root = proj.root.resolve()
-        if root not in [file_path, *file_path.parents]:
-            _die("--file must stay inside the active profile")
+        try:
+            file_path = resolve_profile_local_path(proj, file, purpose="--file")
+        except BooktxError as exc:
+            _die(str(exc))
             return
         text = file_path.read_text("utf-8")
     parsed = parse_block_submission(text)
@@ -1968,13 +1966,12 @@ def translation_search_cmd_workflow(
                 matches.append(match_item)
 
     if write_block is not None:
-        if write_block.is_absolute() or ".." in write_block.parts:
-            _die("--write-block must be a profile-local relative path")
-            return
-        block_path = (proj.root / write_block).resolve()
-        root = proj.root.resolve()
-        if root not in [block_path, *block_path.parents]:
-            _die("--write-block must stay inside the active profile")
+        try:
+            block_path = resolve_profile_local_path(
+                proj, write_block, purpose="--write-block"
+            )
+        except BooktxError as exc:
+            _die(str(exc))
             return
         block_path.parent.mkdir(parents=True, exist_ok=True)
         lines: list[str] = []
@@ -1994,7 +1991,7 @@ def translation_search_cmd_workflow(
         block_path.with_suffix(block_path.suffix + ".sources.txt").write_text(
             "\n".join(source_lines).rstrip() + "\n", "utf-8"
         )
-        console.print(f"wrote block: {write_block}")
+        console.print(f"wrote block: {block_path}")
 
     if jsonl:
         import json as _json

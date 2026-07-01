@@ -37,6 +37,7 @@ from booktx.config import (
     load_translation_store,
     load_translation_task,
     load_translation_version_ledger,
+    project_storage_root,
     translation_task_path,
 )
 from booktx.context import (
@@ -157,6 +158,24 @@ def _die(message: str, code: int = 1) -> None:
     """Print an error and exit with ``code``."""
     console.print(f"[red]error:[/red] {message}")
     raise typer.Exit(code=code)
+
+
+def resolve_profile_local_path(project: Project, rel: Path, *, purpose: str) -> Path:
+    """Resolve a profile-local relative path under the active profile storage root."""
+    if rel.is_absolute() or ".." in rel.parts:
+        raise BooktxError(
+            "profile_local_path_invalid",
+            f"{purpose} must be a profile-local relative path",
+        )
+
+    root = project_storage_root(project).resolve()
+    path = (root / rel).resolve()
+    if root != path and root not in path.parents:
+        raise BooktxError(
+            "profile_local_path_escape",
+            f"{purpose} must stay inside the active profile",
+        )
+    return path
 
 
 def _handle_booktx_error(exc: BooktxError) -> None:

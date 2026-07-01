@@ -249,6 +249,27 @@ def _ensure_single_trailing_newline(text: str) -> str:
     return text.rstrip("\n") + "\n"
 
 
+def _terminology_change_playbook() -> str:
+    return (
+        "Terminology-change playbook:\n"
+        "\n"
+        "When the user says 'always translate X as Y', 'change term X to Y', "
+        "or 'never translate X as Z':\n"
+        "\n"
+        "1. Use `booktx context mandate-term`, not `add-term`, unless the user"
+        " explicitly says the term is advisory.\n"
+        "2. Add source variants and target variants when needed.\n"
+        "3. Add forbidden targets for wrong forms that already appeared.\n"
+        "4. Run `booktx context audit-term`.\n"
+        "5. Generate or write a correction block for active violations.\n"
+        "6. Apply corrections with `booktx translation revise-block`.\n"
+        "7. Run `booktx validate . --fail-on-warnings`.\n"
+        "8. Do not continue old translation tasks until the context/task"
+        " freshness state is clean.\n"
+        "\n"
+    )
+
+
 def _render_isolated_body(*, profile: str, target_locale: str) -> str:
     return (
         "\n\n"
@@ -318,8 +339,7 @@ def _render_isolated_body(*, profile: str, target_locale: str) -> str:
         "- User-approved context is binding.\n"
         "- If booktx prints a parent path, sibling profile, or any "
         "parent-directory reference, stop and report an isolation bug.\n"
-        "\n"
-        "Completion checks:\n"
+        "\n" + _terminology_change_playbook() + "Completion checks:\n"
         "\n"
         "- For a bounded todo, use the scoped check commands printed by "
         "booktx and stop when that todo is complete. Do not run a "
@@ -392,7 +412,8 @@ def _render_collaborative_body() -> str:
         "- Do not use `context mark-ready --force` during normal "
         "translation work.\n"
         "\n"
-        "Use the installed booktx skill when available. This file is the "
+        + _terminology_change_playbook()
+        + "Use the installed booktx skill when available. This file is the "
         "project-root harness entry contract; it does not replace the skill.\n"
     )
 

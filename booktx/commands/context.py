@@ -24,6 +24,7 @@ from booktx.cli_support import (
     _project_status_snapshot,
     _reject_if_isolated,
     console,
+    resolve_profile_local_path,
 )
 from booktx.context_packs import ContextPackImportResult, SeriesContextPack
 from booktx.errors import BooktxError
@@ -516,6 +517,23 @@ def context_add_term(  # noqa: C901 - long form mirrors original
             require_target=require_target,
             allow_disable_enforcement=allow_disable_enforcement,
         )
+        entry = next((item for item in ctx.glossary if item.source == source), None)
+        if (
+            entry is not None
+            and target is not None
+            and entry.enforce in {"warn", "error"}
+        ):
+            from booktx.glossary_match import entry_is_binding
+
+            if not entry_is_binding(entry):
+                console.print(
+                    "[yellow]warning:[/yellow] this glossary entry is advisory only;"
+                    " approved target is not required."
+                )
+                console.print(
+                    "Use --require-target or `booktx context mandate-term` for a"
+                    " binding user decision."
+                )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
@@ -739,7 +757,14 @@ def context_audit_term(
                 parts.append("missing approved target")
             console.print(f"  {rec.record_id}: {'; '.join(parts)}")
     if write_block is not None:
-        ingest_path, source_path = write_audit_blocks(result, write_block)
+        try:
+            block_path = resolve_profile_local_path(
+                runtime.project, write_block, purpose="--write-block"
+            )
+            ingest_path, source_path = write_audit_blocks(result, block_path)
+        except BooktxError as exc:
+            _handle_booktx_error(exc)
+            return
         console.print(f"ingest block: {ingest_path}")
         console.print(f"source block: {source_path}")
 

@@ -702,20 +702,27 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
         )
     lines += [
         "",
-        "## Advisory glossary",
+        "## Advisory glossary (not validation-binding)",
         "",
-        "| Source | Approved target | Enforcement | Status | Notes |",
-        "|---|---|---|---|---|",
+        "| Source | Approved target | Validation | Enforcement | Status | Notes |",
+        "|---|---|---|---|---|---|",
     ]
     if advisory:
         for entry in advisory:
             lines.append(
                 f"| {_escape_cell(entry.source)} | {_escape_cell(_approved(entry))} |"
+                " advisory only, approved target not required |"
                 f" {entry.enforce} | {entry.status} |"
                 f" {_escape_cell(entry.notes or '')} |"
             )
     else:
-        lines.append("| _(no advisory glossary entries)_ | | | | |")
+        lines.append("| _(no advisory glossary entries)_ | | | | | |")
+    lines += [
+        "",
+        "Advisory entries are guidance only. Validation failures only occur",
+        "if converted with `context mandate-term` or `add-term --require-target`,",
+        "or if forbidden targets are configured.",
+    ]
     lines += [
         "",
         "## Disabled glossary rules",

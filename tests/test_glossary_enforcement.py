@@ -20,6 +20,7 @@ from booktx.config import (
     init_project,
     load_project,
     load_translation_task,
+    project_storage_root,
     write_translation_store,
     write_translation_task,
     write_translation_version_ledger,
@@ -727,7 +728,11 @@ def test_scenario10_audit_term_generates_safe_blocks(tmp_path: Path) -> None:
         tracked_refs={"1.1"},
     )
 
-    block_path = tmp_path / "ingest" / "glossary-tenday-fixes.block.txt"
+    block_path = (
+        project_storage_root(load_project(proj_path))
+        / "ingest"
+        / "glossary-tenday-fixes.block.txt"
+    )
     res = runner.invoke(
         app,
         [
@@ -736,7 +741,7 @@ def test_scenario10_audit_term_generates_safe_blocks(tmp_path: Path) -> None:
             str(proj_path),
             "tenday",
             "--write-block",
-            str(block_path),
+            "ingest/glossary-tenday-fixes.block.txt",
         ],
     )
     assert res.exit_code == 0, res.output

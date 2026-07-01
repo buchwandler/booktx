@@ -549,6 +549,13 @@ def render_questionnaire_text(ctx: TranslationContext) -> str:
     return "\n".join(lines)
 
 
+def _term_message(prefix: str, entry: GlossaryEntry) -> str:
+    from booktx.glossary_match import entry_is_binding
+
+    kind = "binding" if entry_is_binding(entry) else "advisory"
+    return f"{prefix} {kind} term: {entry.source}"
+
+
 def add_or_update_term_workflow(  # noqa: C901 - long form mirrors original
     proj: Project,
     ctx: TranslationContext,
@@ -670,7 +677,8 @@ def add_or_update_term_workflow(  # noqa: C901 - long form mirrors original
     _guard_md_safe_or_die(proj, ctx)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
-    return f"updated term: {source}"
+    entry = next(e for e in ctx.glossary if e.source == source)
+    return _term_message("updated", entry)
 
 
 def remove_term_workflow(
@@ -751,10 +759,11 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
                 enforce=applied_enforce,  # type: ignore[arg-type]
             )
         )
+        created = ctx.glossary[-1]
         _guard_md_safe_or_die(proj, ctx)
         write_context(proj, ctx)
         write_context_markdown(proj, ctx)
-        return f"created term: {source}"
+        return _term_message("created", created)
 
     if target is not None:
         existing.target = target
@@ -787,7 +796,7 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
     _guard_md_safe_or_die(proj, ctx)
     write_context(proj, ctx)
     write_context_markdown(proj, ctx)
-    return f"reset term: {source}"
+    return _term_message("reset", existing)
 
 
 def mandate_term_workflow(

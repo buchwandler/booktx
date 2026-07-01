@@ -162,7 +162,7 @@ def test_add_or_update_term_workflow_creates_new_entry(tmp_path: Path) -> None:
         require_target=True,
         allow_disable_enforcement=False,
     )
-    assert message == "updated term: Alice"
+    assert message == "updated binding term: Alice"
     entry = next(e for e in ctx.glossary if e.source == "Alice")
     assert entry.target == "Alicia"
     assert entry.enforce == "error"
@@ -219,7 +219,7 @@ def test_context_add_term_command_success(tmp_path: Path) -> None:
         ],
     )
     assert res.exit_code == 0, res.output
-    assert "updated term: Alice" in res.output
+    assert "updated advisory term: Alice" in res.output
 
 
 def test_context_questions_command(tmp_path: Path) -> None:
