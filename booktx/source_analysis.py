@@ -1,4 +1,4 @@
-"""Deterministic source-level analysis for booktx (Phase 0 + Phase 1A).
+"""Deterministic source-level analysis for booktx.
 
 This module inspects the *extracted* source representation and proposes likely
 important words, names, invented terms, repeated phrases, and style signals
@@ -8,11 +8,8 @@ important words, names, invented terms, repeated phrases, and style signals
 * ``.booktx/names.json`` is never mutated by analysis.
 * Generated reports never contain approved translation decisions.
 
-Phase 0 contracts (stable candidate identity, extracted-input fingerprint,
-semantic digest, source-text preparation, blocking preflight) and the Phase 1A
-simple engine (no spaCy dependency) live here. spaCy enrichment, the decisions
-sidecar, context prefill, and candidate promotion are deliberately out of scope
-and must not be added in this phase.
+The dependency-free simple engine is always available. Optional spaCy
+enrichment is loaded lazily and every linguistic detector is capability-gated.
 
 The JSON report (``SourceAnalysisReport``) is authoritative; the Markdown view
 (``render_report_markdown``) is a generated readable rendering of that JSON.
@@ -27,7 +24,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -608,37 +605,50 @@ def compute_analysis_sha256(report: SourceAnalysisReport) -> str:
     return _sha256_text(_canonical_json(payload))
 
 
-# --- Engine resolution (Phase 1A: simple only) ------------------------------
+# --- Engine resolution ------------------------------------------------------
 
 
-def resolve_engine(
+@dataclass(frozen=True)
+class _EngineRuntime:
+    resolved: Literal["spacy", "simple"]
+    capabilities: AnalysisCapabilities
+    warnings: list[str]
+    nlp: Any | None = None
+    model_name: str | None = None
+    spacy_version: str | None = None
+    model_version: str | None = None
+
+
+_DEFAULT_SPACY_MODELS = {
+    "de": "de_core_news_sm",
+    "en": "en_core_web_sm",
+    "es": "es_core_news_sm",
+    "fr": "fr_core_news_sm",
+}
+
+
+def _pipeline_capabilities(nlp: Any) -> AnalysisCapabilities:
+    pipes = set(getattr(nlp, "pipe_names", ()))
+    parser = "parser" in pipes
+    return AnalysisCapabilities(
+        tokenizer=getattr(nlp, "tokenizer", None) is not None,
+        sentence_boundaries=bool(
+            parser or pipes.intersection({"senter", "sentencizer"})
+        ),
+        lemmatizer="lemmatizer" in pipes,
+        pos=bool(pipes.intersection({"tagger", "morphologizer"})),
+        parser=parser,
+        noun_chunks=parser,
+        ner="ner" in pipes,
+    )
+
+
+def _resolve_engine_runtime(
     engine_requested: str,
     spacy_model: str | None,
-) -> tuple[Literal["spacy", "simple"], AnalysisCapabilities, list[str]]:
-    """Resolve the engine and report honest capabilities + warnings.
-
-    Phase 1A implements the simple engine only. ``auto`` resolves to ``simple``.
-    An explicit ``spacy`` request fails with a controlled error when spaCy is
-    not installed (spaCy enrichment is Phase 1B).
-    """
-    warnings: list[str] = []
-    if engine_requested == "spacy":
-        try:
-            import spacy  # noqa: F401  # capability probe only  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise _err(
-                "source_analysis_spacy_unavailable",
-                "spaCy analysis engine was requested but spaCy is not installed; "
-                "use --engine simple or auto (spaCy enrichment is not yet available)",
-            ) from exc
-        # spaCy present but enrichment is Phase 1B: fall back with a warning.
-        warnings.append(
-            "spaCy enrichment is not implemented in this build; using the simple engine."
-        )
-        resolved: Literal["spacy", "simple"] = "simple"
-    else:
-        resolved = "simple"
-    capabilities = AnalysisCapabilities(
+    source_language: str,
+) -> _EngineRuntime:
+    simple_caps = AnalysisCapabilities(
         tokenizer=True,
         sentence_boundaries=True,
         lemmatizer=False,
@@ -647,10 +657,113 @@ def resolve_engine(
         noun_chunks=False,
         ner=False,
     )
-    capability_warnings = [
-        "sentence_boundaries: heuristic splitter (no linguistic model)"
-    ]
-    return resolved, capabilities, warnings + capability_warnings
+    simple_warning = "sentence_boundaries: heuristic splitter (no linguistic model)"
+    if engine_requested == "simple":
+        return _EngineRuntime("simple", simple_caps, [simple_warning])
+    try:
+        import spacy
+    except ImportError as exc:
+        if engine_requested == "spacy" or spacy_model:
+            raise _err(
+                "source_analysis_spacy_unavailable",
+                "spaCy analysis was requested but spaCy is not installed; "
+                "install booktx[analysis] or use --engine simple",
+            ) from exc
+        return _EngineRuntime(
+            "simple",
+            simple_caps,
+            ["spaCy is not installed; using the simple engine.", simple_warning],
+        )
+
+    language = (source_language or "").lower().split("-")[0]
+    model_name = spacy_model or _DEFAULT_SPACY_MODELS.get(language)
+    nlp: Any | None = None
+    warnings: list[str] = []
+    if model_name:
+        try:
+            nlp = spacy.load(model_name)
+        except (OSError, ImportError) as exc:
+            if spacy_model:
+                raise _err(
+                    "source_analysis_spacy_model_unavailable",
+                    f"explicit spaCy model {model_name!r} could not be loaded: {exc}",
+                ) from exc
+            warnings.append(
+                f"configured spaCy model {model_name!r} is unavailable; "
+                "using a blank language pipeline"
+            )
+    if nlp is not None:
+        model_language = str(getattr(nlp, "lang", "")).lower().split("-")[0]
+        if model_language and language and model_language != language:
+            message = (
+                f"spaCy model language {model_language!r} does not match "
+                f"source language {language!r}"
+            )
+            if spacy_model:
+                raise _err("source_analysis_spacy_model_mismatch", message)
+            warnings.append(message + "; using a blank language pipeline")
+            nlp = None
+    if nlp is None:
+        try:
+            nlp = spacy.blank(language)
+        except (ImportError, ValueError) as exc:
+            if engine_requested == "spacy":
+                raise _err(
+                    "source_analysis_spacy_language_unsupported",
+                    f"spaCy has no pipeline for source language {source_language!r}",
+                ) from exc
+            return _EngineRuntime(
+                "simple",
+                simple_caps,
+                warnings
+                + [
+                    f"spaCy does not support source language {source_language!r}; "
+                    "using the simple engine.",
+                    simple_warning,
+                ],
+            )
+        if "sentencizer" not in set(nlp.pipe_names):
+            nlp.add_pipe("sentencizer")
+        model_name = f"blank:{language}"
+    caps = _pipeline_capabilities(nlp)
+    meta = getattr(nlp, "meta", {}) or {}
+    return _EngineRuntime(
+        "spacy",
+        caps,
+        warnings,
+        nlp=nlp,
+        model_name=model_name,
+        spacy_version=str(getattr(spacy, "__version__", "")) or None,
+        model_version=str(meta.get("version") or "") or None,
+    )
+
+
+def resolve_engine(
+    engine_requested: str,
+    spacy_model: str | None,
+) -> tuple[Literal["spacy", "simple"], AnalysisCapabilities, list[str]]:
+    """Compatibility resolver.
+
+    The historical two-argument ``auto`` probe remains dependency-independent;
+    report construction uses the language-aware runtime resolver.
+    """
+    if engine_requested == "auto" and spacy_model is None:
+        caps = AnalysisCapabilities(
+            tokenizer=True,
+            sentence_boundaries=True,
+            lemmatizer=False,
+            pos=False,
+            parser=False,
+            noun_chunks=False,
+            ner=False,
+        )
+        return (
+            "simple",
+            caps,
+            ["sentence_boundaries: heuristic splitter (no linguistic model)"],
+        )
+    runtime = _resolve_engine_runtime(engine_requested, spacy_model, "en")
+    return runtime.resolved, runtime.capabilities, runtime.warnings
 
 
 # --- Tokenization of prepared text ------------------------------------------
@@ -735,6 +848,8 @@ class _Accum:
     kind: str
     detector: str
     reason_codes: list[str]
+    detectors: set[str] = field(default_factory=set)
+    lemma: str | None = None
     count: int = 0
     records: set[str] = field(default_factory=set)
     chapters: set[str] = field(default_factory=set)
@@ -955,6 +1070,134 @@ def _detect_phrases(
                 )
 
 
+_ENTITY_KINDS = {
+    "GPE": "place_name",
+    "LOC": "place_name",
+    "PERSON": "proper_name",
+    "ORG": "proper_name",
+    "NORP": "proper_name",
+    "WORK_OF_ART": "title_candidate",
+}
+
+
+def _mark_linguistic_candidate(
+    accum_by_id: dict[str, _Accum],
+    *,
+    prepared: PreparedRecord,
+    source_language: str,
+    surface: str,
+    start: int,
+    end: int,
+    kind: str,
+    detector: str,
+    lemma: str | None = None,
+) -> None:
+    normalized = normalize_token(surface)
+    tokens = [normalize_token(part) for part in _WORD_RE.findall(surface)]
+    if not tokens:
+        return
+    bucket = _phrase_bucket(_WORD_RE.findall(surface))
+    identity = candidate_id_from_identity(
+        source_language=source_language,
+        normalized=normalized,
+        tokens=tokens,
+        case_bucket_value=bucket,
+    )
+    accum = accum_by_id.get(identity)
+    if accum is None:
+        accum = _Accum(
+            identity=identity,
+            text=surface,
+            normalized=normalized,
+            tokens=tokens,
+            bucket=bucket,
+            kind=kind,
+            detector=detector,
+            reason_codes=[detector],
+        )
+        accum_by_id[identity] = accum
+        _add_occurrence(
+            accum,
+            prepared=prepared,
+            surface=surface,
+            start=start,
+            end=end,
+        )
+    else:
+        accum.kind = _merge_kind(accum.kind, kind)
+        accum.reason_codes.append(detector)
+    accum.detectors.add(detector)
+    if lemma and not accum.lemma:
+        accum.lemma = lemma
+
+
+def _enrich_with_spacy(
+    prepared_records: list[PreparedRecord],
+    *,
+    source_language: str,
+    nlp: Any,
+    capabilities: AnalysisCapabilities,
+    accum_by_id: dict[str, _Accum],
+) -> None:
+    """Add model-backed evidence without making identity model-dependent."""
+    for prepared in prepared_records:
+        doc = nlp(prepared.visible_text)
+        if capabilities.lemmatizer or capabilities.pos:
+            for token in doc:
+                if getattr(token, "is_space", False) or getattr(
+                    token, "is_punct", False
+                ):
+                    continue
+                surface = str(token.text)
+                normalized = normalize_token(surface)
+                identity = candidate_id_from_identity(
+                    source_language=source_language,
+                    normalized=normalized,
+                    tokens=[normalized],
+                    case_bucket_value=case_bucket(surface),
+                )
+                accum = accum_by_id.get(identity)
+                if accum is None:
+                    continue
+                if capabilities.lemmatizer:
+                    lemma = str(getattr(token, "lemma_", "")).strip()
+                    if lemma and lemma != "-PRON-":
+                        accum.lemma = normalize_token(lemma)
+                        accum.detectors.add("spacy_lemma")
+                if capabilities.pos and str(getattr(token, "pos_", "")).strip():
+                    accum.detectors.add("spacy_pos")
+                    accum.reason_codes.append(
+                        "spacy_pos_" + str(token.pos_).strip().lower()
+                    )
+        if capabilities.noun_chunks:
+            for chunk in doc.noun_chunks:
+                _mark_linguistic_candidate(
+                    accum_by_id,
+                    prepared=prepared,
+                    source_language=source_language,
+                    surface=str(chunk.text),
+                    start=int(chunk.start_char),
+                    end=int(chunk.end_char),
+                    kind="phrase",
+                    detector="spacy_noun_chunk",
+                )
+        if capabilities.ner:
+            for entity in doc.ents:
+                kind = _ENTITY_KINDS.get(str(entity.label_))
+                if kind is None:
+                    continue
+                _mark_linguistic_candidate(
+                    accum_by_id,
+                    prepared=prepared,
+                    source_language=source_language,
+                    surface=str(entity.text),
+                    start=int(entity.start_char),
+                    end=int(entity.end_char),
+                    kind=kind,
+                    detector="spacy_ner_" + str(entity.label_).lower(),
+                )
+
+
 # --- Style metrics ----------------------------------------------------------
 
 _QUOTE_STYLES = [
@@ -1061,7 +1304,8 @@ def _finalize_candidate(
         s for s, _ in sorted(accum.surfaces.items(), key=lambda kv: (-kv[1], kv[0]))
     ]
     detectors = sorted(
-        {accum.detector, *(["protected_name"] if accum.already_protected else [])}
+        accum.detectors
+        | {accum.detector, *(["protected_name"] if accum.already_protected else [])}
     )
     reason_codes = sorted(set(accum.reason_codes) | {accum.detector})
     if accum.already_protected and "already_protected" not in reason_codes:
@@ -1071,6 +1315,7 @@ def _finalize_candidate(
         text=accum.text,
         normalized=accum.normalized,
         surface_forms=surface_forms,
+        lemma=accum.lemma,
         kind=accum.kind,  # type: ignore[arg-type]
         detectors=detectors,
         count=accum.count,
@@ -1216,15 +1461,17 @@ def build_source_analysis(
     )
     chapter_map_sha = _chapter_map_sha256(chapter_map)
 
-    resolved, capabilities, capability_warnings = resolve_engine(
-        engine_requested, spacy_model
-    )
+    runtime = _resolve_engine_runtime(engine_requested, spacy_model, source_language)
+    resolved = runtime.resolved
+    capabilities = runtime.capabilities
+    capability_warnings = runtime.warnings
 
     prepared = prepare_records(chunks, chapter_by_record)
     raw_sources = [record.source for chunk in chunks for record in chunk.records]
     common = common_word_set(source_language)
 
     warnings: list[str] = []
+    warnings.extend(runtime.warnings)
     if not common:
         warnings.append(
             f"no bundled common-word list for source language '{source_language}'; "
@@ -1237,6 +1484,14 @@ def build_source_analysis(
     _detect_phrases(
         prepared, source_language, common, min_count, ngram_max, accum_by_id
     )
+    if runtime.nlp is not None:
+        _enrich_with_spacy(
+            prepared,
+            source_language=source_language,
+            nlp=runtime.nlp,
+            capabilities=capabilities,
+            accum_by_id=accum_by_id,
+        )
 
     # Apply min_count + scoring, then global --top after merging.
     scored: list[tuple[_Accum, float]] = []
@@ -1264,9 +1519,9 @@ def build_source_analysis(
     settings = SourceAnalysisSettings(
         engine_requested=engine_requested,  # type: ignore[arg-type]
         engine_resolved=resolved,
-        spacy_model=spacy_model,
-        spacy_version=None,
-        model_version=None,
+        spacy_model=runtime.model_name,
+        spacy_version=runtime.spacy_version,
+        model_version=runtime.model_version,
         min_count=min_count,
         ngram_max=ngram_max,
         top=top,

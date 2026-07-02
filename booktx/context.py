@@ -106,6 +106,10 @@ class GlossaryEntry(BaseModel):
     examples: list[str] = Field(default_factory=list)
     case_sensitive: bool = False
     enforce: Literal["off", "warn", "error"] = "warn"
+    origin: Literal[
+        "core", "seed", "agent_review", "user", "legacy", "imported", "source_analysis"
+    ] = "user"
+    source_analysis_candidate_id: str | None = None
 
 
 class ContextQuestion(BaseModel):
@@ -123,7 +127,10 @@ class ContextQuestion(BaseModel):
     answer: str | None = None
     status: Literal["open", "recommended", "answered", "skipped"] = "open"
     required: bool = True
-    origin: Literal["core", "seed", "agent_review", "user", "legacy"] = "core"
+    origin: Literal[
+        "core", "seed", "agent_review", "user", "legacy", "source_analysis"
+    ] = "core"
+    source_analysis_candidate_ids: list[str] = Field(default_factory=list)
     recommendation: str | None = None
     recommendation_reason: str = ""
     recommendation_source: str = ""
@@ -679,6 +686,14 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
     def _approved(entry: GlossaryEntry) -> str:
         return entry.target if entry.target else "<open>"
 
+    def _notes(entry: GlossaryEntry) -> str:
+        prefix = (
+            "[source-analysis recommendation; not approved] "
+            if entry.origin == "source_analysis" and entry.status == "open"
+            else ""
+        )
+        return prefix + entry.notes
+
     lines: list[str] = []
     lines += [
         "## Binding glossary",
@@ -694,7 +709,7 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
                 f" {str(entry.require_target).lower()} |"
                 f" {_escape_cell(_forbidden(entry))} |"
                 f" {entry.enforce} | {entry.status} |"
-                f" {_escape_cell(entry.notes or '')} |"
+                f" {_escape_cell(_notes(entry))} |"
             )
     else:
         lines.append(
@@ -713,7 +728,7 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
                 f"| {_escape_cell(entry.source)} | {_escape_cell(_approved(entry))} |"
                 " advisory only, approved target not required |"
                 f" {entry.enforce} | {entry.status} |"
-                f" {_escape_cell(entry.notes or '')} |"
+                f" {_escape_cell(_notes(entry))} |"
             )
     else:
         lines.append("| _(no advisory glossary entries)_ | | | | | |")
@@ -736,7 +751,7 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
                 f"| {_escape_cell(entry.source)} | {_escape_cell(_approved(entry))} |"
                 f" {str(entry.require_target).lower()} |"
                 f" {_escape_cell(_forbidden(entry))} |"
-                f" {entry.status} | {_escape_cell(entry.notes or '')} |"
+                f" {entry.status} | {_escape_cell(_notes(entry))} |"
             )
     else:
         lines.append("| _(no disabled glossary rules)_ | | | | | |")
@@ -757,10 +772,15 @@ def _render_questions_section(questions: list[ContextQuestion]) -> list[str]:
         lines += ["## Recommended questions", ""]
         for q in recommended:
             rec = q.recommendation or ""
+            origin = (
+                " [source-analysis recommendation; not approved]"
+                if q.origin == "source_analysis"
+                else ""
+            )
             reason = (
                 f" Reason: {q.recommendation_reason}" if q.recommendation_reason else ""
             )
-            lines.append(f"- {q.id}: {q.question} -> {rec}{reason}")
+            lines.append(f"- {q.id}: {q.question} -> {rec}{origin}{reason}")
         lines.append("")
     answered = [q for q in questions if q.status == "answered"]
     if answered:

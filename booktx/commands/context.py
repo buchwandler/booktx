@@ -32,6 +32,12 @@ from booktx.context_sync import ContextSyncPlan
 from booktx.errors import BooktxError
 from booktx.path_display import display_path
 from booktx.runtime import RuntimeContext
+from booktx.source_analysis import read_canonical_report
+from booktx.source_analysis_context import (
+    compatible_prefill_profiles,
+    prefill_contexts,
+    promote_candidate,
+)
 from booktx.workflows.context import (
     add_or_update_term_workflow,
     add_question_workflow,
@@ -62,6 +68,121 @@ from booktx.workflows.context import (
 )
 
 context_app = typer.Typer(help="Build, inspect, and render translation context.")
+
+
+@context_app.command(name="prefill")
+def context_prefill(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    profile: str | None = typer.Option(None, "--profile", help="Target profile."),
+    from_source_analysis: bool = typer.Option(
+        False,
+        "--from-source-analysis",
+        help="Use canonical source-analysis evidence.",
+    ),
+    all_compatible: bool = typer.Option(
+        False, "--all-compatible", help="Prefill all compatible profiles."
+    ),
+    write: bool = typer.Option(False, "--write", help="Commit planned changes."),
+) -> None:
+    """Prefill open context recommendations (dry run by default)."""
+    if not from_source_analysis:
+        _die("--from-source-analysis is required")
+    if (profile is None) == (not all_compatible):
+        _die("pass exactly one of --profile or --all-compatible")
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    if runtime.mode.isolated_output:
+        _die("context prefill is a project-root command")
+    report = read_canonical_report(runtime.project)
+    if report is None:
+        _die("no canonical source analysis; run `booktx source analyze . --write`")
+    assert report is not None
+    profiles = (
+        compatible_prefill_profiles(runtime.project)
+        if all_compatible
+        else [profile or ""]
+    )
+    try:
+        result = prefill_contexts(
+            runtime.project,
+            report,
+            profiles=profiles,
+            write=write,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    for item in result.profiles:
+        state = "error" if item.error else ("written" if item.written else "planned")
+        console.print(
+            f"{item.profile}: {state} add={item.added} update={item.updated} "
+            f"skip={item.skipped} conflict={item.conflicts}"
+        )
+        if item.error:
+            console.print(f"  error: {item.error}")
+    if result.blocked:
+        _die("prefill preflight/write failed; inspect profile results above")
+    if not write:
+        console.print("Dry run. Re-run with --write to apply.")
+
+
+@context_app.command(name="promote-candidate")
+def context_promote_candidate(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    candidate_id: str = typer.Argument(..., help="Stable candidate id."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    category: str | None = typer.Option(None, "--category", help="Glossary category."),
+    target: str | None = typer.Option(
+        None, "--target", help="Explicit target decision."
+    ),
+    forbid: list[str] | None = typer.Option(
+        None, "--forbid", help="Explicit forbidden target. Repeatable."
+    ),
+    require_target: bool = typer.Option(
+        False, "--require-target", help="Require an explicit target form."
+    ),
+    enforce: str = typer.Option("warn", "--enforce", help="off, warn, or error."),
+    as_question: bool = typer.Option(
+        False, "--as-question", help="Promote to a recommended question."
+    ),
+    promoted_by: str = typer.Option(
+        "cli", "--promoted-by", help="Promotion provenance."
+    ),
+    write: bool = typer.Option(False, "--write", help="Commit the promotion."),
+) -> None:
+    """Promote one source-analysis candidate (dry run by default)."""
+    if enforce not in {"off", "warn", "error"}:
+        _die("--enforce must be off, warn, or error")
+    if as_question and (target or forbid or require_target):
+        _die("--as-question conflicts with glossary binding options")
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    if runtime.mode.isolated_output:
+        _die("context promote-candidate is a project-root command")
+    report = read_canonical_report(runtime.project)
+    if report is None:
+        _die("no canonical source analysis; run `booktx source analyze . --write`")
+    assert report is not None
+    try:
+        context_ref, _ = promote_candidate(
+            runtime.project,
+            report,
+            profile=profile,
+            candidate_id=candidate_id,
+            category=category,
+            target=target,
+            forbidden_targets=forbid or [],
+            require_target=require_target,
+            enforce=enforce,  # type: ignore[arg-type]
+            as_question=as_question,
+            promoted_by=promoted_by,
+            write=write,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(
+        f"{'promoted' if write else 'would promote'} {candidate_id} "
+        f"to {profile}:{context_ref}"
+    )
 
 
 def _validate_origin(origin: str) -> None:

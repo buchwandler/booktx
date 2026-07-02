@@ -164,6 +164,7 @@ __all__ = [
     "translation_source_target_index_path",
     "source_analysis_path",
     "source_analysis_markdown_path",
+    "source_analysis_decisions_path",
     "profile_source_analysis_path",
     "profile_source_analysis_markdown_path",
     "context_sync_ledger_path",
@@ -1184,6 +1185,11 @@ def source_analysis_markdown_path(project: Project) -> Path:
     report; never authoritative.
     """
     return project.booktx_dir / "source-analysis.md"
+
+
+def source_analysis_decisions_path(project: Project) -> Path:
+    """Project-root durable source-analysis review/provenance sidecar."""
+    return project.booktx_dir / "source-analysis-decisions.json"
 
 
 def profile_source_analysis_path(project: Project) -> Path:

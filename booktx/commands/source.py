@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from booktx.source_analysis import SourceAnalysisReport
@@ -25,6 +25,8 @@ from booktx.cli_support import (
     console,
 )
 from booktx.errors import BooktxError
+from booktx.source_analysis import read_canonical_report
+from booktx.source_analysis_context import set_disposition
 from booktx.workflows.source import (
     analyze_source,
     build_source_status_payload,
@@ -305,3 +307,76 @@ def source_analysis_cmd(
         )
     else:
         _print_analysis_human(report, stale=read.stale, hint=read.hint)
+
+
+def _candidate_disposition_command(
+    project_dir: Path,
+    candidate_id: str,
+    *,
+    disposition: Literal["ignored", "reviewed"],
+    reason: str,
+    decided_by: str,
+    write: bool,
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    if runtime.mode.isolated_output:
+        _die(f"source {disposition} is a project-root command")
+    report = read_canonical_report(runtime.project)
+    if report is None:
+        _die("no canonical source analysis; run `booktx source analyze . --write`")
+    assert report is not None
+    try:
+        decision, changed = set_disposition(
+            runtime.project,
+            report,
+            candidate_id=candidate_id,
+            disposition=disposition,
+            reason=reason,
+            decided_by=decided_by,
+            write=write,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(
+        f"{'would write' if not write else 'wrote'} {decision.disposition} "
+        f"decision for {decision.candidate_id}; changed={str(changed).lower()}"
+    )
+
+
+@source_app.command(name="ignore-candidate")
+def source_ignore_candidate_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    candidate_id: str = typer.Argument(..., help="Stable candidate id."),
+    reason: str = typer.Option("", "--reason", help="Review rationale."),
+    decided_by: str = typer.Option("cli", "--decided-by", help="Decision provenance."),
+    write: bool = typer.Option(False, "--write", help="Persist the decision."),
+) -> None:
+    """Ignore one source candidate (dry run by default)."""
+    _candidate_disposition_command(
+        project_dir,
+        candidate_id,
+        disposition="ignored",
+        reason=reason,
+        decided_by=decided_by,
+        write=write,
+    )
+
+
+@source_app.command(name="review-candidate")
+def source_review_candidate_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    candidate_id: str = typer.Argument(..., help="Stable candidate id."),
+    reason: str = typer.Option("", "--reason", help="Review rationale."),
+    decided_by: str = typer.Option("cli", "--decided-by", help="Decision provenance."),
+    write: bool = typer.Option(False, "--write", help="Persist the decision."),
+) -> None:
+    """Mark one source candidate reviewed (dry run by default)."""
+    _candidate_disposition_command(
+        project_dir,
+        candidate_id,
+        disposition="reviewed",
+        reason=reason,
+        decided_by=decided_by,
+        write=write,
+    )

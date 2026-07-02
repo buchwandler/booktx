@@ -41,6 +41,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+analysis = [
+    "spacy>=3.7,<4",
+]
 dev = [
     "build",
     "pytest",
