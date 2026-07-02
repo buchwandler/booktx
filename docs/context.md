@@ -38,9 +38,13 @@ booktx context doctor ./book --profile PROFILE --write-report reports/context-or
 
 Single-profile doctor works in project-root and isolated profile-root mode.
 `--compare-profiles` is a same-book cross-profile workflow and is rejected in
-isolated profile-root mode. Doctor does not mutate context. It reports issues
+isolated profile-root mode. Cross-profile comparison skips non-translation
+profiles and compares only profiles with compatible source language, target
+language, and target locale. Doctor does not mutate context. It reports issues
 such as Q006 arrow terms, chapter-note terminology candidates, advisory entries
-that look binding, and sibling profile glossary drift.
+that look binding, and sibling profile glossary drift. Report files must not be
+written under `/tmp`. In isolated profile-root mode report paths must be
+profile-local relative paths, for example `reports/context-organization-report.md`.
 
 `context render` supports explicit views:
 
@@ -50,10 +54,11 @@ booktx context render ./book --profile PROFILE --view effective --stdout
 booktx context render ./book --profile PROFILE --view provenance --stdout
 ```
 
-The default remains `full` for compatibility. Use `effective` to inspect a
-cleaner agent prompt that omits answered setup questions and treats chapter
-decisions as candidates rather than current policy. Use `provenance` to audit
-setup answers and chapter decisions.
+The default remains `full` for compatibility and it is the only view that can
+be written to `context.md`. Use `effective --stdout` to inspect a cleaner agent
+prompt that omits answered setup questions and treats chapter decisions as
+continuity memory, not current terminology policy. Use `provenance --stdout`
+to audit setup answers and chapter decisions.
 
 ## Same-book multi-profile context sync
 

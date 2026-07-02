@@ -171,6 +171,25 @@ Do not hand-edit `context.md` for chapter notes during normal operation. Use
 `booktx context chapter-note`. If `context.md` already has manual notes, run
 `booktx context import-md . --profile PROFILE --write` before validating.
 
+`context.json` is the source of truth. Structured style, glossary/name policy,
+and global rules are active policy. Setup questions and chapter notes are
+provenance unless promoted with context commands. Use `booktx context doctor`
+to find hidden or duplicated policy before cleanup:
+
+```bash
+booktx context doctor . --profile PROFILE
+booktx context doctor . --profile PROFILE --json
+booktx context doctor . --compare-profiles --json
+```
+
+Single-profile doctor is allowed in isolated profile-root mode. Cross-profile
+doctor is blocked there. In isolated profile-root mode, report paths must be
+profile-local relative paths, such as `reports/context-organization-report.md`.
+
+Use `booktx context render . --profile PROFILE --view effective --stdout` to
+inspect the cleaner agent prompt. Only the default `full` view is written to
+`context.md`; do not write effective or provenance views as `context.md`.
+
 Typical context initialization:
 
 ```bash

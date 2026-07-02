@@ -403,10 +403,17 @@ def _doctor_report_path(
     runtime: RuntimeContext, path: Path | None, compare: bool
 ) -> Path:
     if path is not None:
+        if runtime.mode.isolated_output:
+            if path.is_absolute() or ".." in path.parts:
+                raise ValueError(
+                    "isolated profile-root report paths must be profile-local "
+                    "relative paths"
+                )
+            if runtime.mode.profile_root is None:
+                raise ValueError("isolated profile-root is unavailable")
+            return runtime.mode.profile_root / path
         if path.is_absolute():
             return path
-        if runtime.mode.isolated_output and runtime.mode.profile_root is not None:
-            return runtime.mode.profile_root / path
         return runtime.mode.project_root / path
     if compare:
         return (

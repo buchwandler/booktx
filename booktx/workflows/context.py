@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from booktx.config import _err, list_profiles, load_project
+from booktx.config import _err, list_profiles, load_profile_config, load_project
 from booktx.context import (
     ChapterContext,
     ContextMarkdownDrift,
@@ -46,7 +46,7 @@ from booktx.context import (
 from booktx.context_organization import (
     ContextOrganizationIssue,
     audit_context_organization,
-    compare_profile_contexts,
+    compare_compatible_profile_contexts,
     render_context_organization_report,
     safe_report_path,
 )
@@ -371,6 +371,12 @@ def render_context_command(
     rendered = render_context_markdown(ctx, view=view)  # type: ignore[arg-type]
     if stdout:
         return {"kind": "stdout", "rendered": rendered}
+    if write and view != "full":
+        raise _err(
+            "context_render_view_write",
+            "only --view full can be written to context.md; use --stdout for "
+            "effective or provenance views",
+        )
     md_path = context_markdown_path(proj)
     drift = analyze_context_markdown_drift(proj, ctx)
     matches = bool(
@@ -1159,7 +1165,11 @@ def context_doctor_workflow(
     """Audit one context or compare all profile contexts without mutation."""
     if compare_profiles:
         contexts: dict[str, TranslationContext] = {}
+        profile_groups: dict[str, str] = {}
         for profile in list_profiles(runtime.mode.project_root):
+            profile_cfg = load_profile_config(runtime.mode.project_root, profile)
+            if profile_cfg.kind != "translation":
+                continue
             project = load_project(
                 runtime.mode.project_root,
                 profile=profile,
@@ -1168,7 +1178,12 @@ def context_doctor_workflow(
             context = load_context(project)
             if context is not None:
                 contexts[profile] = context
-        return compare_profile_contexts(contexts)
+                locale = profile_cfg.target_locale or profile_cfg.target_language
+                profile_groups[profile] = (
+                    f"{profile_cfg.source_language}:{profile_cfg.target_language}:"
+                    f"{locale}"
+                )
+        return compare_compatible_profile_contexts(contexts, profile_groups)
 
     context = load_context_or_die(runtime.project)
     markdown_path = context_markdown_path(runtime.project)

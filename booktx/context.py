@@ -650,6 +650,18 @@ def _render_header(context: TranslationContext) -> list[str]:
     return lines
 
 
+def _render_effective_source_truth_section() -> list[str]:
+    return [
+        "## Source of truth",
+        "",
+        "- This effective view is a prompt surface derived from context.json.",
+        "- Structured style, glossary/name policy, and global rules are active policy.",
+        "- Setup questions and chapter decisions are provenance unless promoted "
+        "with context commands.",
+        "",
+    ]
+
+
 def _render_style_section(style: StyleProfile) -> list[str]:
     dialogue_default = "natural dialogue, preserve character voice"
     lines = [
@@ -838,9 +850,17 @@ def _render_agent_rules_section() -> list[str]:
 
 
 def _render_effective_chapter_memory(chapters: list[ChapterContext]) -> list[str]:
+    lines = [
+        "## Chapter memory",
+        "",
+        "Chapter memory is continuity context only. It is not terminology or "
+        "name policy.",
+        "",
+    ]
     if not chapters:
-        return []
-    lines = ["## Chapter memory", ""]
+        lines.append("_(no chapter memory yet)_")
+        lines.append("")
+        return lines
     has_decisions = False
     for ch in chapters:
         title = f" — {ch.title}" if ch.title else ""
@@ -874,6 +894,8 @@ def render_context_markdown(
     """
     lines: list[str] = []
     lines.extend(_render_header(context))
+    if view == "effective":
+        lines.extend(_render_effective_source_truth_section())
     if view == "provenance":
         lines.extend(_render_questions_section(context.questions))
         lines.extend(_render_chapter_notes_section(context.chapter_contexts))

@@ -19,9 +19,6 @@ STYLE_QUESTION_IDS = {"Q001", "Q002", "Q003", "Q004", "Q010", "Q011"}
 TERM_QUESTION_IDS = {"Q005", "Q006"}
 LEGACY_LAYOUT_MARKERS = (
     "## Answered questions",
-    "## Binding glossary",
-    "## Advisory glossary",
-    "## Disabled glossary rules",
     "## Mandatory glossary",
 )
 
@@ -242,10 +239,12 @@ def compare_profile_contexts(
 ) -> list[ContextOrganizationIssue]:
     """Return report-only cross-profile organization issues."""
     issues: list[ContextOrganizationIssue] = []
+    profiles = sorted(contexts)
     sources_by_profile: dict[str, dict[str, GlossaryEntry]] = {}
     display_source: dict[str, str] = {}
 
-    for profile, ctx in contexts.items():
+    for profile in profiles:
+        ctx = contexts[profile]
         entries: dict[str, GlossaryEntry] = {}
         for entry in ctx.glossary:
             key = _norm(entry.source)
@@ -253,9 +252,58 @@ def compare_profile_contexts(
             display_source.setdefault(key, entry.source)
         sources_by_profile[profile] = entries
 
-    all_sources = sorted(display_source)
-    profiles = sorted(contexts)
-    for source_key in all_sources:
+    issues.extend(
+        _compare_profile_context_group(
+            profiles=profiles,
+            sources_by_profile=sources_by_profile,
+            display_source=display_source,
+        )
+    )
+    return issues
+
+
+def compare_compatible_profile_contexts(
+    contexts: Mapping[str, TranslationContext],
+    profile_groups: Mapping[str, str],
+) -> list[ContextOrganizationIssue]:
+    """Compare profile contexts only inside caller-provided compatibility groups."""
+    issues: list[ContextOrganizationIssue] = []
+    grouped: dict[str, list[str]] = {}
+    for profile in sorted(contexts):
+        group = profile_groups.get(profile)
+        if group is not None:
+            grouped.setdefault(group, []).append(profile)
+
+    for profiles in grouped.values():
+        if len(profiles) < 2:
+            continue
+        sources_by_profile: dict[str, dict[str, GlossaryEntry]] = {}
+        display_source: dict[str, str] = {}
+        for profile in profiles:
+            entries: dict[str, GlossaryEntry] = {}
+            for entry in contexts[profile].glossary:
+                key = _norm(entry.source)
+                entries[key] = entry
+                display_source.setdefault(key, entry.source)
+            sources_by_profile[profile] = entries
+        issues.extend(
+            _compare_profile_context_group(
+                profiles=profiles,
+                sources_by_profile=sources_by_profile,
+                display_source=display_source,
+            )
+        )
+    return issues
+
+
+def _compare_profile_context_group(
+    *,
+    profiles: list[str],
+    sources_by_profile: Mapping[str, Mapping[str, GlossaryEntry]],
+    display_source: Mapping[str, str],
+) -> list[ContextOrganizationIssue]:
+    issues: list[ContextOrganizationIssue] = []
+    for source_key in sorted(display_source):
         present = [p for p in profiles if source_key in sources_by_profile[p]]
         missing = [p for p in profiles if source_key not in sources_by_profile[p]]
         if present and missing:
@@ -307,7 +355,6 @@ def compare_profile_contexts(
                         ),
                     )
                 )
-
     return issues
 
 

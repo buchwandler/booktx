@@ -8,6 +8,7 @@ from booktx.context import (
 )
 from booktx.context_organization import (
     audit_context_organization,
+    compare_compatible_profile_contexts,
     compare_profile_contexts,
     render_context_organization_report,
 )
@@ -119,6 +120,20 @@ def test_cross_profile_target_divergence_reported():
     assert "profile_glossary_target_divergence" in _codes(issues)
 
 
+def test_compatible_profile_comparison_skips_other_groups():
+    contexts = {
+        "de_a": _ctx(glossary=[GlossaryEntry(source="empire", target="Imperium")]),
+        "de_b": _ctx(),
+        "fr_a": _ctx(),
+    }
+    groups = {"de_a": "en:de:de", "de_b": "en:de:de", "fr_a": "en:fr:fr"}
+
+    issues = compare_compatible_profile_contexts(contexts, groups)
+
+    assert "profile_missing_glossary_term" in _codes(issues)
+    assert {issue.profile for issue in issues} == {"de_b"}
+
+
 def test_legacy_render_layout_reported_and_markdown_report_renders():
     ctx = _ctx()
 
@@ -130,3 +145,13 @@ def test_legacy_render_layout_reported_and_markdown_report_renders():
     assert "context_markdown_uses_legacy_layout" in _codes(issues)
     assert "# Context organization report" in report
     assert "context_markdown_uses_legacy_layout" in report
+
+
+def test_current_glossary_headings_do_not_trigger_legacy_layout_issue():
+    ctx = _ctx()
+
+    issues = audit_context_organization(
+        ctx, rendered_markdown="## Binding glossary\n## Advisory glossary\n"
+    )
+
+    assert "context_markdown_uses_legacy_layout" not in _codes(issues)

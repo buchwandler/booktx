@@ -1369,6 +1369,50 @@ def test_context_doctor_compare_profiles_rejected_in_isolated_mode(
     assert "isolated profile-root mode" in res.output
 
 
+def test_context_doctor_isolated_write_report_rejects_unsafe_paths(
+    tmp_path: Path, monkeypatch
+):
+    project_dir = _make_sync_project(tmp_path)
+    profile = "de_source"
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            profile,
+            "--non-interactive",
+        ],
+    )
+    profile_dir = project_dir / "translations" / profile
+    monkeypatch.chdir(profile_dir)
+
+    absolute = runner.invoke(
+        app, ["context", "doctor", ".", "--write-report", str(tmp_path / "report.md")]
+    )
+    parent = runner.invoke(
+        app, ["context", "doctor", ".", "--write-report", "../report.md"]
+    )
+
+    assert absolute.exit_code == 1
+    assert "profile-local relative paths" in absolute.output
+    assert parent.exit_code == 1
+    assert "profile-local relative paths" in parent.output
+
+
+def test_context_doctor_write_report_rejects_tmp_path(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+
+    res = runner.invoke(
+        app, ["context", "doctor", str(project_dir), "--write-report", "/tmp/report.md"]
+    )
+
+    assert res.exit_code == 1
+    assert "must not be written under /tmp" in res.output
+
+
 def test_context_doctor_write_report_uses_safe_location(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
@@ -1393,6 +1437,52 @@ def test_context_doctor_write_report_uses_safe_location(tmp_path: Path):
         report.unlink(missing_ok=True)
 
 
+def test_context_doctor_compare_profiles_skips_incompatible_targets(tmp_path: Path):
+    project_dir = _make_sync_project(tmp_path)
+    create_profile(project_dir, "fr_profile", target_language="fr")
+    for profile in ("de_source", "de_flash", "fr_profile"):
+        res = runner.invoke(
+            app,
+            [
+                "context",
+                "init",
+                str(project_dir),
+                "--profile",
+                profile,
+                "--non-interactive",
+            ],
+        )
+        assert res.exit_code == 0, res.output
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "empire",
+            "--profile",
+            "de_source",
+            "--target",
+            "Imperium",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+    doctor = runner.invoke(
+        app, ["context", "doctor", str(project_dir), "--compare-profiles", "--json"]
+    )
+
+    assert doctor.exit_code == 0, doctor.output
+    payload = json.loads(doctor.output)
+    missing_profiles = {
+        issue["profile"]
+        for issue in payload["issues"]
+        if issue["code"] == "profile_missing_glossary_term"
+    }
+    assert "de_flash" in missing_profiles
+    assert "fr_profile" not in missing_profiles
+
+
 def test_context_render_effective_view_omits_answered_questions(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
@@ -1411,3 +1501,29 @@ def test_context_render_effective_view_omits_answered_questions(tmp_path: Path):
     assert "## Answered questions" in full.output
     assert "## Answered questions" not in effective.output
     assert "## Style" in effective.output
+    assert "## Source of truth" in effective.output
+    assert "Chapter memory is continuity context only" in effective.output
+
+
+def test_context_render_effective_write_is_rejected(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+
+    res = runner.invoke(
+        app, ["context", "render", str(project_dir), "--view", "effective", "--write"]
+    )
+
+    assert res.exit_code == 1
+    assert "only --view full can be written" in res.output
+
+
+def test_context_render_invalid_view_is_rejected(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+
+    res = runner.invoke(
+        app, ["context", "render", str(project_dir), "--view", "compact", "--stdout"]
+    )
+
+    assert res.exit_code == 1
+    assert "--view must be one of full, effective, or provenance" in res.output
