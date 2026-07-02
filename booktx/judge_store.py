@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from booktx.config import Project, _err, load_profile_project, load_translation_store
+from booktx.context import TranslationContext
 from booktx.models import JudgeTaskCandidate, JudgeTaskFinding, Record, TranslatedRecord
 from booktx.translation_store import (
     EffectiveCandidateError,
@@ -136,7 +137,7 @@ def record_has_candidate_gap(
 def collect_source_candidates(
     *,
     selection_project: Project,
-    selection_context: object | None,
+    selection_context: TranslationContext | None,
     source_projects: dict[str, Project],
     source_record: Record,
     chunk_id: str,

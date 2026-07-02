@@ -19,6 +19,7 @@ from booktx.config import (
     write_translation_selection_ledger,
     write_translation_store,
 )
+from booktx.context import TranslationContext
 from booktx.glossary_match import (
     applicable_entry_indexes,
     contains_term,
@@ -30,6 +31,8 @@ from booktx.models import (
     JudgeDecision,
     JudgeTask,
     JudgeTaskCandidate,
+    JudgeTaskRecord,
+    Record,
     TranslatedRecord,
 )
 from booktx.translation_store import (
@@ -177,11 +180,11 @@ def _error_findings(findings: list[Finding]) -> list[Finding]:
 
 
 def _binding_glossary_findings(
-    source_record: object,
+    source_record: Record,
     *,
     target_text: str,
     chunk_id: str,
-    context: object | None,
+    context: TranslationContext | None,
 ) -> list[Finding]:
     if context is None:
         return []
@@ -207,8 +210,11 @@ def _binding_glossary_findings(
                     )
                 )
         if entry.require_target and not target_contains_approved(target_text, entry):
-            approved = [entry.target, *entry.target_variants]
-            approved = [item for item in approved if item]
+            approved = [
+                item
+                for item in [entry.target, *entry.target_variants]
+                if item is not None
+            ]
             findings.append(
                 Finding(
                     chunk_id=chunk_id,
@@ -267,8 +273,10 @@ def _validate_task_evidence(project: Project, task: JudgeTask) -> None:
             )
 
 
-def _candidate_for_label(task_record: object, label: str) -> JudgeTaskCandidate | None:
-    for candidate in getattr(task_record, "candidates", []):
+def _candidate_for_label(
+    task_record: JudgeTaskRecord, label: str
+) -> JudgeTaskCandidate | None:
+    for candidate in task_record.candidates:
         if candidate.label == label:
             return candidate
     return None

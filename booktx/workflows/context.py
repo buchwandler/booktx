@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from booktx.config import _err
+from booktx.config import _err, list_profiles, load_project
 from booktx.context import (
     ChapterContext,
     ContextMarkdownDrift,
@@ -42,6 +42,13 @@ from booktx.context import (
     upsert_chapter_context,
     write_context,
     write_context_markdown,
+)
+from booktx.context_organization import (
+    ContextOrganizationIssue,
+    audit_context_organization,
+    compare_profile_contexts,
+    render_context_organization_report,
+    safe_report_path,
 )
 from booktx.context_packs import (
     ContextPackError,
@@ -1146,6 +1153,43 @@ def import_md_workflow(
     }
 
 
+def context_doctor_workflow(
+    runtime: RuntimeContext, *, compare_profiles: bool
+) -> list[ContextOrganizationIssue]:
+    """Audit one context or compare all profile contexts without mutation."""
+    if compare_profiles:
+        contexts: dict[str, TranslationContext] = {}
+        for profile in list_profiles(runtime.mode.project_root):
+            project = load_project(
+                runtime.mode.project_root,
+                profile=profile,
+                require_profile=True,
+            )
+            context = load_context(project)
+            if context is not None:
+                contexts[profile] = context
+        return compare_profile_contexts(contexts)
+
+    context = load_context_or_die(runtime.project)
+    markdown_path = context_markdown_path(runtime.project)
+    rendered = markdown_path.read_text("utf-8") if markdown_path.is_file() else None
+    return audit_context_organization(
+        context,
+        profile=runtime.project.profile,
+        rendered_markdown=rendered,
+    )
+
+
+def write_context_doctor_report(
+    path: Path, issues: list[ContextOrganizationIssue]
+) -> None:
+    """Validate and atomically write a generated organization report."""
+    from booktx.io_utils import write_text_atomic
+
+    safe_report_path(path)
+    write_text_atomic(path, render_context_organization_report(issues))
+
+
 def upsert_chapter_note_workflow(
     proj: Project,
     ctx: TranslationContext,
@@ -1208,6 +1252,7 @@ __all__ = [
     "build_context_status_payload",
     "context_pack_import_has_failures",
     "context_pack_import_payload",
+    "context_doctor_workflow",
     "context_sync_workflow",
     "export_context_pack_workflow",
     "import_context_pack_workflow",
@@ -1224,4 +1269,5 @@ __all__ = [
     "reset_term_workflow",
     "upsert_chapter_note_workflow",
     "write_audit_blocks",
+    "write_context_doctor_report",
 ]

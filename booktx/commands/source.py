@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from booktx.source_analysis import SourceAnalysisReport
 
 import typer
 
@@ -22,9 +26,11 @@ from booktx.cli_support import (
 )
 from booktx.errors import BooktxError
 from booktx.workflows.source import (
+    analyze_source,
     build_source_status_payload,
     collect_chapter_records,
     find_source_record,
+    read_source_analysis,
 )
 
 source_app = typer.Typer(help="Inspect brokered source records without path leaks.")
@@ -134,3 +140,168 @@ def source_chapter_cmd(
             console.print(item["source"])
             if item != records[-1]:
                 console.print()
+
+
+def _validate_analysis_format(output_format: str) -> None:
+    if output_format not in {"human", "json"}:
+        _die("--format must be human or json")
+
+
+def _print_analysis_human(
+    report: SourceAnalysisReport,
+    *,
+    stale: bool = False,
+    hint: str = "",
+) -> None:
+    caps = report.capabilities
+    cap_names = [
+        name
+        for name, on in (
+            ("tokenizer", caps.tokenizer),
+            ("sentence_boundaries", caps.sentence_boundaries),
+            ("lemmatizer", caps.lemmatizer),
+            ("pos", caps.pos),
+            ("parser", caps.parser),
+            ("noun_chunks", caps.noun_chunks),
+            ("ner", caps.ner),
+        )
+        if on
+    ]
+    console.print(f"source language: {report.source_language}")
+    console.print(f"engine: {report.settings.engine_resolved}")
+    console.print(f"capabilities: {', '.join(cap_names) or '(none)'}")
+    console.print(f"records: {report.record_count}")
+    console.print(f"chapters: {report.chapter_count}")
+    console.print(f"candidates: {len(report.candidates)}")
+    console.print(f"analysis sha256: {report.analysis_sha256}")
+    if stale:
+        console.print(f"[yellow]stale:[/yellow] {hint}")
+    if report.warnings:
+        console.print("warnings:")
+        for warning in report.warnings:
+            console.print(f"  - {warning}")
+    if report.candidates:
+        console.print("top candidates:")
+        for cand in report.candidates[:10]:
+            console.print(
+                f"  {cand.id} {cand.text!r} kind={cand.kind} "
+                f"count={cand.count} chapters={cand.chapter_frequency} "
+                f"action={cand.suggested_context_action}"
+            )
+
+
+@source_app.command(name="analyze")
+def source_analyze_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory (project root)."),
+    engine: str = typer.Option(
+        "auto", "--engine", help="Analysis engine: auto, spacy, or simple."
+    ),
+    spacy_model: str | None = typer.Option(
+        None, "--spacy-model", help="Explicit spaCy model."
+    ),
+    top: int = typer.Option(200, "--top", help="Global candidate limit after merging."),
+    min_count: int = typer.Option(2, "--min-count", help="Minimum corpus count."),
+    ngram_max: int = typer.Option(
+        4, "--ngram-max", help="Maximum phrase length (1..4)."
+    ),
+    include_common: bool = typer.Option(
+        False, "--include-common", help="Include common words as candidates."
+    ),
+    output_format: str = typer.Option(
+        "human", "--format", help="Output format: human or json."
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Write canonical JSON and Markdown."
+    ),
+    sync_profiles: bool = typer.Option(
+        False,
+        "--sync-profiles",
+        help="Refresh all profile snapshots (requires --write).",
+    ),
+) -> None:
+    """Analyze extracted source evidence (project root only; dry run by default)."""
+    if engine not in {"auto", "spacy", "simple"}:
+        _die("--engine must be auto, spacy, or simple")
+    _validate_analysis_format(output_format)
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    # Analyze/write/sync are collaborative project-root workflows.
+    if runtime.mode.isolated_output:
+        _die("source analyze is a project-root command; run it from the project root.")
+    proj = runtime.project
+    try:
+        result = analyze_source(
+            proj,
+            engine_requested=engine,
+            spacy_model=spacy_model,
+            min_count=min_count,
+            ngram_max=ngram_max,
+            top=top,
+            include_common=include_common,
+            write=write,
+            sync_profiles=sync_profiles,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    report = result.report
+    if output_format == "json":
+        payload = report.model_dump(by_alias=True, mode="json")
+        if write:
+            payload["_written"] = {
+                "canonical_json": result.canonical_json_written,
+                "canonical_md": result.canonical_md_written,
+                "synced_profiles": result.refreshed_profiles,
+            }
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    else:
+        _print_analysis_human(report)
+        if write:
+            console.print(f"canonical json written: {result.canonical_json_written}")
+            console.print(f"canonical markdown written: {result.canonical_md_written}")
+            if result.canonical_md_error:
+                console.print(f"[red]markdown error:[/red] {result.canonical_md_error}")
+            if sync_profiles:
+                console.print(f"snapshots refreshed: {len(result.refreshed_profiles)}")
+                for sync in result.synced:
+                    mark = "ok" if sync.json_written and not sync.error else "FAIL"
+                    console.print(f"  [{mark}] {sync.profile}")
+    if write and sync_profiles and result.failed_syncs:
+        failed = ", ".join(s.profile for s in result.failed_syncs)
+        _die(
+            f"source-analysis snapshot sync failed for profile(s): {failed}; "
+            f"{len(result.refreshed_profiles)} snapshot(s) refreshed."
+        )
+
+
+@source_app.command(name="analysis")
+def source_analysis_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
+    output_format: str = typer.Option(
+        "human", "--format", help="Output format: human or json."
+    ),
+) -> None:
+    """Read source-analysis evidence (canonical or current profile snapshot)."""
+    _validate_analysis_format(output_format)
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    proj = runtime.project
+    try:
+        read = read_source_analysis(proj, isolated=runtime.mode.isolated_output)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if read.missing:
+        _die(read.hint or "no source-analysis evidence found")
+        return
+    if read.report is not None:
+        report = read.report
+    else:
+        assert read.snapshot is not None
+        report = read.snapshot.report
+    if output_format == "json":
+        console.print_json(
+            json.dumps(
+                report.model_dump(by_alias=True, mode="json"), ensure_ascii=False
+            )
+        )
+    else:
+        _print_analysis_human(report, stale=read.stale, hint=read.hint)

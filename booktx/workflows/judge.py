@@ -25,7 +25,7 @@ from booktx.judge_store import (
     selected_record_ids,
 )
 from booktx.judge_tasks import create_judge_task
-from booktx.models import SelectionConfig
+from booktx.models import JudgeTask, SelectionConfig
 from booktx.workflows.profile import create_profile_workflow
 
 if TYPE_CHECKING:
@@ -141,7 +141,7 @@ def create_next_judge_task_workflow(
     chapter: str | None,
     max_words: int,
     require_all_sources: bool,
-) -> object:
+) -> JudgeTask:
     source_profiles = resolve_selection_sources(proj, sources_csv)
     effective_require_all_sources = _effective_require_all_sources(
         proj, require_all_sources
@@ -175,7 +175,7 @@ def create_record_judge_task_workflow(
     sources_csv: str | None,
     record_id: str,
     require_all_sources: bool,
-) -> object:
+) -> JudgeTask:
     source_profiles = resolve_selection_sources(proj, sources_csv)
     effective_require_all_sources = _effective_require_all_sources(
         proj, require_all_sources
@@ -194,7 +194,7 @@ def create_record_judge_task_workflow(
         raise _err("judge_record", str(exc)) from exc
 
 
-def judge_task_block_paths(proj: Project, task: object) -> tuple[str, str]:
+def judge_task_block_paths(proj: Project, task: JudgeTask) -> tuple[str, str]:
     from booktx.config import judge_ingest_block_path, judge_task_source_block_path
 
     judge_task_id = task.judge_task_id
@@ -204,7 +204,7 @@ def judge_task_block_paths(proj: Project, task: object) -> tuple[str, str]:
     )
 
 
-def judge_task_json_path(proj: Project, task: object) -> str:
+def judge_task_json_path(proj: Project, task: JudgeTask) -> str:
     from booktx.config import judge_ingest_json_path
 
     return str(judge_ingest_json_path(proj, task.judge_task_id))

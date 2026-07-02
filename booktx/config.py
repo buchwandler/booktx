@@ -70,7 +70,7 @@ from booktx.path_ids import safe_artifact_id
 try:
     import tomllib  # type: ignore[import-not-found]  # Python 3.11+ stdlib
 except ModuleNotFoundError:  # Python 3.10
-    import tomli as tomllib  # Phase 0 baseline: tomli has no type stubs; used only as Python 3.10 fallback for stdlib tomllib
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 from booktx.epub_manifest import sha256_path
 from booktx.models import (
@@ -162,6 +162,10 @@ __all__ = [
     "translation_source_index_path",
     "translation_target_index_path",
     "translation_source_target_index_path",
+    "source_analysis_path",
+    "source_analysis_markdown_path",
+    "profile_source_analysis_path",
+    "profile_source_analysis_markdown_path",
     "context_sync_ledger_path",
     "load_context_sync_ledger",
     "write_context_sync_ledger",
@@ -864,6 +868,44 @@ def _validate_output_filename(
         )
 
 
+def _materialize_source_analysis_snapshot(
+    source_project: Project, profile_name: str
+) -> None:
+    """Copy current canonical source analysis into a newly created profile."""
+    canonical_path = source_analysis_path(source_project)
+    if not canonical_path.is_file():
+        return
+
+    from booktx.io_utils import (
+        utc_timestamp,
+        write_json_text_atomic,
+        write_text_atomic,
+    )
+    from booktx.source_analysis import (
+        build_snapshot,
+        read_canonical_report,
+        render_report_markdown,
+    )
+
+    report = read_canonical_report(source_project)
+    if report is None:
+        return
+    profile_project = load_profile_project(source_project.root, profile_name)
+    snapshot = build_snapshot(
+        report,
+        profile=profile_name,
+        generated_at=utc_timestamp(),
+    )
+    write_json_text_atomic(
+        profile_source_analysis_path(profile_project),
+        snapshot.model_dump_json(by_alias=True),
+    )
+    write_text_atomic(
+        profile_source_analysis_markdown_path(profile_project),
+        render_report_markdown(report),
+    )
+
+
 def create_profile(
     root: Path | str,
     profile_name: str,
@@ -939,6 +981,7 @@ def create_profile(
         ),
     )
     write_profile_root_marker(source_project, profile_name, profile_config=cfg)
+    _materialize_source_analysis_snapshot(source_project, profile_name)
     if select:
         write_profile_state(source_project, ProfileState(active_profile=profile_name))
     return load_profile_project(source_project.root, profile_name)
@@ -1123,6 +1166,47 @@ def translation_source_target_index_path(project: Project) -> Path:
     _require_profile_paths(project, "translation source-target index access")
     assert project.profile_dir is not None
     return project.profile_dir / "source-target-index.json"
+
+
+def source_analysis_path(project: Project) -> Path:
+    """Project-root canonical source-analysis JSON evidence path.
+
+    Returns ``.booktx/source-analysis.json``. The file is rebuildable generated
+    evidence (authoritative JSON report), never canonical translation state.
+    """
+    return project.booktx_dir / "source-analysis.json"
+
+
+def source_analysis_markdown_path(project: Project) -> Path:
+    """Project-root generated source-analysis Markdown view path.
+
+    Returns ``.booktx/source-analysis.md``. Generated from the canonical JSON
+    report; never authoritative.
+    """
+    return project.booktx_dir / "source-analysis.md"
+
+
+def profile_source_analysis_path(project: Project) -> Path:
+    """Profile-local generated source-analysis snapshot JSON path.
+
+    Returns ``translations/<profile>/source-analysis.json``. The snapshot
+    embeds the same report payload and ``analysis_sha256`` as the canonical
+    project-root report inside a profile-scoped envelope. Rebuildable.
+    """
+    _require_profile_paths(project, "source analysis snapshot access")
+    assert project.profile_dir is not None
+    return project.profile_dir / "source-analysis.json"
+
+
+def profile_source_analysis_markdown_path(project: Project) -> Path:
+    """Profile-local generated source-analysis snapshot Markdown path.
+
+    Returns ``translations/<profile>/source-analysis.md``. Generated from the
+    profile snapshot's embedded report; never authoritative.
+    """
+    _require_profile_paths(project, "source analysis snapshot markdown access")
+    assert project.profile_dir is not None
+    return project.profile_dir / "source-analysis.md"
 
 
 def context_sync_ledger_path(project: Project) -> Path:

@@ -133,7 +133,15 @@ booktx translate search ./book --profile de_gpt5_5 --source "empire" --jsonl
 booktx translate migrate-inline-xhtml ./book --profile de_gpt5_5  # normalize inline XHTML in stored targets
 booktx source record ./book --profile de_gpt5_5 74@38            # inspect one source record
 booktx source chapter ./book --profile de_gpt5_5 0001            # inspect one source chapter
+booktx source analyze ./book                                     # dry-run simple source analysis
+booktx source analyze ./book --write --sync-profiles             # write canonical report and snapshots
+booktx source analysis ./book/translations/de_gpt5_5             # read the current profile snapshot
 ```
+
+`source analyze` is project-root only and does not write unless `--write` is
+provided. Its JSON report is authoritative; Markdown is a generated view.
+Profile-root mode can only read its own generated snapshot with
+`source analysis`.
 
 `translate export` writes store-backed accepted translations as legacy-compatible chunk files under `translated/`.
 
