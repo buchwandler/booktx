@@ -861,6 +861,7 @@ def test_command_tree_group_snapshots():
             "get-record",
             "import-legacy",
             "insert",
+            "lint-block",
             "list",
             "migrate-inline-xhtml",
             "migrate-store",

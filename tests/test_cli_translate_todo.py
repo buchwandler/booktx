@@ -86,6 +86,41 @@ def _make_three_chapter_project(tmp_path: Path) -> Path:
     return project_dir
 
 
+def _make_quote_project(tmp_path: Path) -> Path:
+    source = tmp_path / "quote.md"
+    source.write_text("# One\n\n‘Hello.’\n", encoding="utf-8")
+    project_dir = tmp_path / "quote-proj"
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--target",
+            "de",
+            "--source-file",
+            str(source),
+            "--chunk-size",
+            "5",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    ext = runner.invoke(app, ["extract", str(project_dir)])
+    assert ext.exit_code == 0, ext.output
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(project_dir),
+            "--force",
+            "--reason",
+            "test setup",
+        ],
+    )
+    return project_dir
+
+
 def _proj(project_dir: Path):
     return load_project(project_dir)
 
@@ -389,6 +424,161 @@ def test_todo_next_json_shape_is_stable(tmp_path: Path):
             f"missing: {expected_chapter - set(ch.keys())}, "
             f"extra: {set(ch.keys()) - expected_chapter}"
         )
+
+
+def test_todo_next_resume_requires_write(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            str(project_dir),
+            "--chapters",
+            "2",
+            "--resume",
+        ],
+    )
+    assert res.exit_code == 1
+    assert "--resume requires --write" in res.output
+
+
+def test_todo_next_resume_rejects_json(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            str(project_dir),
+            "--chapters",
+            "2",
+            "--write",
+            "--resume",
+            "--json",
+        ],
+    )
+    assert res.exit_code == 1
+    assert "--json cannot be combined with --resume" in res.output
+
+
+def test_todo_next_resume_prints_first_task_for_created_todo(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            str(project_dir),
+            "--chapters",
+            "2",
+            "--batch-words",
+            "800",
+            "--write",
+            "--resume",
+            "--format",
+            "block",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert "todo:" in res.output
+    assert "task:" in res.output
+    assert "Submit durable file with:" in res.output
+
+
+def test_lint_block_reports_missing_task_records(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--chapter",
+            "0001",
+            "--unit",
+            "chapter",
+            "--max-words",
+            "900",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    block_path = project_dir / task["block_ingest_path"]
+    first_id = task["records"][0]["id"]
+    missing_id = task["records"][1]["id"]
+    block_path.write_text(f">>> {first_id}\nTranslated {first_id}\n", encoding="utf-8")
+
+    lint_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "lint-block",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--file",
+            task["block_ingest_path"],
+            "--format",
+            "block",
+        ],
+    )
+
+    assert lint_res.exit_code == 1
+    assert "missing task records" in lint_res.output
+    assert missing_id in lint_res.output
+    assert "lint: failed" in lint_res.output
+
+
+def test_lint_block_reports_quote_validation_without_insert(tmp_path: Path):
+    project_dir = _make_quote_project(tmp_path)
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--chapter",
+            "0001",
+            "--unit",
+            "chapter",
+            "--max-words",
+            "900",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    block_path = project_dir / task["block_ingest_path"]
+    lines = []
+    for record in task["records"]:
+        lines.append(f">>> {record['id']}")
+        if record["source"].startswith("‘"):
+            lines.append("„Hallo.‘")
+        else:
+            lines.append(record["source"])
+        lines.append("")
+    block_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+    lint_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "lint-block",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--file",
+            task["block_ingest_path"],
+            "--format",
+            "block",
+        ],
+    )
+
+    assert lint_res.exit_code == 1
+    assert "outer_quotation_marks_preserved" in lint_res.output
+    assert "lint: failed" in lint_res.output
 
 
 def test_todo_next_no_pending_chapters_exits_nonzero(tmp_path: Path):
@@ -838,6 +1028,134 @@ def test_todo_resume_blocks_validation_warnings(tmp_path: Path):
 
     assert res.exit_code == 1
     assert "warning(s)" in res.output
+
+
+def test_translate_next_reports_not_ready_context_recovery(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    proj = _proj(project_dir)
+    ctx = load_context(proj)
+    assert ctx is not None
+    ctx.ready = False
+    ctx.ready_forced = False
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--unit",
+            "batch",
+            "--format",
+            "text",
+        ],
+    )
+
+    assert res.exit_code == 1
+    assert "exists but is not marked ready" in res.output
+    assert "booktx context status ." in res.output
+    assert "booktx context mark-ready ." in res.output
+    assert "booktx context init ." not in res.output
+
+
+def test_todo_resume_context_drift_prints_recreate_command(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=2, batch_words=777)
+    proj = _proj(project_dir)
+    ctx = load_context(proj)
+    assert ctx is not None
+    ctx.global_rules.append("Prefer shorter German clauses.")
+    write_context(proj, ctx)
+    write_context_markdown(proj, ctx)
+
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--todo-id",
+            todo["todo_id"],
+        ],
+    )
+
+    assert res.exit_code == 1
+    assert "context changed" in res.output
+    assert "next:" in res.output
+    assert "booktx translate todo-next ." in res.output
+    assert "--profile de_default" in res.output
+    assert "--chapters 2" in res.output
+    assert "--batch-words" in res.output
+    assert "777" in res.output
+    assert "--start-chapter 0001" in res.output
+
+
+def test_insert_stale_todo_task_prints_resume_hint(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=2, batch_words=777)
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--todo-id",
+            todo["todo_id"],
+            "--format",
+            "text",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+
+    glossary_change = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "Lowlands",
+            "--forbid",
+            "Niederlande",
+            "--enforce",
+            "error",
+        ],
+    )
+    assert glossary_change.exit_code == 0, glossary_change.output
+
+    ingest_path = project_dir / task["ingest_path"]
+    ingest_json = {
+        "schema_version": 2,
+        "profile": _proj(project_dir).profile,
+        "task_id": task["task_id"],
+        "translation_version": task["translation_version"],
+        "records": [{"id": task["records"][0]["id"], "target": "Translated first"}],
+    }
+    ingest_path.write_text(json.dumps(ingest_json), encoding="utf-8")
+
+    insert_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--task-id",
+            task["task_id"],
+            "--json-file",
+            str(ingest_path),
+        ],
+    )
+
+    assert insert_res.exit_code == 1
+    assert "predates mandatory" in insert_res.output
+    assert "glossary changes" in insert_res.output
+    assert "next:" in insert_res.output
+    assert "booktx translate todo-resume ." in insert_res.output
+    assert "--todo-id" in insert_res.output
+    assert todo["todo_id"] in insert_res.output
 
 
 def test_todo_markdown_uses_strict_validate_and_advisory_budget(tmp_path: Path):

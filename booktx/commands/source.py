@@ -25,8 +25,6 @@ from booktx.cli_support import (
     console,
 )
 from booktx.errors import BooktxError
-from booktx.source_analysis import read_canonical_report
-from booktx.source_analysis_context import set_disposition
 from booktx.workflows.source import (
     analyze_source,
     build_source_status_payload,
@@ -322,6 +320,9 @@ def _candidate_disposition_command(
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     if runtime.mode.isolated_output:
         _die(f"source {disposition} is a project-root command")
+    from booktx.source_analysis import read_canonical_report
+    from booktx.source_analysis_context import set_disposition
+
     report = read_canonical_report(runtime.project)
     if report is None:
         _die("no canonical source analysis; run `booktx source analyze . --write`")

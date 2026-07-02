@@ -56,6 +56,7 @@ __all__ = [
     "SubmittedRecord",
     "AcceptResult",
     "SubmissionValidationError",
+    "validate_submitted_records",
     "accept_translation_records",
     "accept_one_record",
 ]
@@ -174,16 +175,18 @@ def _enforce_mandatory_glossary_freshness(proj: Project, task: object) -> None:
     if live_mandatory_glossary_sha256(proj) != stored:
         raise _err(
             "task_context_policy_stale",
-            "task context predates mandatory glossary changes; recreate the task",
+            f"task {getattr(task, 'task_id', '<unknown>')} predates mandatory "
+            "glossary changes; create a fresh task before inserting translations",
         )
 
 
-def _validate_submitted(
+def validate_submitted_records(
     proj: Project,
     bundle: StatusBundle,
     submitted: list[SubmittedRecord],
     *,
     task: TranslationTask | None,
+    enforce_task_membership: bool = True,
 ) -> list[Finding]:
     """Validate submitted records, raising BooktxError on id problems.
 
@@ -231,7 +234,11 @@ def _validate_submitted(
         seen_ids.add(record_id)
         if record_id not in source_by_id:
             raise _err("unknown_record_id", f"unknown source record id: {record_id}")
-        if allowed_ids is not None and record_id not in allowed_ids:
+        if (
+            enforce_task_membership
+            and allowed_ids is not None
+            and record_id not in allowed_ids
+        ):
             raise _err(
                 "record_not_in_task",
                 f"record {record_id} is not part of task {task.task_id}",  # type: ignore[union-attr]
@@ -328,7 +335,7 @@ def accept_translation_records(
         )
     else:
         version_ref = resolve_current_version(proj).version_ref
-    findings = _validate_submitted(proj, bundle, submitted, task=task)
+    findings = validate_submitted_records(proj, bundle, submitted, task=task)
     errors = _error_findings(findings)
     if errors:
         raise SubmissionValidationError(errors)

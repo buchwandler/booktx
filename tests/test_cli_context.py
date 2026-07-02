@@ -71,6 +71,28 @@ def test_context_status_reports_not_ready_when_required_open(tmp_path: Path):
     assert "open_required=7" in res.output
 
 
+def test_context_status_json_payload_is_stable(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(app, ["context", "status", str(project_dir), "--json"])
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert set(payload.keys()) == {
+        "status",
+        "open_required",
+        "open_total",
+        "recommended_required",
+        "unapproved_required",
+        "answered_required",
+        "legacy_answered_required",
+        "glossary_entries",
+        "context_path",
+    }
+    assert payload["status"] == "NOT READY"
+    assert payload["open_required"] == 7
+    assert payload["context_path"].endswith("context.md")
+
+
 def test_context_add_term_persists_glossary_entry(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
@@ -1004,6 +1026,41 @@ def test_context_reset_term_create_flag_required_for_missing(tmp_path: Path):
     data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
     entry = next(g for g in data["glossary"] if g["source"] == "nonexistent")
     assert entry["target"] == "T"
+
+
+def test_context_reset_term_can_clear_require_target(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    create = runner.invoke(
+        app,
+        [
+            "context",
+            "add-term",
+            str(project_dir),
+            "empire",
+            "--target",
+            "Imperium",
+            "--require-target",
+            "--enforce",
+            "error",
+        ],
+    )
+    assert create.exit_code == 0, create.output
+
+    clear = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            "empire",
+            "--no-require-target",
+        ],
+    )
+    assert clear.exit_code == 0, clear.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "empire")
+    assert entry["require_target"] is False
 
 
 # --- chapter-note --replace-all --------------------------------------------

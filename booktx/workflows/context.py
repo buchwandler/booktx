@@ -591,7 +591,7 @@ def add_or_update_term_workflow(  # noqa: C901 - long form mirrors original
     enforce: str | None,
     source_variant: list[str] | None,
     target_variant: list[str] | None,
-    require_target: bool,
+    require_target: bool | None,
     allow_disable_enforcement: bool,
 ) -> str:
     """Add or update one glossary entry."""
@@ -690,7 +690,7 @@ def add_or_update_term_workflow(  # noqa: C901 - long form mirrors original
         )
         if applied_enforce == "off":
             _die_disable_enforcement_guard(
-                require_target=require_target,
+                require_target=bool(require_target),
                 forbidden_targets=cleaned_forbidden,
                 allow=allow_disable_enforcement,
             )
@@ -734,7 +734,7 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
     enforce: str | None,
     source_variant: list[str] | None,
     target_variant: list[str] | None,
-    require_target: bool,
+    require_target: bool | None,
     allow_disable_enforcement: bool,
     create: bool,
 ) -> str:
@@ -762,7 +762,7 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
         )
         if applied_enforce == "off":
             _die_disable_enforcement_guard(
-                require_target=require_target,
+                require_target=bool(require_target),
                 forbidden_targets=cleaned_forbidden,
                 allow=allow_disable_enforcement,
             )
@@ -772,7 +772,7 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
                 source_variants=_clean_variant_list(source_variant),
                 target=target,
                 target_variants=_clean_variant_list(target_variant),
-                require_target=require_target,
+                require_target=bool(require_target),
                 forbidden_targets=cleaned_forbidden,
                 category=applied_category,
                 status="approved" if target else "open",
@@ -803,8 +803,8 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
         existing.source_variants = _clean_variant_list(source_variant)
     if target_variant is not None:
         existing.target_variants = _clean_variant_list(target_variant)
-    if require_target:
-        existing.require_target = True
+    if require_target is not None:
+        existing.require_target = require_target
     if enforce is not None:
         existing.enforce = enforce  # type: ignore[assignment]
     if existing.enforce == "off":

@@ -10,7 +10,7 @@ them to a non-zero exit.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from booktx.chapters import detect_chapters, load_chapter_map
 from booktx.config import (
@@ -26,17 +26,10 @@ from booktx.config import (
 from booktx.errors import BooktxError
 from booktx.progress import SourceRecordView, load_source_records
 from booktx.record_refs import parse_record_ref
-from booktx.source_analysis import (
-    SnapshotValidationError,
-    SourceAnalysisReport,
-    SourceAnalysisSnapshot,
-    build_snapshot,
-    build_source_analysis,
-    read_canonical_report,
-    read_snapshot,
-    render_report_markdown,
-)
 from booktx.status import StatusBundle
+
+if TYPE_CHECKING:
+    from booktx.source_analysis import SourceAnalysisReport, SourceAnalysisSnapshot
 
 
 @dataclass(frozen=True)
@@ -171,6 +164,11 @@ def analyze_source(
     is reported accurately and never claimed as full success.
     """
     from booktx.io_utils import utc_timestamp, write_json_text_atomic, write_text_atomic
+    from booktx.source_analysis import (
+        build_snapshot,
+        build_source_analysis,
+        render_report_markdown,
+    )
 
     if sync_profiles and not write:
         raise BooktxError(
@@ -265,6 +263,12 @@ def read_source_analysis(project: Project, *, isolated: bool) -> SourceAnalysisR
     staleness is reported without exposing parent or sibling paths.
     """
     if isolated:
+        from booktx.source_analysis import (
+            SnapshotValidationError,
+            read_canonical_report,
+            read_snapshot,
+        )
+
         if project.profile is None:
             raise BooktxError(
                 "source_analysis_no_profile",
@@ -291,6 +295,8 @@ def read_source_analysis(project: Project, *, isolated: bool) -> SourceAnalysisR
             stale=read.stale,
             hint=read.hint,
         )
+
+    from booktx.source_analysis import read_canonical_report
 
     report = read_canonical_report(project)
     if report is None:

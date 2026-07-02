@@ -19,6 +19,7 @@ from booktx.workflows.translate import (
     translate_export_workflow,
     translate_import_legacy_workflow,
     translate_insert_workflow,
+    translate_lint_block_workflow,
     translate_migrate_inline_xhtml_workflow,
     translate_migrate_store_workflow,
     translate_next_workflow,
@@ -162,6 +163,38 @@ def translate_insert(
     )
 
 
+@translate_app.command(name="lint-block")
+def translate_lint_block(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    task_id: str = typer.Option(..., "--task-id", help="Task id for coverage checks."),
+    stdin: bool = typer.Option(False, "--stdin", help="Read the block from stdin."),
+    input_file: Path | None = typer.Option(
+        None,
+        "--file",
+        help="Read the block submission from a file.",
+    ),
+    input_format: str = typer.Option(
+        "block",
+        "--format",
+        help="Input format. Only block is currently supported.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """"""
+    translate_lint_block_workflow(
+        project_dir,
+        profile,
+        task_id,
+        stdin,
+        input_file,
+        input_format,
+        as_json,
+    )
+
+
 @translate_app.command(name="todo-next")
 def translate_todo_next(
     project_dir: Path = typer.Argument(..., help="Project directory."),
@@ -195,6 +228,16 @@ def translate_todo_next(
         "--write",
         help="Write todo markdown/json under translations/<profile>/todos/.",
     ),
+    resume: bool = typer.Option(
+        False,
+        "--resume",
+        help="Immediately resume the exact newly created todo and print its first task.",
+    ),
+    output_format: str = typer.Option(
+        "block",
+        "--format",
+        help="Human output format for --resume: text, tsv, or block.",
+    ),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
     """"""
@@ -207,6 +250,8 @@ def translate_todo_next(
         start_chapter,
         skip_current,
         write,
+        resume,
+        output_format,
         as_json,
     )
 

@@ -53,6 +53,11 @@ def test_isolated_render_contains_required_commands():
     assert "booktx translate todo-next . --chapters N --batch-words 800 --write" in text
     assert "booktx translate todo-status . --latest" in text
     assert "booktx translate todo-resume . --latest --format block" in text
+    assert (
+        "booktx translate lint-block . --task-id TASK"
+        " --file ingest/TASK.block.txt --format block"
+    ) in text
+    assert "If the installed booktx package fails to import in isolated mode" in text
     # bounded-todo completion does not require a whole-book build
     assert "booktx build . --require-complete" in text
 

@@ -340,8 +340,16 @@ def _require_ready_context(
     if allow_missing_context:
         return False
     ctx = load_context(proj)
-    if ctx is None or not ctx.ready:
-        _die("translation context is missing or not ready.\nRun: booktx context init .")
+    if ctx is None:
+        _die("translation context is missing.\nRun: booktx context init .")
+        return False
+    if not ctx.ready:
+        _die(
+            "translation context exists but is not marked ready.\n"
+            "Run:\n"
+            "  booktx context status .\n"
+            "  booktx context mark-ready ."
+        )
         return False
     unresolved = unresolved_required_questions(ctx)
     if unresolved and not ctx.ready_forced:

@@ -35,6 +35,7 @@ __all__ = [
     "list_translation_todos",
     "latest_incomplete_todo",
     "build_todo_status",
+    "recreate_todo_command",
 ]
 
 
@@ -179,15 +180,25 @@ def list_translation_todos(project: Project) -> list[TranslationTodo]:
     return todos
 
 
-def _recreate_todo_command(
-    project: Project, todo: TranslationTodo, *, mode: RuntimeMode | None = None
+def recreate_todo_command(
+    project: Project,
+    todo: TranslationTodo,
+    *,
+    mode: RuntimeMode | None = None,
+    start_chapter: str | None = None,
+    chapters: int | None = None,
 ) -> str:
     profile = profile_option_fragment(project, mode)
-    return (
+    command = (
         f"booktx translate todo-next .{profile}"
-        f" --chapters {todo.chapters_requested}"
+        f" --chapters {chapters if chapters is not None else todo.chapters_requested}"
         f" --batch-words {todo.batch_words} --write"
     )
+    if start_chapter:
+        command += f" --start-chapter {start_chapter}"
+    if todo.max_run_words is not None:
+        command += f" --max-run-words {todo.max_run_words}"
+    return command
 
 
 def _current_context_sha256(project: Project, bundle: StatusBundle) -> str | None:
@@ -309,7 +320,21 @@ def build_todo_status(
     elif context_drifted:
         state = "blocked"
         blocking_reason = "context changed since the todo was created"
-        next_safe_command = _recreate_todo_command(project, todo, mode=mode)
+        remaining = 1
+        if current is not None:
+            chapter_ids = [chapter.chapter_id for chapter in todo.chapters]
+            try:
+                current_index = chapter_ids.index(current.chapter_id)
+            except ValueError:
+                current_index = 0
+            remaining = max(1, len(chapter_ids) - current_index)
+        next_safe_command = recreate_todo_command(
+            project,
+            todo,
+            mode=mode,
+            start_chapter=current.chapter_id if current is not None else None,
+            chapters=remaining,
+        )
     elif validation.blocking:
         state = "blocked"
         blocking_reason = "validation findings must be resolved before resuming"

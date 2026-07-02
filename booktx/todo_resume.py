@@ -18,6 +18,7 @@ from booktx.todo_status import (
     find_incomplete_todo_for_chapter,
     latest_incomplete_todo,
     load_translation_todo,
+    recreate_todo_command,
 )
 from booktx.validate import validate_project
 
@@ -92,14 +93,23 @@ def resume_translation_todo(
             ),
         )
     if status.context_drifted:
+        recreate_command = recreate_todo_command(
+            project,
+            todo,
+            mode=mode,
+            start_chapter=scope_chapter,
+        )
         raise _err(
             "todo_context_drift",
             (
                 f"todo {todo.todo_id} cannot resume because the context changed. "
-                "Create a fresh bounded todo before requesting more work."
+                "Create a fresh bounded todo before requesting more work.\n"
+                f"next:\n  {recreate_command}"
             ),
         )
-    _enforce_todo_mandatory_glossary_freshness(project, todo)
+    _enforce_todo_mandatory_glossary_freshness(
+        project, todo, mode=mode, current_chapter_id=scope_chapter
+    )
     if report.errors or report.warnings:
         strict_check = check_command(
             project, chapter_id=scope_chapter, fail_on_warnings=True
@@ -187,7 +197,11 @@ def ensure_single_chapter_todo(
 
 
 def _enforce_todo_mandatory_glossary_freshness(
-    project: Project, todo: TranslationTodo
+    project: Project,
+    todo: TranslationTodo,
+    *,
+    mode: RuntimeMode | None = None,
+    current_chapter_id: str | None = None,
 ) -> None:
     """Block resuming a todo whose mandatory-glossary fingerprint is stale."""
     import warnings
@@ -203,7 +217,17 @@ def _enforce_todo_mandatory_glossary_freshness(
         )
         return
     if live_mandatory_glossary_sha256(project) != stored:
+        recreate_command = recreate_todo_command(
+            project,
+            todo,
+            mode=mode,
+            start_chapter=current_chapter_id,
+        )
         raise _err(
-            "task_context_policy_stale",
-            "task context predates mandatory glossary changes; recreate the task",
+            "todo_context_policy_stale",
+            (
+                f"todo {todo.todo_id} cannot resume because mandatory glossary "
+                "changes made it stale.\n"
+                f"next:\n  {recreate_command}"
+            ),
         )

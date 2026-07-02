@@ -32,12 +32,6 @@ from booktx.context_sync import ContextSyncPlan
 from booktx.errors import BooktxError
 from booktx.path_display import display_path
 from booktx.runtime import RuntimeContext
-from booktx.source_analysis import read_canonical_report
-from booktx.source_analysis_context import (
-    compatible_prefill_profiles,
-    prefill_contexts,
-    promote_candidate,
-)
 from booktx.workflows.context import (
     add_or_update_term_workflow,
     add_question_workflow,
@@ -98,6 +92,12 @@ def context_prefill(
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     if runtime.mode.isolated_output:
         _die("context prefill is a project-root command")
+    from booktx.source_analysis import read_canonical_report
+    from booktx.source_analysis_context import (
+        compatible_prefill_profiles,
+        prefill_contexts,
+    )
+
     report = read_canonical_report(runtime.project)
     if report is None:
         _die("no canonical source analysis; run `booktx source analyze . --write`")
@@ -164,6 +164,9 @@ def context_promote_candidate(
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     if runtime.mode.isolated_output:
         _die("context promote-candidate is a project-root command")
+    from booktx.source_analysis import read_canonical_report
+    from booktx.source_analysis_context import promote_candidate
+
     report = read_canonical_report(runtime.project)
     if report is None:
         _die("no canonical source analysis; run `booktx source analyze . --write`")
@@ -349,6 +352,7 @@ def context_status(
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
     """Show translation context readiness."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
@@ -358,6 +362,13 @@ def context_status(
         _handle_booktx_error(exc)
         return
     payload = build_context_status_payload(runtime.project, ctx)
+    if as_json:
+        json_payload = {
+            **payload,
+            "context_path": display_path(payload["context_path"], runtime.mode),
+        }
+        console.print_json(json.dumps(json_payload, ensure_ascii=False))
+        return
     console.print(f"Status: {payload['status']}")
     console.print(
         f"open_required={payload['open_required']} open_total={payload['open_total']}"
@@ -829,9 +840,9 @@ def context_reset_term(  # noqa: C901 - long form mirrors original
         "--target-variant",
         help="Replace approved target variants (e.g. inflections). Repeatable.",
     ),
-    require_target: bool = typer.Option(
-        False,
-        "--require-target",
+    require_target: bool | None = typer.Option(
+        None,
+        "--require-target/--no-require-target",
         help="Require an approved target form when the source term occurs.",
     ),
     allow_disable_enforcement: bool = typer.Option(

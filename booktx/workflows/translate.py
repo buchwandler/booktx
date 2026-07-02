@@ -30,6 +30,7 @@ from booktx.acceptance import (
     SubmittedRecord,
     accept_one_record,
     accept_translation_records,
+    validate_submitted_records,
 )
 from booktx.agent_todo import build_translation_todo, write_translation_todo
 from booktx.cli_support import (
@@ -132,7 +133,7 @@ from booktx.validate import (
 from booktx.versioning import resolve_current_version
 
 if TYPE_CHECKING:
-    pass
+    from booktx.config import Project
 
 
 def translate_next_workflow(
@@ -343,6 +344,22 @@ def translate_insert_workflow(
         _render_submission_failures(exc.findings)
         raise typer.Exit(code=1) from None
     except BooktxError as exc:
+        if exc.code == "task_context_policy_stale" and task is not None:
+            if task.todo_id:
+                next_command = translate_todo_resume_command(
+                    proj,
+                    mode=runtime.mode,
+                    todo_id=task.todo_id,
+                    output_format="block",
+                )
+            else:
+                next_command = translate_next_command(
+                    proj,
+                    mode=runtime.mode,
+                    chapter_id=task.chapter_id or None,
+                    max_words=task.requested_max_words or 800,
+                )
+            _die(f"{exc}\nnext:\n  {next_command}")
         _handle_booktx_error(exc)
         return
     console.print(
@@ -456,6 +473,199 @@ def translate_insert_workflow(
         )
 
 
+def _preflight_findings_for_lint(
+    proj: Project,
+    submitted_records: list[SubmittedRecord],
+    submitted_ids: set[str],
+) -> list[Finding]:
+    from booktx.acceptance_preflight import run_staged_preflight
+
+    return [
+        Finding(
+            chunk_id=f.chunk_id or "epub-preflight",
+            severity=f.severity,
+            rule=f.rule,
+            message=f.message,
+            record_id=f.record_id,
+            record_ids=list(f.record_ids),
+            chapter_id=f.chapter_id,
+            chapter_title=f.chapter_title,
+            span_index=f.span_index,
+            block_id=f.block_id,
+            document_href=f.document_href,
+            source=f.source,
+            target=f.target,
+        )
+        for f in run_staged_preflight(
+            proj,
+            submitted_records,
+            submitted_ids,
+            fail_on_warnings=False,
+        )
+    ]
+
+
+def _render_lint_block_human(
+    *,
+    task_id: str,
+    submitted_count: int,
+    expected_count: int,
+    missing_record_ids: list[str],
+    extra_record_ids: list[str],
+    findings: list[Finding],
+) -> None:
+    errors = [finding for finding in findings if finding.severity == Severity.ERROR]
+    warnings = [finding for finding in findings if finding.severity == Severity.WARN]
+    ok = not missing_record_ids and not extra_record_ids and not errors and not warnings
+
+    console.print(f"task: {task_id}")
+    console.print(f"submitted records: {submitted_count} / {expected_count}")
+    console.print(
+        "missing task records: "
+        + (", ".join(missing_record_ids) if missing_record_ids else "none")
+    )
+    console.print(
+        "extra task records: "
+        + (", ".join(extra_record_ids) if extra_record_ids else "none")
+    )
+    console.print(f"errors: {len(errors)}")
+    console.print(f"warnings: {len(warnings)}")
+    if ok:
+        console.print("lint: ok")
+        return
+
+    console.print("lint: failed")
+    for finding in findings:
+        record = finding.record_id or finding.chunk_id
+        console.print(
+            f"- {finding.severity} {record} {finding.rule}: {finding.message}",
+            soft_wrap=True,
+            markup=False,
+        )
+        if finding.source:
+            console.print(f"  source: {finding.source}", soft_wrap=True, markup=False)
+        if finding.target:
+            console.print(f"  target: {finding.target}", soft_wrap=True, markup=False)
+
+
+def translate_lint_block_workflow(
+    project_dir: Path,
+    profile: str | None = None,
+    task_id: str = "",
+    stdin: bool = False,
+    input_file: Path | None = None,
+    input_format: str = "block",
+    as_json: bool = False,
+) -> None:
+    """Lint a block submission against task coverage and validation rules."""
+    if input_format != "block":
+        _die("translate lint-block currently supports --format block only")
+    if (input_file is None) == (not stdin):
+        _die("provide exactly one of --file or --stdin")
+
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_no_source_drift(proj)
+    _require_ready_context(proj)
+
+    task = _load_translation_task_or_exit(proj, task_id)
+    summary = _project_status_snapshot(proj)
+
+    try:
+        if stdin:
+            text = sys.stdin.read()
+        else:
+            assert input_file is not None
+            if runtime.mode.isolated_output:
+                file_path = resolve_profile_local_path(
+                    proj, input_file, purpose="--file"
+                )
+            else:
+                file_path = (
+                    input_file
+                    if input_file.is_absolute()
+                    else runtime.mode.project_root / input_file
+                )
+            from booktx.submissions import read_submission_file
+
+            text = read_submission_file(
+                file_path,
+                ingest_hint=_submission_ingest_hint(proj, task_id, mode=runtime.mode),
+            )
+        from booktx.submissions import parse_block_submission
+
+        parsed = parse_block_submission(text)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+
+    submitted_records = [
+        SubmittedRecord(
+            id=parse_record_ref(record.id).canonical_id, target=record.target
+        )
+        for record in parsed.records
+    ]
+    submitted_ids = [record.id for record in submitted_records]
+    expected_ids = [record.id for record in task.records]
+    expected_id_set = set(expected_ids)
+    submitted_id_set = set(submitted_ids)
+    missing_record_ids = [
+        record_id for record_id in expected_ids if record_id not in submitted_id_set
+    ]
+    extra_record_ids = [
+        record_id for record_id in submitted_ids if record_id not in expected_id_set
+    ]
+
+    findings: list[Finding] = []
+    try:
+        findings.extend(
+            validate_submitted_records(
+                proj,
+                summary,
+                submitted_records,
+                task=task,
+                enforce_task_membership=False,
+            )
+        )
+        findings.extend(
+            _preflight_findings_for_lint(proj, submitted_records, set(submitted_ids))
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+
+    errors = [finding for finding in findings if finding.severity == Severity.ERROR]
+    warnings = [finding for finding in findings if finding.severity == Severity.WARN]
+    ok = not missing_record_ids and not extra_record_ids and not errors and not warnings
+
+    if as_json:
+        payload = {
+            "ok": ok,
+            "task_id": task.task_id,
+            "submitted_records": len(submitted_records),
+            "expected_records": len(task.records),
+            "missing_record_ids": missing_record_ids,
+            "extra_record_ids": extra_record_ids,
+            "errors": len(errors),
+            "warnings": len(warnings),
+            "findings": [finding.as_dict() for finding in findings],
+        }
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    else:
+        _render_lint_block_human(
+            task_id=task.task_id,
+            submitted_count=len(submitted_records),
+            expected_count=len(task.records),
+            missing_record_ids=missing_record_ids,
+            extra_record_ids=extra_record_ids,
+            findings=findings,
+        )
+
+    if not ok:
+        raise typer.Exit(code=1)
+
+
 def translate_todo_next_workflow(
     project_dir: Path,
     profile: str | None = None,
@@ -465,6 +675,8 @@ def translate_todo_next_workflow(
     start_chapter: str | None = None,
     skip_current: bool = False,
     write: bool = False,
+    resume: bool = False,
+    output_format: str = "block",
     as_json: bool = False,
 ) -> None:
     """Create a durable run-control todo for a bounded multi-chapter translation run.
@@ -477,6 +689,14 @@ def translate_todo_next_workflow(
 
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    if output_format not in {"text", "tsv", "block"}:
+        _die("--format must be text, tsv, or block")
+    if resume and not write:
+        _die("--resume requires --write")
+    if resume and as_json:
+        _die("--json cannot be combined with --resume")
+    if not resume and output_format != "block":
+        _die("--format is only supported with --resume")
     _require_chunks(proj)
     _require_no_source_drift(proj)
     _require_ready_context(proj)
@@ -582,6 +802,25 @@ def translate_todo_next_workflow(
         ),
         soft_wrap=True,
         markup=False,
+    )
+    if not resume:
+        return
+
+    console.print()
+    task = resume_translation_todo(
+        proj,
+        bundle,
+        mode=runtime.mode,
+        todo_id=todo.todo_id,
+    )
+    _print_translate_task(
+        task,
+        proj,
+        mode=runtime.mode,
+        as_json=False,
+        output_format=output_format,
+        show_sources=False,
+        show_template=False,
     )
 
 
