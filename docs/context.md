@@ -196,3 +196,15 @@ booktx context chapter-note . 0006 \
 Rendered context separates glossary entries into binding, advisory, and disabled sections. A glossary entry is binding only when `enforce != "off"` and it has `require_target = true` or at least one `forbidden_targets` value. `enforce` alone does not create an enforceable rule.
 
 Source applicability uses longest-source-match spans across the whole glossary. Longer configured terms such as `Wasp-kinden` suppress contained shorter terms such as `wasp`; explicit plurals and hyphenated forms should be modeled with `source_variants`. When one record mixes a valid longer compound and a standalone shorter term, booktx may emit `glossary_alignment_ambiguous` because it cannot prove which target occurrence maps to which source occurrence.
+
+## Glossary phrase collisions
+
+When a glossary rejection is caused by a short term inside a longer source phrase, do not distort the target sentence merely to satisfy the literal target token. Prefer one of:
+
+1. natural apposition or rephrasing that contains the approved target naturally;
+2. a longer source phrase glossary entry, which shadows the shorter entry;
+3. an explicit forbidden target for the bad correction pattern.
+
+Example: `wasp` is a short glossary term. When the source contains `Wasp hunter`, the short `wasp` entry triggers. Translating this as `Wespe-Jäger` (forcing `Wespe` into a malformed German compound) is grammatically wrong and passes validation for the wrong reason. Instead, use an apposition like `der Jäger, eine Wespe, ...`, add a longer glossary entry for `Wasp hunter`, or add `Wespe-Jäger` as a forbidden target.
+
+`glossary_target_missing` findings include the matched source span, the source phrase context, glossary notes, and a phrase-collision hint when applicable. Both `translate insert`, `judge insert`, `validate`, and `lint-block` produce consistent findings through shared diagnostics.

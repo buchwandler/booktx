@@ -47,7 +47,12 @@ from booktx.context import (
     render_context_markdown,
 )
 from booktx.epub_manifest import load_epub_template_from_manifest
+from booktx.glossary_diagnostics import (
+    format_glossary_missing_message,
+    source_phrase_window,
+)
 from booktx.glossary_match import (
+    TermSpan,
     applicable_entry_indexes,
     contains_term,
     source_glossary_matches,
@@ -708,9 +713,17 @@ def _check_required_glossary_targets(
     if context is None:
         return []
     findings: list[Finding] = []
-    applicable = applicable_entry_indexes(source_rec.source, context.glossary)
+    spans = source_glossary_matches(source_rec.source, context.glossary)
+    active_spans_by_entry: dict[int, list[TermSpan]] = {}
+    for span in spans:
+        if not span.shadowed:
+            active_spans_by_entry.setdefault(span.entry_index, []).append(span)
+
     for idx, entry in enumerate(context.glossary):
-        if entry.enforce == "off" or not entry.require_target or idx not in applicable:
+        if entry.enforce == "off" or not entry.require_target:
+            continue
+        spans_for_entry = active_spans_by_entry.get(idx, [])
+        if not spans_for_entry:
             continue
         approved = target_terms(entry)
         if not approved:
@@ -719,16 +732,28 @@ def _check_required_glossary_targets(
         if target_contains_approved(target_rec.target, entry):
             continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
+        matched = spans_for_entry[0]
+        phrase_excerpt = source_phrase_window(
+            source_rec.source, matched.start, matched.end
+        )
+        message = format_glossary_missing_message(
+            entry=entry,
+            approved=approved,
+            matched=matched,
+            phrase_excerpt=phrase_excerpt,
+            source=source_rec.source,
+            target=target_rec.target,
+            glossary=context.glossary,
+        )
         findings.append(
             Finding(
                 chunk_id=chunk_id,
                 severity=severity,
                 rule="glossary_target_missing",
-                message=(
-                    f"{entry.source} must be translated using an approved "
-                    f"target ({' / '.join(approved)})"
-                ),
+                message=message,
                 record_id=target_rec.id,
+                source=source_rec.source,
+                target=target_rec.target,
             )
         )
     return findings

@@ -22,11 +22,18 @@ from booktx.config import (
 )
 from booktx.context import TranslationContext
 from booktx.errors import BooktxError
+from booktx.glossary_diagnostics import (
+    format_glossary_missing_message,
+    source_phrase_window,
+)
 from booktx.glossary_match import (
+    TermSpan,
     applicable_entry_indexes,
     contains_term,
     live_mandatory_glossary_sha256,
+    source_glossary_matches,
     target_contains_approved,
+    target_terms,
 )
 from booktx.models import (
     JudgeCandidateEvidence,
@@ -193,9 +200,16 @@ def _binding_glossary_findings(
     from booktx.validate import Finding
 
     findings: list[Finding] = []
-    applicable = applicable_entry_indexes(source_record.source, context.glossary)
+    spans = source_glossary_matches(source_record.source, context.glossary)
+    active_spans_by_entry: dict[int, list[TermSpan]] = {}
+    for span in spans:
+        if not span.shadowed:
+            active_spans_by_entry.setdefault(span.entry_index, []).append(span)
+
     for idx, entry in enumerate(context.glossary):
-        if entry.enforce == "off" or idx not in applicable:
+        if entry.enforce == "off" or idx not in applicable_entry_indexes(
+            source_record.source, context.glossary
+        ):
             continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
         for forbidden in entry.forbidden_targets:
@@ -211,24 +225,40 @@ def _binding_glossary_findings(
                         record_id=source_record.id,
                     )
                 )
-        if entry.require_target and not target_contains_approved(target_text, entry):
-            approved = [
-                item
-                for item in [entry.target, *entry.target_variants]
-                if item is not None
-            ]
-            findings.append(
-                Finding(
-                    chunk_id=chunk_id,
-                    severity=severity,
-                    rule="glossary_target_missing",
-                    message=(
+        if entry.require_target:
+            approved = target_terms(entry)
+            if approved and not target_contains_approved(target_text, entry):
+                spans_for_entry = active_spans_by_entry.get(idx, [])
+                matched = spans_for_entry[0] if spans_for_entry else None
+                if matched is not None:
+                    phrase_excerpt = source_phrase_window(
+                        source_record.source, matched.start, matched.end
+                    )
+                    message = format_glossary_missing_message(
+                        entry=entry,
+                        approved=approved,
+                        matched=matched,
+                        phrase_excerpt=phrase_excerpt,
+                        source=source_record.source,
+                        target=target_text,
+                        glossary=context.glossary,
+                    )
+                else:
+                    message = (
                         f"{entry.source} must be translated using an approved target "
                         f"({' / '.join(approved)})"
-                    ),
-                    record_id=source_record.id,
+                    )
+                findings.append(
+                    Finding(
+                        chunk_id=chunk_id,
+                        severity=severity,
+                        rule="glossary_target_missing",
+                        message=message,
+                        record_id=source_record.id,
+                        source=source_record.source,
+                        target=target_text,
+                    )
                 )
-            )
     return findings
 
 

@@ -32,6 +32,7 @@ from booktx.context import (
     write_context,
     write_context_markdown,
 )
+from booktx.glossary_match import source_glossary_matches
 from booktx.models import (
     Chunk,
     Record,
@@ -937,3 +938,131 @@ def test_scenario11_legacy_task_remains_loadable_and_warns(tmp_path: Path) -> No
             enforce_task_version=True,
         )
     assert any("predates mandatory_glossary_sha256" in str(w.message) for w in caught)
+
+
+# --- Wasp hunter regression: phrase collision diagnostics ----------------------
+
+
+def test_glossary_missing_target_explains_source_phrase_context(tmp_path: Path) -> None:
+    chunk = Chunk(
+        chunk_id="0001",
+        source_language="en",
+        target_language="de",
+        records=[
+            Record(
+                id="0001-000001",
+                source="The Wasp hunter was still at Nivit's place.",
+            )
+        ],
+    )
+    entry = GlossaryEntry(
+        source="wasp",
+        target="Wespe",
+        require_target=True,
+        category="insect",
+        enforce="error",
+        notes="Standalone wasp. Wasp in compounds is unaffected.",
+    )
+    proj_path = _write_project(tmp_path, chunk=chunk, glossary_entries=[entry])
+    _write_store_and_ledger(
+        proj_path,
+        chunk=chunk,
+        record=_store_record(
+            chunk=chunk,
+            record_id="0001-000001",
+            active_version="1.1",
+            versions=[("1.1", "Der Wespenjäger war noch bei Nivit.")],
+        ),
+        tracked_refs={"1.1"},
+    )
+
+    report = validate_project(load_project(proj_path))
+
+    finding = next(f for f in report.findings if f.rule == "glossary_target_missing")
+    assert "Wasp hunter" in finding.message
+    assert "possible phrase collision" in finding.message
+    assert "longer glossary entry" in finding.message
+    assert finding.source == "The Wasp hunter was still at Nivit's place."
+    assert finding.target == "Der Wespenjäger war noch bei Nivit."
+
+
+def test_longer_wasp_hunter_phrase_shadows_short_wasp_entry() -> None:
+    short = GlossaryEntry(source="wasp", target="Wespe", require_target=True)
+    phrase = GlossaryEntry(
+        source="Wasp hunter",
+        target="Jäger, eine Wespe",
+        require_target=True,
+    )
+
+    spans = source_glossary_matches(
+        "The Wasp hunter was still at Nivit's place.",
+        [short, phrase],
+    )
+
+    short_span = next(s for s in spans if s.entry_index == 0)
+    phrase_span = next(s for s in spans if s.entry_index == 1)
+    assert short_span.shadowed is True
+    assert phrase_span.shadowed is False
+
+
+def test_forbidden_wespe_jaeger_rejects_literal_compound(tmp_path: Path) -> None:
+    chunk = Chunk(
+        chunk_id="0001",
+        source_language="en",
+        target_language="de",
+        records=[Record(id="0001-000001", source="The Wasp hunter was still there.")],
+    )
+    entry = GlossaryEntry(
+        source="wasp",
+        target="Wespe",
+        require_target=True,
+        forbidden_targets=["Wespe-Jäger"],
+        enforce="error",
+    )
+    proj_path = _write_project(tmp_path, chunk=chunk, glossary_entries=[entry])
+    _write_store_and_ledger(
+        proj_path,
+        chunk=chunk,
+        record=_store_record(
+            chunk=chunk,
+            record_id="0001-000001",
+            active_version="1.1",
+            versions=[("1.1", "Der Wespe-Jäger war noch dort.")],
+        ),
+        tracked_refs={"1.1"},
+    )
+
+    report = validate_project(load_project(proj_path))
+    rules = {f.rule for f in report.findings}
+    assert "forbidden_term_used" in rules
+
+
+def test_wasp_hunter_apposition_satisfies_required_wasp_target(tmp_path: Path) -> None:
+    chunk = Chunk(
+        chunk_id="0001",
+        source_language="en",
+        target_language="de",
+        records=[Record(id="0001-000001", source="The Wasp hunter was still there.")],
+    )
+    entry = GlossaryEntry(
+        source="wasp",
+        target="Wespe",
+        require_target=True,
+        forbidden_targets=["Wespe-Jäger"],
+        enforce="error",
+    )
+    proj_path = _write_project(tmp_path, chunk=chunk, glossary_entries=[entry])
+    _write_store_and_ledger(
+        proj_path,
+        chunk=chunk,
+        record=_store_record(
+            chunk=chunk,
+            record_id="0001-000001",
+            active_version="1.1",
+            versions=[("1.1", "Der Jäger, eine Wespe, war noch dort.")],
+        ),
+        tracked_refs={"1.1"},
+    )
+
+    report = validate_project(load_project(proj_path))
+    assert report.passed, [f.as_dict() for f in report.findings]

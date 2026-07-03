@@ -766,6 +766,16 @@ Use booktx commands, not raw Python/store scripts. In isolated profile-root mode
 
 Glossary entries are binding only when `enforce != "off"` and `require_target` or `forbidden_targets` is set. `enforce` alone is advisory. If `glossary_alignment_ambiguous` is reported, inspect the companion `.sources.txt` block before revising; booktx is warning that a mixed compound/standalone record cannot be deterministically aligned at target-occurrence level.
 
+### Glossary phrase collisions
+
+When a glossary rejection is caused by a short term inside a longer source phrase, do not distort the target sentence merely to satisfy the literal target token. Prefer one of:
+
+1. natural apposition or rephrasing that contains the approved target naturally;
+2. a longer source phrase glossary entry, which shadows the shorter entry;
+3. an explicit forbidden target for the bad correction pattern.
+
+Example: `wasp` triggers for source `Wasp hunter`. Translating as `Wespe-Jäger` (forcing `Wespe` into a malformed German compound) passes validation for the wrong reason. Use apposition (`der Jäger, eine Wespe, ...`), add a phrase glossary entry for `Wasp hunter`, or forbid `Wespe-Jäger` as a target. The `glossary_target_missing` finding includes matched source context and a phrase-collision hint to guide this decision.
+
 ## Judge / selection profiles
 
 Use project-root mode to create or refresh a judge source snapshot. After
