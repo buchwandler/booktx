@@ -56,6 +56,7 @@ state lives under the selected profile.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from hashlib import sha256
@@ -173,6 +174,12 @@ __all__ = [
     "translation_selection_ledger_path",
     "load_translation_selection_ledger",
     "write_translation_selection_ledger",
+    "canonical_language_key",
+    "lexicon_language_keys",
+    "global_lexicon_dir",
+    "global_lexicon_path",
+    "project_lexicon_path",
+    "profile_lexicon_path",
     "judge_task_dir",
     "judge_task_path",
     "judge_task_source_block_path",
@@ -198,6 +205,7 @@ SUPPORTED_SOURCE_SUFFIXES: dict[str, str] = {
 DEFAULT_NAMES_JSON: dict[str, Any] = {"protected_terms": []}
 PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 PROFILE_ROOT_MARKER_FILENAME = ".booktx-profile.json"
+LANGUAGE_KEY_RE = re.compile(r"^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{2,8})*$")
 
 
 # ``BooktxError`` / ``_err`` are imported from :mod:`booktx.errors` at the
@@ -542,6 +550,82 @@ def validate_profile_name(profile_name: str) -> str:
             "profile names may contain only letters, numbers, '.', '_' and '-'",
         )
     return profile_name
+
+
+def canonical_language_key(language: str) -> str:
+    """Return a canonical language shard key such as ``de`` or ``de-DE``."""
+    raw = language.strip()
+    if (
+        not raw
+        or "/" in raw
+        or "\\" in raw
+        or ".." in raw
+        or raw.startswith(".")
+        or raw.endswith(".json")
+        or not LANGUAGE_KEY_RE.fullmatch(raw)
+    ):
+        raise _err("invalid_language_key", f"invalid language key: {language!r}")
+    parts = raw.split("-")
+    canonical_parts = [parts[0].lower()]
+    for part in parts[1:]:
+        if len(part) == 2 and part.isalpha():
+            canonical_parts.append(part.upper())
+        elif len(part) == 4 and part.isalpha():
+            canonical_parts.append(part.title())
+        else:
+            canonical_parts.append(part)
+    return "-".join(canonical_parts)
+
+
+def lexicon_language_keys(project: Project, language: str | None = None) -> list[str]:
+    """Resolve the base-plus-locale language-key sequence for lexicon reads."""
+    if language is not None:
+        key = canonical_language_key(language)
+        base = key.split("-", 1)[0]
+        return [base] if key == base else [base, key]
+    cfg = project.profile_config
+    if cfg is None:
+        raise _err(
+            "lexicon_language_required",
+            "--language is required when no profile target language is available",
+        )
+    base = canonical_language_key(cfg.target_language)
+    locale_raw = (cfg.target_locale or "").strip()
+    if not locale_raw:
+        return [base]
+    locale = canonical_language_key(locale_raw)
+    return [base] if locale == base else [base, locale]
+
+
+def global_lexicon_dir() -> Path:
+    """Directory containing user-global translation lexicon shards."""
+    override = os.environ.get("BOOKTX_LEXICON_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return (Path.home() / ".config" / "booktx" / "translation-lexicon").resolve()
+
+
+def global_lexicon_path(language_key: str) -> Path:
+    """Path to one user-global translation lexicon shard."""
+    key = canonical_language_key(language_key)
+    return global_lexicon_dir() / f"{key}.json"
+
+
+def project_lexicon_path(project: Project, language_key: str) -> Path:
+    """Path to one project/series lexicon shard."""
+    key = canonical_language_key(language_key)
+    return project.booktx_dir / "lexicon" / f"{key}.json"
+
+
+def profile_lexicon_path(project: Project, language_key: str) -> Path:
+    """Path to one profile-local lexicon override shard."""
+    _require_profile_paths(project, "profile lexicon access")
+    key = canonical_language_key(language_key)
+    return (
+        profile_dir(project.root, project.profile or "")
+        / "lexicon-overrides"
+        / f"{key}.json"
+    )
 
 
 SNAPSHOT_ID_RE = re.compile(r"^[0-9a-f]{1,128}$")

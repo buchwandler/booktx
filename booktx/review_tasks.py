@@ -23,7 +23,11 @@ from booktx.config import (
 )
 from booktx.context import load_context
 from booktx.io_utils import write_text_atomic
+from booktx.lexicon import resolve_effective_lexicon
+from booktx.lexicon_audit import audit_lexicon
+from booktx.lexicon_tasking import collect_applicable_lexicon_for_record_sources
 from booktx.models import (
+    ApplicableLexiconFindingSnapshot,
     QualityReviewConfig,
     ReviewContextRecord,
     ReviewPassConfig,
@@ -372,6 +376,37 @@ def create_review_task(
     source_by_id = bundle.index.source_by_id
 
     records: list[TranslationReviewTaskRecord] = []
+    record_sources = {sel.record_id: sel.source for sel in selected}
+    applicable_lexicon, applicable_lexicon_sha256 = (
+        collect_applicable_lexicon_for_record_sources(project, record_sources)
+    )
+    effective_lexicon, _ = resolve_effective_lexicon(project)
+    audit_result = audit_lexicon(
+        project,
+        bundle,
+        effective_lexicon,
+        chapter_id=chapter.chapter_id,
+        entry_ids={
+            snapshot.entry_id
+            for snapshots in applicable_lexicon.values()
+            for snapshot in snapshots
+        }
+        or None,
+    )
+    finding_map: dict[str, list[ApplicableLexiconFindingSnapshot]] = {}
+    for finding in audit_result.matches:
+        finding_map.setdefault(finding.record_id, []).append(
+            ApplicableLexiconFindingSnapshot(
+                entry_id=finding.entry_id,
+                status=finding.status,
+                rule_code=finding.rule_code,
+                severity=finding.severity,
+                reason=finding.reason,
+                target_forbidden_found=list(finding.target_forbidden_found),
+                target_preferred_found=list(finding.target_preferred_found),
+                effective_candidate_ref=finding.effective_candidate_ref,
+            )
+        )
     for sel in selected:
         before, after = _context_window(
             sel.record_id, bundle, store_records, before_n, after_n
@@ -405,6 +440,8 @@ def create_review_task(
                 review_window_sha256=sha256_text(window_payload),
                 before=before,
                 after=after,
+                applicable_lexicon=applicable_lexicon.get(sel.record_id, []),
+                lexicon_findings=finding_map.get(sel.record_id, []),
             )
         )
 
@@ -436,6 +473,7 @@ def create_review_task(
         ),
         review_policy_sha256=None,
         mandatory_glossary_sha256=_live_mandatory_glossary_sha256(project),
+        applicable_lexicon_sha256=applicable_lexicon_sha256,
         before_records=before_n,
         after_records=after_n,
         source_words=sum(source_by_id[s.record_id].source_words for s in selected),
@@ -471,6 +509,7 @@ def write_review_source_block(project: Project, task: TranslationReviewTask) -> 
         f"# pass: R{task.pass_number} {task.pass_name}".rstrip(),
         f"# chapter: {task.chapter_id} {task.chapter_title}".rstrip(),
         f"# instruction: {task.pass_instructions}".rstrip(),
+        f"# applicable_lexicon_sha256: {task.applicable_lexicon_sha256 or ''}",
         "",
     ]
     for rec in task.records:
@@ -483,6 +522,13 @@ def write_review_source_block(project: Project, task: TranslationReviewTask) -> 
         parts.append(f">>> {rec.id} REVIEW {rec.review_ref} FROM {rec.base_ref}")
         parts.append(f"SOURCE: {rec.source}")
         parts.append(f"CURRENT: {rec.base_target}")
+        for snapshot in rec.applicable_lexicon:
+            note = snapshot.sense or snapshot.rationale
+            parts.append(f"LEXICON: {snapshot.entry_id} — {note}".rstrip(" —"))
+        for finding in rec.lexicon_findings:
+            parts.append(
+                f"LEXICON-FINDING: {finding.status} {finding.entry_id} {finding.reason}".rstrip()
+            )
         parts.append("")
         for ctx in rec.after:
             parts.append(f"=== {ctx.id} AFTER")

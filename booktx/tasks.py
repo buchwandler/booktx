@@ -43,6 +43,7 @@ from booktx.config import (
 )
 from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
+from booktx.lexicon_tasking import collect_applicable_lexicon_for_record_sources
 from booktx.models import TranslationTask, TranslationTaskRecord
 from booktx.path_display import display_path
 from booktx.versioning import canonical_json_sha256, resolve_current_version
@@ -297,12 +298,36 @@ def write_task_source_block(project: Project, task: TranslationTask) -> Path:
         f"# unit: {task.unit}",
         f"# records: {task.record_count}",
         f"# source words: {task.source_words}",
+        f"# applicable_lexicon_sha256: {task.applicable_lexicon_sha256 or ''}",
         "",
     ]
+    task_snapshots = {
+        snapshot.entry_id: snapshot
+        for record in task.records
+        for snapshot in record.applicable_lexicon
+    }
+    if task_snapshots:
+        parts.extend(
+            [
+                "# applicable lexicon:",
+                "# id | source cue | preferred | forbidden | note",
+            ]
+        )
+        for snapshot in sorted(task_snapshots.values(), key=lambda item: item.entry_id):
+            preferred = " / ".join(snapshot.target_preferred) or "(none)"
+            forbidden = " / ".join(snapshot.target_forbidden) or "(none)"
+            note = snapshot.sense or snapshot.rationale
+            parts.append(
+                f"# {snapshot.entry_id} | {snapshot.source} | {preferred} | {forbidden} | {note}".rstrip()
+            )
+        parts.append("")
     for idx, record in enumerate(task.records):
         if idx:
             parts.append("")
         parts.append(f">>> {record.id}")
+        for snapshot in record.applicable_lexicon:
+            note = snapshot.sense or snapshot.rationale
+            parts.append(f"# lexicon: {snapshot.entry_id} — {note}".rstrip(" —"))
         parts.append(record.source)
     write_text_atomic(path, "\n".join(parts).rstrip() + "\n")
     return path
@@ -417,6 +442,12 @@ def create_translation_task(
         context_notes_through_chapter_id = context_view.notes_through_chapter_id
     else:
         translation_version = load_translation_version_ledger(project).active_version
+    record_sources = {
+        record_id: source_by_id[record_id].source for record_id in record_ids
+    }
+    applicable_lexicon, applicable_lexicon_sha256 = (
+        collect_applicable_lexicon_for_record_sources(project, record_sources)
+    )
     task = TranslationTask(
         task_id=make_task_id(chapter.chapter_id, record_ids[0], record_ids),
         unit=unit,  # type: ignore[arg-type]
@@ -433,6 +464,7 @@ def create_translation_task(
         context_view_sha256=context_view_sha256,
         context_view_path=context_view_path,
         mandatory_glossary_sha256=_live_mandatory_glossary_sha256(project),
+        applicable_lexicon_sha256=applicable_lexicon_sha256,
         context_notes_scope=context_notes_scope,
         context_target_chapter_id=context_target_chapter_id,
         context_notes_through_chapter_id=context_notes_through_chapter_id,
@@ -458,6 +490,7 @@ def create_translation_task(
                 source=source_by_id[record_id].source,
                 protected_terms=list(source_by_id[record_id].protected_terms),
                 placeholders=list(source_by_id[record_id].placeholders),
+                applicable_lexicon=applicable_lexicon.get(record_id, []),
             )
             for record_id in record_ids
         ],

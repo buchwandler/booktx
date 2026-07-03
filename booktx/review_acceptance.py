@@ -22,6 +22,7 @@ from booktx.config import (
     write_translation_store,
 )
 from booktx.io_utils import utc_timestamp
+from booktx.lexicon_tasking import applicable_lexicon_sha256_for_record_sources
 from booktx.models import (
     QualityReviewConfig,
     StoredTranslationRecordV2,
@@ -130,6 +131,27 @@ def _enforce_mandatory_glossary_freshness(proj: Project, task: object) -> None:
         )
 
 
+def _enforce_applicable_lexicon_freshness(proj: Project, task: object) -> None:
+    """Block stale review tasks whose applicable lexicon snapshot changed."""
+    import warnings
+
+    stored = getattr(task, "applicable_lexicon_sha256", None)
+    if stored is None:
+        warnings.warn(
+            "review task predates applicable_lexicon_sha256 fingerprinting; "
+            "recreate the task to enable stale-lexicon enforcement",
+            stacklevel=2,
+        )
+        return
+    records = getattr(task, "records", [])
+    record_sources = {record.id: record.source for record in records}
+    if applicable_lexicon_sha256_for_record_sources(proj, record_sources) != stored:
+        raise _err(
+            "task_context_policy_stale",
+            "task context predates applicable lexicon changes; recreate the task",
+        )
+
+
 def _terminal_pass(quality_cfg: QualityReviewConfig | None) -> int | None:
     if quality_cfg is None or not quality_cfg.active_passes:
         return None
@@ -186,6 +208,7 @@ def accept_review_submission(
     _validate_task_profile(project, task)
     _validate_task_evidence(project, task)
     _enforce_mandatory_glossary_freshness(project, task)
+    _enforce_applicable_lexicon_freshness(project, task)
 
     task_records = {r.id: r for r in task.records}
     source_by_id = bundle.index.source_by_id

@@ -49,6 +49,9 @@ __all__ = [
     "TranslationTrackLedgerEntry",
     "TranslationVersionLedger",
     "TranslationIdentity",
+    "ApplicableLexiconExampleSnapshot",
+    "ApplicableLexiconEntrySnapshot",
+    "ApplicableLexiconFindingSnapshot",
     "TranslationTaskRecord",
     "TranslationTask",
     "StatusTotals",
@@ -576,6 +579,64 @@ class TranslationIdentity(BaseModel):
     model: str
 
 
+class ApplicableLexiconExampleSnapshot(BaseModel):
+    """One compact lexicon example persisted with a task snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    good_target: str = ""
+    bad_target: str = ""
+    note: str = ""
+
+
+class ApplicableLexiconEntrySnapshot(BaseModel):
+    """One applicable lexicon entry snapshot persisted on a task record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entry_id: str
+    kind: Literal[
+        "phrase_preference",
+        "collocation_preference",
+        "word_sense",
+        "style_preference",
+        "forbidden_literalism",
+        "world_term",
+    ] = "phrase_preference"
+    source: str
+    source_variants: list[str] = Field(default_factory=list)
+    source_regex: str | None = None
+    source_language: str = "en"
+    case_sensitive: bool = False
+    matched_source_cue: str
+    matched_source_span: tuple[int, int]
+    target_preferred: list[str] = Field(default_factory=list)
+    target_allowed: list[str] = Field(default_factory=list)
+    target_forbidden: list[str] = Field(default_factory=list)
+    target_regex_forbidden: list[str] = Field(default_factory=list)
+    preferred_policy: Literal["off", "advisory", "required"] = "off"
+    severity: Literal["info", "warn", "error"] = "warn"
+    sense: str = ""
+    rationale: str = ""
+    examples: list[ApplicableLexiconExampleSnapshot] = Field(default_factory=list)
+
+
+class ApplicableLexiconFindingSnapshot(BaseModel):
+    """One deterministic lexicon audit finding persisted on a review task record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entry_id: str
+    status: Literal["forbidden_target", "preferred_missing", "clean"]
+    rule_code: str
+    severity: Literal["info", "warn", "error"]
+    reason: str = ""
+    target_forbidden_found: list[str] = Field(default_factory=list)
+    target_preferred_found: list[str] = Field(default_factory=list)
+    effective_candidate_ref: str = ""
+
+
 class TranslationTaskRecord(BaseModel):
     """A record assigned to a CLI-created translation task."""
 
@@ -586,6 +647,9 @@ class TranslationTaskRecord(BaseModel):
     source: str = Field(..., description="Source text with placeholders")
     protected_terms: list[str] = Field(default_factory=list)
     placeholders: list[Placeholder] = Field(default_factory=list)
+    applicable_lexicon: list[ApplicableLexiconEntrySnapshot] = Field(
+        default_factory=list
+    )
 
 
 class TranslationTask(BaseModel):
@@ -629,6 +693,10 @@ class TranslationTask(BaseModel):
     mandatory_glossary_sha256: str | None = Field(
         default=None,
         description="sha256 of binding glossary fields when the task was created",
+    )
+    applicable_lexicon_sha256: str | None = Field(
+        default=None,
+        description="sha256 of applicable lexicon entry snapshots when the task was created",
     )
     context_notes_scope: str | None = Field(
         default=None,
@@ -702,6 +770,12 @@ class TranslationReviewTaskRecord(BaseModel):
     review_window_sha256: str
     before: list[ReviewContextRecord] = Field(default_factory=list)
     after: list[ReviewContextRecord] = Field(default_factory=list)
+    applicable_lexicon: list[ApplicableLexiconEntrySnapshot] = Field(
+        default_factory=list
+    )
+    lexicon_findings: list[ApplicableLexiconFindingSnapshot] = Field(
+        default_factory=list
+    )
 
 
 class TranslationReviewTask(BaseModel):
@@ -732,6 +806,10 @@ class TranslationReviewTask(BaseModel):
     mandatory_glossary_sha256: str | None = Field(
         default=None,
         description="sha256 of binding glossary fields when the task was created",
+    )
+    applicable_lexicon_sha256: str | None = Field(
+        default=None,
+        description="sha256 of applicable lexicon entry snapshots when the review task was created",
     )
 
     before_records: int

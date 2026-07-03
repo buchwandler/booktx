@@ -536,3 +536,60 @@ booktx validate . --include-inactive --fail-on-history-warnings
 ### Deterministic terminology correction
 
 Use `booktx translation search` for terminology fixes instead of inspecting stores directly. Combine source and target criteria with `--match all`, add regex/exclusion filters when needed, and write profile-local correction blocks with `--write-block`. Glossary rendering distinguishes binding rules from advisory and disabled entries; `enforce` alone is not binding without `require_target` or forbidden targets. Revision commands preserve baseline and chapter-scoped context-view metadata.
+
+### Translation preference dictionary / lexicon
+
+Use the lexicon for reusable cross-book lexical preferences and literalism traps
+that should appear only when their source cue matches the current records. Keep
+fixed terminology, names, and mandatory target enforcement in the glossary;
+keep softer word-sense and collocation guidance in lexicon shards.
+
+Store the lexicon as one JSON shard per target language/locale:
+
+```text
+~/.config/booktx/translation-lexicon/de.json
+.booktx/lexicon/de.json
+translations/<profile>/lexicon-overrides/de-DE.json
+```
+
+Read-only commands can run from project root or isolated profile roots:
+
+```bash
+booktx lexicon status . --json
+booktx lexicon scan-source . --jsonl
+booktx lexicon audit . --jsonl
+booktx lexicon write-review . --pass 1
+```
+
+Global-only workflows also work outside a project:
+
+```bash
+booktx lexicon add \
+  --scope global \
+  --language de \
+  --id LEX-MOULDY \
+  --source "mouldy principles" \
+  --source-regex "\\bmouldy\\s+principles(?:\\s+of\\s+magic)?\\b" \
+  --preferred "schäbige Prinzipien" \
+  --forbid "schimmligen Prinzipien" \
+  --approve
+
+booktx lexicon export --scope global --language de --output ./lexicon-de.json
+booktx lexicon import --scope global --language de --input ./lexicon-de.json --mode merge
+```
+
+Isolated profile-root mode may read the global lexicon and write profile
+overlays, but it must not mutate global or project shards. Paths stay redacted
+(`~` or `$BOOKTX_LEXICON_DIR/...`) instead of leaking absolute locations.
+
+When the user reports a bad context-sensitive translation:
+
+1. Fix the current effective output with `translation revise-record` or
+   `review revise-record`, depending on whether the effective target is a
+   translation or an active review.
+2. Add a local glossary entry only when the phrase is fixed and safely
+   enforceable.
+3. Add or promote a reusable lexicon entry for the broader sense preference.
+4. Run `booktx lexicon audit . --jsonl` and `booktx qa-scan . --forbidden --glossary --include-advisory --jsonl`.
+5. Use `booktx lexicon write-review . --pass 1` when the lexicon finding should
+   create normal review work instead of an immediate deterministic rewrite.

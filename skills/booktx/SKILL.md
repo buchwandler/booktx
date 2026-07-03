@@ -605,6 +605,52 @@ review or polish work. Treat `translation-store.json` as canonical history,
 not a search interface. Reserve raw-store reads for debugging when a booktx
 command is genuinely missing.
 
+## Translation preference dictionary / lexicon
+
+Use the lexicon for reusable cross-book lexical preferences and literalism
+traps. Store it as one JSON shard per target language/locale, for example
+`~/.config/booktx/translation-lexicon/de.json`, not as one monolithic
+dictionary.
+
+Rules:
+
+1. Prefer phrase/collocation/sense entries with rationale and short examples.
+2. Do not add broad word-level rules unless the source cue is demonstrably safe.
+3. Do not inject the full global lexicon into prompts; rely on task-scoped
+   applicable entries matched from the source records.
+4. Use `booktx lexicon audit` after translation and `booktx lexicon write-review`
+   to create normal quality-review work.
+5. Use `booktx lexicon import` / `booktx lexicon export` for validated transfer,
+   backups, and merge handling across machines.
+6. In isolated profile-root mode, read-only lexicon commands and
+   profile-overlay writes work without `--profile`, but global/project
+   mutations stay collaborative project-root commands.
+
+Typical commands:
+
+```bash
+booktx lexicon status . --json
+booktx lexicon add --scope global --language de --id LEX-MOULDY --source "mouldy principles" --preferred "schäbige Prinzipien" --forbid "schimmligen Prinzipien" --approve
+booktx lexicon scan-source . --jsonl
+booktx lexicon audit . --jsonl
+booktx lexicon write-review . --pass 1
+booktx lexicon promote-context . --entry LEX-MOULDY --as-question
+booktx lexicon export --scope global --language de --output ./lexicon-de.json
+booktx lexicon import --scope global --language de --input ./lexicon-de.json --mode merge
+```
+
+### Bad context-sensitive translation playbook
+
+When the user reports a bad context-sensitive translation:
+
+1. Fix the active effective output with `translation revise-record`; if the
+   effective target is an active review, use `review revise-record`.
+2. Add a local glossary entry only if the phrase is fixed and safely
+   enforceable.
+3. Add or promote a reusable lexicon entry for the broader sense preference.
+4. Run `booktx lexicon audit` and `booktx qa-scan`.
+5. Validate and build.
+
 ## Glossary correction workflow
 
 Never edit `context.json` directly. Use CLI commands for all glossary changes:

@@ -40,6 +40,7 @@ from booktx.config import (
     write_translation_store,
 )
 from booktx.io_utils import utc_timestamp
+from booktx.lexicon_tasking import applicable_lexicon_sha256_for_record_sources
 from booktx.models import TranslatedRecord
 from booktx.progress import count_words
 from booktx.translation_store import ensure_store_record, upsert_translation_version
@@ -180,6 +181,28 @@ def _enforce_mandatory_glossary_freshness(proj: Project, task: object) -> None:
         )
 
 
+def _enforce_applicable_lexicon_freshness(proj: Project, task: object) -> None:
+    """Block stale tasks whose applicable lexicon snapshot changed."""
+    import warnings
+
+    stored = getattr(task, "applicable_lexicon_sha256", None)
+    if stored is None:
+        warnings.warn(
+            "task predates applicable_lexicon_sha256 fingerprinting; "
+            "recreate the task to enable stale-lexicon enforcement",
+            stacklevel=2,
+        )
+        return
+    records = getattr(task, "records", [])
+    record_sources = {record.id: record.source for record in records}
+    if applicable_lexicon_sha256_for_record_sources(proj, record_sources) != stored:
+        raise _err(
+            "task_context_policy_stale",
+            f"task {getattr(task, 'task_id', '<unknown>')} predates applicable "
+            "lexicon changes; create a fresh task before inserting translations",
+        )
+
+
 def validate_submitted_records(
     proj: Project,
     bundle: StatusBundle,
@@ -205,6 +228,7 @@ def validate_submitted_records(
 
     if task is not None:
         _enforce_mandatory_glossary_freshness(proj, task)
+        _enforce_applicable_lexicon_freshness(proj, task)
 
     try:
         context = load_validation_context(
