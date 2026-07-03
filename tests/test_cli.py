@@ -832,8 +832,10 @@ def test_command_tree_group_snapshots():
             "create-profile",
             "insert",
             "next",
+            "prepare-isolation",
             "record",
             "status",
+            "sync-sources",
         },
         "profile": {
             "compare",

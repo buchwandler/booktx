@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+# ruff: noqa: E501
 from booktx.acceptance import SubmissionValidationError
 from booktx.config import (
     Project,
@@ -20,6 +21,7 @@ from booktx.config import (
     write_translation_store,
 )
 from booktx.context import TranslationContext
+from booktx.errors import BooktxError
 from booktx.glossary_match import (
     applicable_entry_indexes,
     contains_term,
@@ -321,15 +323,117 @@ def _validate_edited_targets_allowed(
         )
 
 
+def _bind_task_source_access(
+    project: Project, task: JudgeTask, *, enforce_snapshot: bool
+) -> None:
+    """Bind runtime/task source access before candidate processing.
+
+    In profile-root mode (``enforce_snapshot``) only snapshot tasks are
+    accepted; live/legacy tasks are rejected before any sibling profile is
+    loaded. Snapshot tasks must carry complete evidence, an uncorrupted
+    candidate payload, and a current manifest hash; live tasks keep the
+    existing sibling drift checks (applied per record below).
+    """
+    from booktx.config import JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL
+    from booktx.judge_sources import (
+        judge_sources_manifest_sha256,
+        judge_task_candidates_sha256,
+    )
+
+    if enforce_snapshot and task.source_access != "snapshot":
+        raise _err(
+            "judge_snapshot_task_required",
+            "profile-root judge insert requires a snapshot task; "
+            "recreate the task with `booktx judge next .` from the profile root",
+        )
+    if task.source_access != "snapshot":
+        return
+
+    problems: list[str] = []
+    if not task.source_snapshot_sha256:
+        problems.append("source_snapshot_sha256")
+    if task.source_snapshot_path != JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL:
+        problems.append("source_snapshot_path")
+    if not task.source_candidates_sha256:
+        problems.append("source_candidates_sha256")
+    if problems:
+        raise _err(
+            "judge_snapshot_evidence_incomplete",
+            "snapshot judge task is missing or has invalid evidence "
+            f"({', '.join(problems)}); recreate the task",
+        )
+    if judge_task_candidates_sha256(task.records) != task.source_candidates_sha256:
+        raise _err(
+            "judge_task_candidate_corrupt",
+            f"judge task {task.judge_task_id} candidate payload hash does not match; "
+            "the task artifact was corrupted or edited",
+        )
+    try:
+        current_manifest_sha = judge_sources_manifest_sha256(project)
+    except BooktxError:
+        current_manifest_sha = ""
+    if current_manifest_sha != task.source_snapshot_sha256:
+        raise _err(
+            "judge_source_snapshot_drift",
+            "judge source snapshot changed since this task was created; recreate the task",
+        )
+
+
+def _validate_live_candidate_has_not_drifted(
+    project: Project,
+    task: JudgeTask,
+    item: SubmittedJudgeRecord,
+    selected_candidate: JudgeTaskCandidate,
+) -> None:
+    """Collaborative-mode drift check: reload the live source profile.
+
+    Used only for ``source_access == "live"`` tasks. Snapshot tasks trust
+    their immutable payload and never call this.
+    """
+    source_project = load_profile_project(project.root, selected_candidate.profile)
+    source_stored = load_translation_store(source_project).records.get(item.id)
+    if source_stored is None:
+        raise _err(
+            "judge_candidate_missing",
+            f"source profile {selected_candidate.profile} "
+            f"no longer has record {item.id}",
+        )
+    selection = effective_candidate_selection(source_stored, strict_active_review=True)
+    if isinstance(selection, EffectiveCandidateError) or selection is None:
+        raise _err(
+            "judge_candidate_drift",
+            f"source profile {selected_candidate.profile} no longer has "
+            f"the selected effective candidate for record {item.id}",
+        )
+    if selection.selected_ref != selected_candidate.selected_ref:
+        raise _err(
+            "judge_candidate_drift",
+            f"record {item.id} selected candidate ref changed from "
+            f"{selected_candidate.selected_ref} to {selection.selected_ref}",
+        )
+    live_target_sha = sha256_text(selection.candidate.target)
+    if live_target_sha != selected_candidate.target_sha256:
+        raise _err(
+            "judge_candidate_hash_drift",
+            f"record {item.id} selected candidate content changed "
+            f"since judge task {task.judge_task_id} was created",
+        )
+
+
 def accept_judge_submission(
     project: Project,
     task: JudgeTask,
     submitted: list[SubmittedJudgeRecord],
     *,
     bundle: StatusBundle,
+    enforce_snapshot: bool = False,
 ) -> JudgeInsertResult:
     if not submitted:
         raise _err("empty_submission", "no judge decisions to accept")
+
+    _validate_task_profile(project, task)
+    _validate_task_evidence(project, task)
+    _bind_task_source_access(project, task, enforce_snapshot=enforce_snapshot)
 
     _validate_task_profile(project, task)
     _validate_task_evidence(project, task)
@@ -399,37 +503,16 @@ def accept_judge_submission(
                     "violates the selection profile glossary "
                     "and cannot be copied unchanged",
                 )
-            source_project = load_profile_project(
-                project.root, selected_candidate.profile
-            )
-            source_stored = load_translation_store(source_project).records.get(item.id)
-            if source_stored is None:
+            # Self-check: the candidate target hash must match its own payload.
+            # This detects a corrupted/edited task artifact for any access mode.
+            if (
+                sha256_text(selected_candidate.target)
+                != selected_candidate.target_sha256
+            ):
                 raise _err(
-                    "judge_candidate_missing",
-                    f"source profile {selected_candidate.profile} "
-                    f"no longer has record {item.id}",
-                )
-            selection = effective_candidate_selection(
-                source_stored, strict_active_review=True
-            )
-            if isinstance(selection, EffectiveCandidateError) or selection is None:
-                raise _err(
-                    "judge_candidate_drift",
-                    f"source profile {selected_candidate.profile} no longer has "
-                    f"the selected effective candidate for record {item.id}",
-                )
-            if selection.selected_ref != selected_candidate.selected_ref:
-                raise _err(
-                    "judge_candidate_drift",
-                    f"record {item.id} selected candidate ref changed from "
-                    f"{selected_candidate.selected_ref} to {selection.selected_ref}",
-                )
-            live_target_sha = sha256_text(selection.candidate.target)
-            if live_target_sha != selected_candidate.target_sha256:
-                raise _err(
-                    "judge_candidate_hash_drift",
-                    f"record {item.id} selected candidate content changed "
-                    f"since judge task {task.judge_task_id} was created",
+                    "judge_task_candidate_corrupt",
+                    f"record {item.id} candidate {selected_candidate.label} hash "
+                    "does not match the task payload",
                 )
             if item.decision_kind == "copy" and _normalize_newlines(
                 target_text
@@ -438,6 +521,13 @@ def accept_judge_submission(
                     "judge_copy_target_mismatch",
                     f"record {item.id} copy target must exactly match "
                     f"selected candidate {selected_candidate.label}",
+                )
+            # Live tasks re-check the sibling source profile for drift. Snapshot
+            # tasks trust their immutable, hash-verified payload and never read
+            # sibling profiles.
+            if task.source_access == "live":
+                _validate_live_candidate_has_not_drifted(
+                    project, task, item, selected_candidate
                 )
 
         if item.id not in source_by_id:

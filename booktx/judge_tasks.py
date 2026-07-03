@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from hashlib import blake2s
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from booktx.config import (
+    JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL,
     current_source_sha256,
     judge_ingest_block_path,
     judge_ingest_json_path,
@@ -17,9 +18,15 @@ from booktx.config import (
 from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import write_text_atomic
+from booktx.judge_sources import (
+    judge_sources_manifest_sha256,
+    judge_task_candidates_sha256,
+    load_live_judge_source_views,
+    load_snapshot_judge_source_views,
+    validate_judge_sources_snapshot,
+)
 from booktx.judge_store import (
     collect_source_candidates,
-    load_source_profile_projects,
     require_selection_profile,
     selected_record_ids,
 )
@@ -86,8 +93,14 @@ def render_judge_task_block(task: JudgeTask) -> str:
         f"judge_task_id: {task.judge_task_id}",
         f"profile: {task.profile}",
         f"sources: {','.join(task.source_profiles)}",
-        "",
     ]
+    if task.source_access == "snapshot":
+        lines.append(f"source_access: {task.source_access}")
+        lines.append(
+            "source_snapshot: "
+            + (task.source_snapshot_path or JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL)
+        )
+    lines.append("")
     for record in task.records:
         lines.extend(
             [
@@ -157,6 +170,7 @@ def create_judge_task(
     record_id: str | None,
     max_words: int,
     require_all_sources: bool,
+    source_access: Literal["live", "snapshot"] = "live",
 ) -> JudgeTask:
     require_selection_profile(project)
     context_exists = load_context(project) is not None
@@ -180,7 +194,17 @@ def create_judge_task(
         baseline_sha256=resolution.baseline_sha256,
         target_chapter_id=task_chapter_id,
     )
-    source_projects = load_source_profile_projects(project, source_profiles)
+    if source_access == "live":
+        source_views = load_live_judge_source_views(project, source_profiles)
+        source_snapshot_sha256: str | None = None
+        source_snapshot_path: str | None = None
+    else:
+        # Validate the full manifest against the configured source list first,
+        # then load the requested (possibly subset) views from the snapshot.
+        validate_judge_sources_snapshot(project)
+        source_views = load_snapshot_judge_source_views(project, source_profiles)
+        source_snapshot_sha256 = judge_sources_manifest_sha256(project)
+        source_snapshot_path = JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL
     validation_context = load_validation_context(
         project,
         context_view_path=context_view.context_path,
@@ -197,7 +221,7 @@ def create_judge_task(
         candidates, missing_profiles = collect_source_candidates(
             selection_project=project,
             selection_context=validation_context,
-            source_projects=source_projects,
+            source_views=source_views,
             source_record=source_record,
             chunk_id=source_view.chunk_id,
         )
@@ -251,6 +275,10 @@ def create_judge_task(
         context_view_sha256=context_view.context_view_sha256,
         context_view_path=context_view.context_path,
         mandatory_glossary_sha256=live_mandatory_glossary_sha256(project),
+        source_access=source_access,
+        source_snapshot_sha256=source_snapshot_sha256,
+        source_snapshot_path=source_snapshot_path,
+        source_candidates_sha256=judge_task_candidates_sha256(records),
         records=records,
     )
     write_judge_task(project, task)

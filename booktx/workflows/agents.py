@@ -102,6 +102,11 @@ def _target_locale(root: Path, profile_name: str) -> str:
     return cfg.target_locale or cfg.target_language
 
 
+def _profile_kind(root: Path, profile_name: str) -> str | None:
+    cfg = load_profile_config(load_source_project(root), profile_name)
+    return cfg.kind
+
+
 def _reject_ancestor_conflict(root: Path, *, sanitize: bool) -> None:
     """Block isolated preparation when the project-root AGENTS.md is incompatible."""
     ancestor = root / AGENTS_FILENAME
@@ -220,6 +225,7 @@ def _write_project_root(
         profile=target_profile,
         source_id=source_id,
         target_locale=_target_locale(root, target_profile),
+        profile_kind=_profile_kind(root, target_profile),
     )
     write_managed_agents_md(target, text, replace_unmanaged=replace_unmanaged)
 
@@ -273,6 +279,7 @@ def _write_profile_root(
         profile=target_profile,
         source_id=source_id,
         target_locale=_target_locale(root, target_profile),
+        profile_kind=_profile_kind(root, target_profile),
     )
     target = profile_root / AGENTS_FILENAME
     write_managed_agents_md(target, text, replace_unmanaged=replace_unmanaged)

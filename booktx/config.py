@@ -544,6 +544,24 @@ def validate_profile_name(profile_name: str) -> str:
     return profile_name
 
 
+SNAPSHOT_ID_RE = re.compile(r"^[0-9a-f]{1,128}$")
+
+
+def validate_snapshot_id(snapshot_id: str) -> str:
+    """Validate a judge-sources snapshot generation digest before it enters a path.
+
+    Snapshot ids are lowercase hexadecimal digests (any length up to 128 hex
+    chars) so they are always path-safe and deterministic. They must never
+    contain ``..``, separators, or upper-case characters.
+    """
+    if not snapshot_id or not SNAPSHOT_ID_RE.fullmatch(snapshot_id):
+        raise _err(
+            "invalid_snapshot_id",
+            "snapshot id must be a lowercase hexadecimal digest",
+        )
+    return snapshot_id
+
+
 def _is_legacy_layout(root: Path) -> bool:
     return (
         _legacy_config_path(root).is_file() and not source_config_path(root).is_file()
@@ -1491,6 +1509,78 @@ def judge_ingest_block_path(project: Project, judge_task_id: str) -> Path:
 def judge_ingest_json_path(project: Project, judge_task_id: str) -> Path:
     safe = safe_artifact_id(judge_task_id, kind="judge_task")
     return judge_ingest_dir(project) / f"{safe}.json"
+
+
+JUDGE_SOURCES_DIRNAME = "judge-sources"
+JUDGE_SOURCES_MANIFEST_FILENAME = "manifest.json"
+JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL = "judge-sources/manifest.json"
+
+
+def judge_sources_dir(project: Project) -> Path:
+    """Profile-local directory holding copied judge source snapshots."""
+    _require_profile_paths(project, "judge source snapshot access")
+    assert project.profile_dir is not None
+    return project.profile_dir / JUDGE_SOURCES_DIRNAME
+
+
+def judge_sources_manifest_path(project: Project) -> Path:
+    """Active-generation manifest path: ``judge-sources/manifest.json``."""
+    return judge_sources_dir(project) / JUDGE_SOURCES_MANIFEST_FILENAME
+
+
+def judge_sources_snapshots_dir(project: Project) -> Path:
+    """Parent directory of all immutable snapshot generations."""
+    return judge_sources_dir(project) / "snapshots"
+
+
+def judge_source_snapshot_dir(project: Project, snapshot_id: str) -> Path:
+    """Immutable directory for one snapshot generation."""
+    validate_snapshot_id(snapshot_id)
+    return judge_sources_snapshots_dir(project) / snapshot_id
+
+
+def judge_source_profile_dir(
+    project: Project, snapshot_id: str, source_profile: str
+) -> Path:
+    """Per-source profile directory inside one snapshot generation."""
+    validate_snapshot_id(snapshot_id)
+    validate_profile_name(source_profile)
+    return judge_source_snapshot_dir(project, snapshot_id) / "profiles" / source_profile
+
+
+def judge_source_profile_config_path(
+    project: Project, snapshot_id: str, source_profile: str
+) -> Path:
+    return (
+        judge_source_profile_dir(project, snapshot_id, source_profile)
+        / "profile-config.json"
+    )
+
+
+def judge_source_translation_store_path(
+    project: Project, snapshot_id: str, source_profile: str
+) -> Path:
+    return (
+        judge_source_profile_dir(project, snapshot_id, source_profile)
+        / "translation-store.json"
+    )
+
+
+def judge_source_translation_version_ledger_path(
+    project: Project, snapshot_id: str, source_profile: str
+) -> Path:
+    return (
+        judge_source_profile_dir(project, snapshot_id, source_profile)
+        / "translation-version-ledger.json"
+    )
+
+
+def judge_source_identity_path(
+    project: Project, snapshot_id: str, source_profile: str
+) -> Path:
+    return (
+        judge_source_profile_dir(project, snapshot_id, source_profile) / "identity.json"
+    )
 
 
 def load_judge_task(project: Project, judge_task_id: str) -> JudgeTask | None:

@@ -1,10 +1,25 @@
-"""Selection-profile helpers for judge workflows."""
+"""Selection-profile helpers for judge workflows.
+
+Candidate selection operates over :class:`JudgeSourceProfileView` instances,
+which are agnostic to whether the source data is *live* (loaded from sibling
+``translations/<profile>`` directories in collaborative mode) or *snapshot*
+(loaded from copied ``judge-sources/snapshots/...`` directories in isolated
+mode). The view loaders themselves live in :mod:`booktx.judge_sources`; this
+module stays focused on candidate selection, source resolution, and validation.
+"""
 
 from __future__ import annotations
 
-from booktx.config import Project, _err, load_profile_project, load_translation_store
+from typing import TYPE_CHECKING
+
+from booktx.config import Project, _err, load_translation_store
 from booktx.context import TranslationContext
-from booktx.models import JudgeTaskCandidate, JudgeTaskFinding, Record, TranslatedRecord
+from booktx.models import (
+    JudgeTaskCandidate,
+    JudgeTaskFinding,
+    Record,
+    TranslatedRecord,
+)
 from booktx.translation_store import (
     EffectiveCandidateError,
     effective_candidate_selection,
@@ -12,12 +27,14 @@ from booktx.translation_store import (
 )
 from booktx.validate import validate_record_pair
 
+if TYPE_CHECKING:
+    from booktx.judge_sources import JudgeSourceProfileView
+
 __all__ = [
     "parse_sources_csv",
     "resolve_selection_sources",
     "require_selection_profile",
     "validate_judge_source_profile",
-    "load_source_profile_projects",
     "selected_record_ids",
     "record_has_candidate_gap",
     "collect_source_candidates",
@@ -48,20 +65,20 @@ def require_selection_profile(project: Project) -> None:
 
 
 def resolve_selection_sources(project: Project, sources_csv: str | None) -> list[str]:
+    """Return the explicit ``--sources`` list, or the configured source list.
+
+    Callers that need to bind source access to a validated snapshot should use
+    :func:`booktx.judge_sources.configured_selection_sources` plus the subset
+    validator instead of this free-form resolver. This helper remains for the
+    collaborative project-root path where ``--sources`` overrides config.
+    """
     require_selection_profile(project)
     explicit = parse_sources_csv(sources_csv)
     if explicit:
         return explicit
-    cfg = project.profile_config
-    assert cfg is not None
-    selection = cfg.selection
-    if selection is None or not selection.sources:
-        raise _err(
-            "judge_sources_missing",
-            "no source profiles configured; pass --sources or "
-            "create the selection profile with sources",
-        )
-    return list(selection.sources)
+    from booktx.judge_sources import configured_selection_sources
+
+    return configured_selection_sources(project)
 
 
 def validate_judge_source_profile(
@@ -98,18 +115,6 @@ def validate_judge_source_profile(
         )
 
 
-def load_source_profile_projects(
-    selection_project: Project, source_profiles: list[str]
-) -> dict[str, Project]:
-    projects = {
-        profile_name: load_profile_project(selection_project.root, profile_name)
-        for profile_name in source_profiles
-    }
-    for project in projects.values():
-        validate_judge_source_profile(selection_project, project)
-    return projects
-
-
 def selected_record_ids(project: Project) -> set[str]:
     ids: set[str] = set()
     for record_id, stored in load_translation_store(project).records.items():
@@ -121,11 +126,12 @@ def selected_record_ids(project: Project) -> set[str]:
 
 
 def record_has_candidate_gap(
-    source_projects: dict[str, Project],
+    source_views: dict[str, JudgeSourceProfileView],
     record_id: str,
 ) -> bool:
-    for project in source_projects.values():
-        stored = load_translation_store(project).records.get(record_id)
+    """True when any source view lacks an effective candidate for ``record_id``."""
+    for view in source_views.values():
+        stored = view.store.records.get(record_id)
         if stored is None:
             return True
         selection = effective_candidate_selection(stored, strict_active_review=True)
@@ -138,16 +144,21 @@ def collect_source_candidates(
     *,
     selection_project: Project,
     selection_context: TranslationContext | None,
-    source_projects: dict[str, Project],
+    source_views: dict[str, JudgeSourceProfileView],
     source_record: Record,
     chunk_id: str,
 ) -> tuple[list[JudgeTaskCandidate], list[str]]:
+    """Build labeled judge candidates for one source record from each source view.
+
+    Label order is stable because ``source_views`` preserves the configured
+    source-profile order. Missing views/views without an effective candidate are
+    recorded in ``missing_profiles`` instead of raising.
+    """
     candidates: list[JudgeTaskCandidate] = []
     missing_profiles: list[str] = []
     label_ord = ord("A")
-    for profile_name in source_projects:
-        project = source_projects[profile_name]
-        stored = load_translation_store(project).records.get(source_record.id)
+    for profile_name, view in source_views.items():
+        stored = view.store.records.get(source_record.id)
         if stored is None:
             missing_profiles.append(profile_name)
             continue
@@ -175,9 +186,8 @@ def collect_source_candidates(
             JudgeTaskCandidate(
                 label=chr(label_ord),
                 profile=profile_name,
-                target_language=project.config.target_language,
-                target_locale=project.config.target_locale
-                or project.config.target_language,
+                target_language=view.target_language,
+                target_locale=view.target_locale or view.target_language,
                 selected_kind=selection.selected_kind,
                 selected_ref=selection.selected_ref,
                 version_ref=selection.version_ref,

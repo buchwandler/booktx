@@ -411,6 +411,17 @@ booktx judge status ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_
 booktx judge next ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --format block
 ```
 
+For isolated judge work, prepare the snapshot from the project root then cd into the profile root:
+
+```bash
+booktx judge prepare-isolation ./demo --profile de_judge_gpt5_5 --write
+cd translations/de_judge_gpt5_5
+booktx judge status .
+booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
+booktx validate . --fail-on-warnings
+```
+
 `booktx translate next` also snapshots the exact effective task context under
 `translations/<profile>/context-history/views/<sha>/`. New tasks carry both the
 baseline version (for example `1.2`) and the immutable context-view evidence

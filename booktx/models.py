@@ -1118,7 +1118,62 @@ class JudgeTask(BaseModel):
     context_view_sha256: str | None = None
     context_view_path: str | None = None
     mandatory_glossary_sha256: str | None = None
+    source_access: Literal["live", "snapshot"] = "live"
+    source_snapshot_sha256: str | None = None
+    source_snapshot_path: str | None = None
+    source_candidates_sha256: str | None = None
     records: list[JudgeTaskRecord] = Field(default_factory=list)
+
+
+class JudgeSourceProfileSnapshot(BaseModel):
+    """Per-source snapshot of one copied translation profile store.
+
+    Captured under ``judge-sources/snapshots/SNAPSHOT_ID/profiles/<profile>/``.
+    All hashes are SHA-256 over the exact UTF-8 bytes written (including the
+    trailing newline) for copied JSON files; ``profile_config_sha256`` and
+    ``source_sha256`` reuse booktx's canonical identity/config hashing.
+    Optional ``None`` hashes mark files that were absent in the live source and
+    therefore omitted from the immutable generation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    kind: Literal["translation"] = "translation"
+    source_language: str
+    target_language: str
+    target_locale: str = ""
+    source_sha256: str = ""
+    profile_config_sha256: str = ""
+    translation_store_sha256: str = ""
+    translation_version_ledger_sha256: str | None = None
+    identity_sha256: str | None = None
+    records_total: int = 0
+    effective_candidates_total: int = 0
+    copied_at: str
+
+
+class JudgeSourcesSnapshotManifest(BaseModel):
+    """Durable active-generation manifest for a selection profile's copied sources.
+
+    Written to ``judge-sources/manifest.json`` and atomically replaced on every
+    publication. ``snapshot_id`` is a deterministic digest of the configured
+    source list plus copied content hashes (excluding timestamps) so an
+    unchanged sync is a true no-op. Published generations are immutable; the
+    manifest never stores absolute paths.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    selection_profile: str
+    snapshot_id: str
+    source_sha256: str
+    source_config_sha256: str
+    selection_profile_config_sha256: str
+    source_profiles: list[str] = Field(default_factory=list)
+    profiles: dict[str, JudgeSourceProfileSnapshot] = Field(default_factory=dict)
+    generated_at: str
 
 
 class JudgeCandidateEvidence(BaseModel):

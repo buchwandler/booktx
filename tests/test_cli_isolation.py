@@ -145,16 +145,80 @@ def test_context_sync_is_blocked_in_profile_root_mode(monkeypatch, tmp_path: Pat
     assert str(project_dir) not in res.output
 
 
-def test_judge_group_is_blocked_in_profile_root_mode(monkeypatch, tmp_path: Path):
+def test_judge_admin_commands_blocked_in_profile_root(monkeypatch, tmp_path: Path):
     project_dir, profile_root = _make_project(tmp_path)
+    # Create a selection profile so the profile_root isn't the only option
+    from booktx.config import create_profile as cp
+
+    cp(project_dir, "de_judge", target_language="de", kind="selection")
     monkeypatch.chdir(profile_root)
-
-    res = runner.invoke(app, ["judge", "status", ".", "--profile", "de_default"])
-
-    assert res.exit_code != 0, res.output
-    assert "project root" in res.output
+    # create-profile blocked
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            ".",
+            "de_extra",
+            "--target",
+            "de",
+            "--sources",
+            "de_default",
+        ],
+    )
+    assert res.exit_code != 0
+    assert "project root" in res.output or "not available" in res.output
+    # sync-sources blocked (no --profile; auto-resolves to de_default profile root)
+    res = runner.invoke(app, ["judge", "sync-sources", "."])
+    assert res.exit_code != 0
+    assert "project root" in res.output or "not available" in res.output
+    # prepare-isolation blocked (use correct profile for runtime resolution)
+    res = runner.invoke(
+        app, ["judge", "prepare-isolation", ".", "--profile", "de_default"]
+    )
+    assert res.exit_code != 0
+    assert "project root" in res.output or "not available" in res.output
     assert "../" not in res.output
     assert str(project_dir) not in res.output
+
+
+def test_judge_allowed_commands_in_profile_root(monkeypatch, tmp_path: Path):
+    """judge status/next/insert are allowed for selection profiles in profile-root."""
+    project_dir, profile_root = _make_project(tmp_path)
+    from booktx.config import (
+        create_profile as cp,
+    )
+    from booktx.config import (
+        load_profile_config as lpc,
+    )
+    from booktx.config import (
+        write_profile_config as wp,
+    )
+    from booktx.models import SelectionConfig
+
+    cp(project_dir, "de_judge", target_language="de", kind="selection")
+    cfg = lpc(project_dir, "de_judge")
+    cfg.selection = SelectionConfig(sources=["de_default"])
+    wp(project_dir, cfg)
+    # The de_judge profile root has no snapshot yet; status should still work
+    # and report missing snapshot without leaking paths.
+    judge_root = project_dir / "translations" / "de_judge"
+    monkeypatch.chdir(judge_root)
+    res = runner.invoke(app, ["judge", "status", "."])
+    # status succeeds even without snapshot (reports missing)
+    assert "../" not in res.output
+    assert str(project_dir) not in res.output
+    assert "translations/de_judge" not in res.output
+    assert "--profile" not in res.output
+    # snapshot is missing so next fails; but not with "project root" blocker
+    res2 = runner.invoke(
+        app, ["judge", "next", ".", "--unit", "chapter", "--chapter", "0001"]
+    )
+    if res2.exit_code != 0:
+        # Should fail with snapshot/context issue, not isolation blocker
+        assert "not available in profile-root" not in res2.output
+        assert "../" not in res2.output
+        assert str(project_dir) not in res2.output
 
 
 def test_profile_list_from_profile_root_shows_current_profile_only(

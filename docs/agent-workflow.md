@@ -136,9 +136,10 @@ budget runs low. `--max-run-words` is advisory only.
 - Never edit `translations/<profile>/translation-store.json` directly. If validation flags an old accepted record, use `booktx translation revise-record` to fix it.
 - Never edit `translations/<profile>/translated/*.json` directly; use `booktx translate export`.
 - Use `booktx profile compare` for cross-profile review instead of mixing store files manually.
-- Use `booktx judge ...` only from project-root collaborative mode. Judge tasks
-  compare sibling profiles and write accepted output into a selection profile;
-  they are not available in isolated profile-root mode.
+- Use project-root mode to create or refresh a judge source snapshot. After
+  `booktx judge sync-sources` or `booktx judge prepare-isolation`, a selection
+  profile may run `booktx judge status/next/record/insert` from its profile root
+  without sibling profile access.
 - If a `todo-status`, `todo-resume`, or `todo-next` command fails with an internal
   booktx error, stop and report the tool failure. Do not silently switch to a
   large unbounded `translate next --unit chapter` task. Bounded todos exist to
@@ -231,3 +232,32 @@ Choose `decision_kind: edited` only when every available candidate needs a
 repair. Submit the completed judge ingest file with `booktx judge insert ...`;
 booktx writes the chosen target into the selection profile's normal translation
 store and records provenance in `translation-selection-ledger.json`.
+
+## Isolated judge workflow
+
+After the selection profile context is ready, prepare a profile-local snapshot
+of the source candidate stores:
+
+```bash
+booktx judge prepare-isolation ./book --profile de_judge_gpt5_5 --write
+```
+
+This copies source `translation-store.json`, `translation-version-ledger.json`,
+`identity.json`, and `profile-config.json` into an immutable
+`judge-sources/snapshots/<SNAPSHOT_ID>/` directory and writes judge-specific
+`AGENTS.md` instructions. Then start the judge agent inside the profile root:
+
+```bash
+cd translations/de_judge_gpt5_5
+
+# profile root
+booktx judge status .
+booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
+booktx validate . --fail-on-warnings
+```
+
+The isolated judge workflow uses copied candidate data and never reads sibling
+profiles. Output is sanitized: no `--profile` flag, no parent paths, and no
+`translations/<profile>` references. Submission paths are confined to regular
+files inside the current profile.

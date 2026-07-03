@@ -327,8 +327,10 @@ booktx review configure . --enable --pass 1 --name "Flow review" --mode manual -
 
 ## Judge commands (`booktx judge`)
 
-Use judge commands from project-root collaborative mode only. They compare
-sibling profile outputs and write accepted choices into a selection profile.
+Use project-root mode to create or refresh a judge source snapshot. After
+`booktx judge sync-sources` or `booktx judge prepare-isolation`, a selection
+profile may run `booktx judge status/next/record/insert` from its profile root
+without sibling profile access.
 
 ```bash
 booktx judge create-profile ./book de_judge_gpt5_5 \
@@ -368,6 +370,25 @@ booktx judge insert ./book \
   --judge-task-id TASK \
   --file translations/de_judge_gpt5_5/judge-ingest/TASK.block.txt \
   --format block
+```
+
+### Prepare isolation (project-root)
+
+```bash
+booktx judge sync-sources ./book --profile de_judge_gpt5_5 --write
+booktx judge prepare-isolation ./book --profile de_judge_gpt5_5 --write
+```
+
+`sync-sources` copies source candidate stores into an immutable profile-local snapshot. `prepare-isolation` syncs and writes judge-specific `AGENTS.md`. Both are dry-run by default; pass `--write` to publish.
+
+### Isolated judge workflow (profile root)
+
+```bash
+cd translations/de_judge_gpt5_5
+booktx judge status .
+booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
+booktx validate . --fail-on-warnings
 ```
 
 ## Glossary repair and chapter note reset

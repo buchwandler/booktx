@@ -64,7 +64,7 @@ booktx validate .
 booktx build .
 ```
 
-`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile select`, `profile create`, `profile migrate-current`, `context sync`, and the entire `judge` group) remain blocked in isolated mode.
+`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile select`, `profile create`, `profile migrate-current`, `context sync`, and `judge create-profile`/`judge sync-sources`/`judge prepare-isolation`) remain blocked in isolated mode. For selection profiles, `judge status/next/record/insert` are allowed in profile-root mode after snapshot preparation.
 
 The todo commands (`todo-next`, `todo-status`, `todo-resume`) are runtime-aware: in
 profile-root mode they omit `--profile`, use profile-local paths (`todos/`,
@@ -722,8 +722,10 @@ Glossary entries are binding only when `enforce != "off"` and `require_target` o
 
 ## Judge / selection profiles
 
-Judge workflows are cross-profile and must run from the project root. They are
-not available in isolated profile-root mode.
+Use project-root mode to create or refresh a judge source snapshot. After
+`booktx judge sync-sources` or `booktx judge prepare-isolation`, a selection
+profile may run `booktx judge status/next/record/insert` from its profile root
+without sibling profile access.
 
 Create a buildable selection profile with configured source profiles:
 
@@ -767,3 +769,27 @@ Rules:
 - Judge tasks compare sibling profiles and write accepted output into the
   selection profile's normal `translation-store.json`, so normal
   `booktx validate` and `booktx build` still apply.
+
+### Isolated judge workflow
+
+After context is ready, prepare the snapshot from the project root:
+
+```bash
+booktx judge prepare-isolation ./book --profile de_judge_gpt5_5 --write
+```
+
+Then start the judge agent inside the profile root:
+
+```bash
+cd translations/de_judge_gpt5_5
+
+# profile root
+booktx judge status .
+booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
+booktx validate . --fail-on-warnings
+```
+
+The isolated workflow uses copied candidate data (no sibling reads) and
+outputs only profile-local paths. Create-profile, sync-sources, and
+prepare-isolation remain blocked in profile-root mode.

@@ -369,6 +369,67 @@ def _render_isolated_body(*, profile: str, target_locale: str) -> str:
     )
 
 
+def _render_isolated_selection_body(*, profile: str, target_locale: str) -> str:
+    return (
+        "\n\n"
+        "# booktx isolated judge profile instructions\n"
+        "\n"
+        "You are inside a booktx selection profile root.\n"
+        "\n"
+        "Use only profile-local commands with project argument `.`. "
+        "Do not use parent paths, absolute paths, shell globs, "
+        "filesystem traversal snippets, sibling profile commands, or "
+        "`--profile`.\n"
+        "\n"
+        "Profile:\n"
+        "\n"
+        f"- profile: {profile}\n"
+        f"- target: {target_locale}\n"
+        "- source access: copied judge-sources snapshot\n"
+        "- mutable state: this directory only\n"
+        "\n"
+        "First checks:\n"
+        "\n"
+        "```bash\n"
+        "booktx mode .\n"
+        "booktx doctor isolation .\n"
+        "booktx context status .\n"
+        "booktx judge status .\n"
+        "```\n"
+        "\n"
+        "If context is missing, not ready, or has unresolved approval "
+        "questions, stop and ask the user.\n"
+        "\n"
+        "When the user says `continue`:\n"
+        "\n"
+        "1. Run `booktx judge status .`.\n"
+        "2. Run the printed `booktx judge next . ...` command, or choose "
+        "the next missing chapter if requested.\n"
+        "3. Read `judge-tasks/TASK.source.block.txt`.\n"
+        "4. Edit `judge-ingest/TASK.block.txt`.\n"
+        "5. Prefer `decision_kind: copy` when one candidate is already correct.\n"
+        "6. Use `decision_kind: edited` only when all candidates need repair.\n"
+        "7. Submit with the exact `booktx judge insert . ...` command "
+        "printed by booktx.\n"
+        "8. Validate the selected profile with `booktx validate . "
+        "--fail-on-warnings`.\n"
+        "9. Build only when the requested scope is complete.\n"
+        "\n"
+        "Rules:\n"
+        "\n"
+        "- Preserve record ids and placeholders exactly.\n"
+        "- Preserve inline XHTML tags and quote boundaries.\n"
+        "- Do not invent context answers or mark context ready.\n"
+        "- Do not mention sibling profile names except as data printed by "
+        "`booktx judge status .`; never access sibling profiles manually.\n"
+        "- If booktx prints a parent path, sibling profile, or any "
+        "parent-directory reference, stop and report an isolation bug.\n"
+        "\n"
+        "Use the installed booktx skill when available. This file is the "
+        "local harness entry contract; it does not replace the skill.\n"
+    )
+
+
 def _render_collaborative_body() -> str:
     return (
         "\n\n"
@@ -433,13 +494,15 @@ def render_agents_md(
     profile: str | None,
     source_id: str,
     target_locale: str | None = None,
+    profile_kind: str | None = None,
 ) -> str:
     """Render a complete managed ``AGENTS.md`` document for ``mode``.
 
     The isolated body must never reference parent paths, absolute paths,
     ``translations/``, sibling profile names, or ``--profile``. Only the
     current profile name and its target locale appear, because those are
-    local identity.
+    local identity. A selection profile (``profile_kind == "selection"``)
+    receives judge-isolation instructions instead of translation instructions.
     """
     header = _render_metadata_block(mode=mode, profile=profile, source_id=source_id)
     if mode == "isolated":
@@ -453,7 +516,12 @@ def render_agents_md(
                 "agents_isolated_target_required",
                 "isolated AGENTS.md rendering requires a target locale",
             )
-        body = _render_isolated_body(profile=profile, target_locale=target_locale)
+        if profile_kind == "selection":
+            body = _render_isolated_selection_body(
+                profile=profile, target_locale=target_locale
+            )
+        else:
+            body = _render_isolated_body(profile=profile, target_locale=target_locale)
     else:
         body = _render_collaborative_body()
     return _ensure_single_trailing_newline(header + body)

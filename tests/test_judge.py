@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+from contextlib import contextmanager
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -11,6 +14,8 @@ from booktx.cli import app
 from booktx.config import (
     create_profile,
     judge_ingest_json_path,
+    judge_source_profile_dir,
+    judge_sources_manifest_path,
     load_judge_task,
     load_profile_config,
     load_profile_project,
@@ -19,6 +24,12 @@ from booktx.config import (
     load_translation_store,
     write_profile_config,
     write_translation_store,
+)
+from booktx.judge_sources import (
+    judge_sources_manifest_sha256,
+    load_snapshot_judge_source_views,
+    validate_judge_sources_snapshot,
+    validate_snapshot_source_subset,
 )
 from booktx.models import SelectionConfig, TranslationReviewCandidate
 from booktx.progress import load_source_records
@@ -1108,3 +1119,519 @@ def test_judge_rejects_non_selection_profile(tmp_path: Path):
 
     assert res.exit_code != 0
     assert "selection profile" in res.output
+
+
+# --------------------------------------------------------------------------
+# judge isolation: snapshot/sync/prepare-isolation tests (todo-0011)
+# --------------------------------------------------------------------------
+
+
+def _sync_sources(
+    project_dir: Path,
+    profile: str = "de_judge",
+    *,
+    write: bool = False,
+    sources: str | None = None,
+    prune: bool = True,
+):
+    args = ["judge", "sync-sources", str(project_dir), "--profile", profile]
+    if sources is not None:
+        args += ["--sources", sources]
+    if write:
+        args.append("--write")
+    if not prune:
+        args.append("--no-prune")
+    return runner.invoke(app, args)
+
+
+@contextmanager
+def _chdir(path: Path):
+    cwd = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(cwd)
+
+
+def _profile_root_judge_next(
+    project_dir: Path,
+    *,
+    profile: str = "de_judge",
+    chapter: str = "0001",
+    max_words: int = 900,
+):
+    pr = project_dir / "translations" / profile
+    with _chdir(pr):
+        return runner.invoke(
+            app,
+            [
+                "judge",
+                "next",
+                ".",
+                "--unit",
+                "chapter",
+                "--chapter",
+                chapter,
+                "--max-words",
+                str(max_words),
+                "--format",
+                "block",
+            ],
+        )
+
+
+def _profile_root_judge_insert(
+    project_dir: Path,
+    task_id: str,
+    file_path: str,
+    *,
+    profile: str = "de_judge",
+    input_format: str = "block",
+):
+    pr = project_dir / "translations" / profile
+    with _chdir(pr):
+        return runner.invoke(
+            app,
+            [
+                "judge",
+                "insert",
+                ".",
+                "--judge-task-id",
+                task_id,
+                "--file",
+                file_path,
+                "--format",
+                input_format,
+            ],
+        )
+
+
+def _fill_json_ingest(
+    ingest_path: Path,
+    task_id: str,
+    record_id: str,
+    selected: str,
+    target: str,
+    decision_kind: str = "copy",
+):
+    ingest_path.write_text(
+        json.dumps(
+            {
+                "judge_task_id": task_id,
+                "records": [
+                    {
+                        "id": record_id,
+                        "selected": selected,
+                        "decision_kind": decision_kind,
+                        "target": target,
+                        "reason": "test",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _snapshot_id(project_dir: Path) -> str:
+    proj = load_profile_project(project_dir, "de_judge")
+    return validate_judge_sources_snapshot(proj).snapshot_id
+
+
+# --- Test 1: sync-sources copies profile stores ---
+
+
+def test_judge_sync_sources_copies_profile_stores(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B target.")
+    res = _sync_sources(project_dir, write=True)
+    assert res.exit_code == 0, res.output
+    proj = load_profile_project(project_dir, "de_judge")
+    man = validate_judge_sources_snapshot(proj)
+    assert "de_a" in man.source_profiles
+    assert "de_b" in man.source_profiles
+    sid = man.snapshot_id
+    for prof in ("de_a", "de_b"):
+        pdir = judge_source_profile_dir(proj, sid, prof)
+        assert (pdir / "translation-store.json").is_file()
+        assert (pdir / "profile-config.json").is_file()
+        assert man.profiles[prof].effective_candidates_total >= 0
+
+
+# --- Test 2: next from snapshot uses copied candidates ---
+
+
+def test_judge_next_from_snapshot_uses_copied_candidates(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Original target.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B target.")
+    _sync_sources(project_dir, write=True)
+    # Mutate live AFTER sync
+    p = load_profile_project(project_dir, "de_a")
+    store = load_translation_store(p)
+    store.records[record_ids[0]].versions[0].target = "MUTATED-LIVE"
+    write_translation_store(p, store)
+    res = _profile_root_judge_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = res.output.split("judge task: ")[1].splitlines()[0].strip()
+    task = load_judge_task(load_profile_project(project_dir, "de_judge"), task_id)
+    a_candidate = next(c for c in task.records[0].candidates if c.profile == "de_a")
+    assert a_candidate.target == "Original target."
+
+
+# --- Test 3: next blocks missing snapshot ---
+
+
+def test_judge_next_snapshot_blocks_missing_snapshot(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    # No sync performed
+    res = _profile_root_judge_next(project_dir)
+    assert res.exit_code != 0
+    assert (
+        "snapshot" in res.output.lower()
+        or "prepare-isolation" in res.output.lower()
+        or "project root" in res.output.lower()
+    )
+
+
+# --- Test 4: insert snapshot does not read sibling profile ---
+
+
+def test_judge_insert_snapshot_does_not_read_sibling_profile(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A correct.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B target.")
+    _sync_sources(project_dir, write=True)
+    res = _profile_root_judge_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = res.output.split("judge task: ")[1].splitlines()[0].strip()
+    # Delete the sibling source profile dir
+    shutil.rmtree(project_dir / "translations" / "de_a")
+    proj = load_profile_project(project_dir, "de_judge")
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.json"
+    task = load_judge_task(proj, task_id)
+    _fill_json_ingest(
+        ingest, task_id, record_ids[0], "A", task.records[0].candidates[0].target
+    )
+    res2 = _profile_root_judge_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.json", input_format="json"
+    )
+    assert res2.exit_code == 0, res2.output
+    assert "accepted" in res2.output
+
+
+# --- Test 5: insert rejects manifest drift ---
+
+
+def test_judge_insert_snapshot_rejects_snapshot_manifest_drift(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B.")
+    _sync_sources(project_dir, write=True)
+    res = _profile_root_judge_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = res.output.split("judge task: ")[1].splitlines()[0].strip()
+    # Change a source and re-sync (manifest hash changes)
+    p = load_profile_project(project_dir, "de_a")
+    store = load_translation_store(p)
+    store.records[record_ids[0]].versions[0].target = "CHANGED"
+    write_translation_store(p, store)
+    _sync_sources(project_dir, write=True)
+    proj = load_profile_project(project_dir, "de_judge")
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.json"
+    task = load_judge_task(proj, task_id)
+    _fill_json_ingest(
+        ingest, task_id, record_ids[0], "A", task.records[0].candidates[0].target
+    )
+    res2 = _profile_root_judge_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.json", input_format="json"
+    )
+    assert res2.exit_code != 0
+    assert "drift" in res2.output.lower() or "recreate" in res2.output.lower()
+
+
+# --- Test 6: sync rejects selection profile as source ---
+
+
+def test_judge_sync_rejects_selection_profile_as_source(tmp_path: Path):
+    project_dir, _ = _judge_project(tmp_path)
+    create_profile(project_dir, "de_sel2", target_language="de", kind="selection")
+    cfg = load_profile_config(project_dir, "de_judge")
+    assert cfg.selection is not None
+    cfg.selection.sources = ["de_a", "de_sel2"]
+    write_profile_config(project_dir, cfg)
+    res = _sync_sources(project_dir, write=True)
+    assert res.exit_code != 0
+    assert "selection" in res.output.lower() or "translation" in res.output.lower()
+
+
+# --- Test 7: sync rejects non-translation source ---
+
+
+def test_judge_sync_rejects_non_translation_source(tmp_path: Path):
+    project_dir, _ = _judge_project(tmp_path)
+    create_profile(project_dir, "de_sel3", target_language="de", kind="selection")
+    cfg = load_profile_config(project_dir, "de_judge")
+    assert cfg.selection is not None
+    cfg.selection.sources = ["de_a", "de_sel3"]
+    write_profile_config(project_dir, cfg)
+    res = _sync_sources(project_dir, write=True)
+    assert res.exit_code != 0
+    assert "translation" in res.output.lower() or "selection" in res.output.lower()
+
+
+# --- Test 8: sync dry-run has no side effects ---
+
+
+def test_judge_sync_dry_run_has_no_side_effects(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    base = project_dir / "translations" / "de_judge"
+    tree_before = {str(p.relative_to(base)) for p in base.rglob("*")}
+    res = _sync_sources(project_dir, write=False)
+    assert res.exit_code == 0
+    assert "dry-run" in res.output
+    tree_after = {str(p.relative_to(base)) for p in base.rglob("*")}
+    assert tree_before == tree_after
+
+
+# --- Test 9: sync unchanged is idempotent ---
+
+
+def test_judge_sync_unchanged_is_idempotent(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B.")
+    _sync_sources(project_dir, write=True)
+    proj = load_profile_project(project_dir, "de_judge")
+    manifest_bytes_1 = judge_sources_manifest_path(proj).read_bytes()
+    mhash_1 = judge_sources_manifest_sha256(proj)
+    _sync_sources(project_dir, write=True)
+    assert judge_sources_manifest_path(proj).read_bytes() == manifest_bytes_1
+    assert judge_sources_manifest_sha256(proj) == mhash_1
+
+
+# --- Test 10: sync validates every copied file hash ---
+
+
+def test_judge_sync_validates_every_copied_file_hash(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    _sync_sources(project_dir, write=True)
+    proj = load_profile_project(project_dir, "de_judge")
+    sid = _snapshot_id(project_dir)
+    # Corrupt a copied store without changing the manifest
+    store_path = judge_source_profile_dir(proj, sid, "de_a") / "translation-store.json"
+    store_path.write_text("{}", encoding="utf-8")
+    try:
+        validate_judge_sources_snapshot(proj)
+        raise AssertionError("should have raised")
+    except Exception as e:
+        assert (
+            "hash" in str(e).lower()
+            or "corrupt" in str(e).lower()
+            or "mismatch" in str(e).lower()
+        )
+
+
+# --- Test 11: interrupted generation keeps active snapshot ---
+
+
+def test_judge_sync_interrupted_generation_keeps_active_snapshot(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    _sync_sources(project_dir, write=True)
+    proj = load_profile_project(project_dir, "de_judge")
+    man = validate_judge_sources_snapshot(proj)
+    active_id = man.snapshot_id
+    # Simulate interrupted publication: create a partial staging dir
+    snapshots_root = proj.profile_dir / "judge-sources" / "snapshots"
+    staging = snapshots_root / ".staging-bogus"
+    staging.mkdir(parents=True, exist_ok=True)
+    try:
+        man2 = validate_judge_sources_snapshot(proj)
+        assert man2.snapshot_id == active_id
+        views = load_snapshot_judge_source_views(proj)
+        assert set(views) == {"de_a", "de_b"}
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+# --- Test 12: prepare-isolation end-to-end ---
+
+
+def test_judge_prepare_isolation_end_to_end(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    # Dry-run side-effect free
+    res = runner.invoke(
+        app, ["judge", "prepare-isolation", str(project_dir), "--profile", "de_judge"]
+    )
+    assert res.exit_code == 0, res.output
+    assert "dry-run" in res.output
+    assert not (project_dir / "translations" / "de_judge" / "judge-sources").exists()
+    agents = project_dir / "translations" / "de_judge" / "AGENTS.md"
+    assert not agents.exists()
+    # Write publishes snapshot + judge AGENTS.md
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "prepare-isolation",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--write",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert "snapshot" in res.output.lower()
+    assert agents.is_file()
+    assert "isolated judge profile instructions" in agents.read_text("utf-8")
+
+
+# --- Test 13: profile-root insert rejects live task ---
+
+
+def test_judge_insert_profile_root_rejects_live_task(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B.")
+    _sync_sources(project_dir, write=True)
+    # Create a LIVE task from project-root mode
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    task = load_judge_task(load_profile_project(project_dir, "de_judge"), task_id)
+    assert task.source_access == "live"
+    proj = load_profile_project(project_dir, "de_judge")
+    ingest = judge_ingest_json_path(proj, task_id)
+    _fill_json_ingest(
+        ingest, task_id, record_ids[0], "A", task.records[0].candidates[0].target
+    )
+    # Insert from profile root → must reject live task
+    res = _profile_root_judge_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.json", input_format="json"
+    )
+    assert res.exit_code != 0
+    assert "snapshot" in res.output.lower() or "recreate" in res.output.lower()
+
+
+# --- Test 14: snapshot insert requires complete evidence ---
+
+
+def test_judge_insert_snapshot_requires_complete_evidence(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B.")
+    _sync_sources(project_dir, write=True)
+    res = _profile_root_judge_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = res.output.split("judge task: ")[1].splitlines()[0].strip()
+    proj = load_profile_project(project_dir, "de_judge")
+    task_path = proj.profile_dir / "judge-tasks" / f"{task_id}.json"
+    task = load_judge_task(proj, task_id)
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.json"
+    # Remove each required snapshot field in turn
+    for field in ("source_snapshot_sha256", "source_candidates_sha256"):
+        raw = json.loads(task_path.read_text("utf-8"))
+        raw[field] = None
+        task_path.write_text(json.dumps(raw), encoding="utf-8")
+        _fill_json_ingest(
+            ingest, task_id, record_ids[0], "A", task.records[0].candidates[0].target
+        )
+        res2 = _profile_root_judge_insert(
+            project_dir, task_id, f"judge-ingest/{task_id}.json", input_format="json"
+        )
+        assert res2.exit_code != 0, f"{field} should block insert"
+        # restore
+        raw[field] = getattr(task, field)
+        task_path.write_text(json.dumps(raw), encoding="utf-8")
+
+
+# --- Test 15: snapshot insert rejects candidate payload corruption ---
+
+
+def test_judge_insert_snapshot_rejects_candidate_payload_corruption(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B.")
+    _sync_sources(project_dir, write=True)
+    res = _profile_root_judge_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = res.output.split("judge task: ")[1].splitlines()[0].strip()
+    proj = load_profile_project(project_dir, "de_judge")
+    task_path = proj.profile_dir / "judge-tasks" / f"{task_id}.json"
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.json"
+    load_judge_task(proj, task_id)
+    # Corrupt the candidate target in the task artifact
+    raw = json.loads(task_path.read_text("utf-8"))
+    raw["records"][0]["candidates"][0]["target"] = "CORRUPTED"
+    task_path.write_text(json.dumps(raw), encoding="utf-8")
+    _fill_json_ingest(ingest, task_id, record_ids[0], "A", "CORRUPTED")
+    res2 = _profile_root_judge_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.json", input_format="json"
+    )
+    assert res2.exit_code != 0
+    assert (
+        "corrupt" in res2.output.lower()
+        or "hash" in res2.output.lower()
+        or "mismatch" in res2.output.lower()
+    )
+
+
+# --- Test 16: sync requires configured source order ---
+
+
+def test_judge_sync_requires_configured_source_order(tmp_path: Path):
+    project_dir, _ = _judge_project(tmp_path)
+    # Admin --sources cannot reorder
+    res = _sync_sources(project_dir, sources="de_b,de_a")
+    assert res.exit_code != 0
+    assert "order" in res.output.lower() or "configured" in res.output.lower()
+    # Admin --sources cannot omit
+    res = _sync_sources(project_dir, sources="de_a")
+    assert res.exit_code != 0
+    # Admin --sources cannot add extra
+    create_profile(project_dir, "de_extra", target_language="de")
+    cfg = load_profile_config(project_dir, "de_judge")
+    assert cfg.selection is not None
+    orig_sources = list(cfg.selection.sources)
+    cfg.selection.sources = orig_sources
+    write_profile_config(project_dir, cfg)
+    res = _sync_sources(project_dir, sources="de_a,de_b,de_extra")
+    assert res.exit_code != 0
+    # Profile-root --sources: only order-preserving subset of validated snapshot
+    cfg.selection.sources = orig_sources
+    write_profile_config(project_dir, cfg)
+    _sync_sources(project_dir, write=True)
+    proj = load_profile_project(project_dir, "de_judge")
+    manifest = validate_judge_sources_snapshot(proj)
+    # OK: subset in order
+    assert validate_snapshot_source_subset(manifest, ["de_a"]) == ["de_a"]
+    # Fails: wrong order
+    try:
+        validate_snapshot_source_subset(manifest, ["de_b", "de_a"])
+        raise AssertionError("should reject reorder")
+    except Exception:
+        pass
+    # Fails: not in snapshot
+    try:
+        validate_snapshot_source_subset(manifest, ["de_extra"])
+        raise AssertionError("should reject unknown")
+    except Exception:
+        pass

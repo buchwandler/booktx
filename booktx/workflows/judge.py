@@ -2,24 +2,35 @@
 
 from __future__ import annotations
 
+# ruff: noqa: E501
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from booktx.acceptance import SubmissionValidationError
+from booktx.agents_md import AGENTS_FILENAME, inspect_agents_md
 from booktx.config import (
     _err,
     load_judge_task,
     load_profile_config,
+    profile_dir,
     write_profile_config,
 )
+from booktx.context import load_context
 from booktx.errors import BooktxError
 from booktx.judge_acceptance import (
     accept_judge_submission,
     parse_judge_block_submission,
     parse_judge_json_submission,
 )
+from booktx.judge_sources import (
+    configured_selection_sources,
+    load_live_judge_source_views,
+    load_snapshot_judge_source_views,
+    sync_judge_source_snapshots,
+    validate_judge_sources_snapshot,
+)
 from booktx.judge_store import (
-    load_source_profile_projects,
+    parse_sources_csv,
     record_has_candidate_gap,
     resolve_selection_sources,
     selected_record_ids,
@@ -41,6 +52,7 @@ __all__ = [
     "judge_task_block_paths",
     "judge_task_json_path",
     "accept_judge_submission_workflow",
+    "prepare_judge_isolation_workflow",
 ]
 
 
@@ -69,6 +81,88 @@ def create_judge_profile_workflow(
     return project
 
 
+def prepare_judge_isolation_workflow(
+    project_dir: Path,
+    *,
+    profile: str,
+    write: bool,
+    replace_unmanaged: bool,
+) -> dict[str, Any]:
+    """One-command judge-isolation preparation.
+
+    Validates the selection profile, requires an existing ready context
+    (never approves or marks it ready), preflights snapshot inputs and the
+    target ``AGENTS.md`` ownership before mutation, syncs source snapshots,
+    and writes the judge-specific isolated ``AGENTS.md``. Dry-run by default;
+    ``write=True`` performs the reconciliation. Safely rerunnable: the snapshot
+    sync is idempotent and the AGENTS.md write is atomic, so a failure after
+    publication but before the AGENTS.md write can be retried unchanged.
+    """
+    from booktx.runtime import resolve_runtime
+    from booktx.workflows.agents import write_agents_workflow
+
+    runtime = resolve_runtime(project_dir, profile=profile, require_profile=True)
+    if runtime.mode.kind == "profile-root":
+        raise _err(
+            "judge_prepare_isolation_requires_project_root",
+            "run `booktx judge prepare-isolation` from the project root",
+        )
+    project = runtime.project
+    cfg = project.profile_config
+    if cfg is None or cfg.kind != "selection":
+        raise _err("judge_profile_kind", "judge isolation requires a selection profile")
+    ctx = load_context(project)
+    if ctx is None or not ctx.ready:
+        raise _err(
+            "judge_isolation_context_not_ready",
+            "selection profile context is missing or not ready; "
+            "approve answers and run `booktx context mark-ready` first",
+        )
+    configured = configured_selection_sources(project)
+    # Preflight before any mutation: plan the snapshot and inspect AGENTS.md.
+    plan = sync_judge_source_snapshots(project, source_profiles=configured, write=False)
+    target_agents = profile_dir(project.root, profile) / AGENTS_FILENAME
+    inspection = inspect_agents_md(target_agents)
+    if (
+        inspection.state in ("unmanaged", "managed-malformed", "symlink")
+        and not replace_unmanaged
+    ):
+        raise _err(
+            "agents_unmanaged_target",
+            f"target AGENTS.md for {profile} is {inspection.state}; "
+            "pass --replace-unmanaged to overwrite",
+        )
+    payload: dict[str, Any] = {
+        "profile": profile,
+        "source_profiles": list(configured),
+        "snapshot_id": plan.snapshot_id,
+        "manifest_sha256": plan.manifest_sha256,
+        "changed": plan.changed,
+        "agents_state": inspection.state,
+        "write": write,
+    }
+    if not write:
+        payload["next"] = (
+            f"booktx judge prepare-isolation . --profile {profile} --write"
+        )
+        return payload
+    sync_result = sync_judge_source_snapshots(
+        project, source_profiles=configured, write=True
+    )
+    agents_result = write_agents_workflow(
+        project_dir,
+        mode="isolated",
+        profile=profile,
+        replace_unmanaged=replace_unmanaged,
+    )
+    payload["snapshot_id"] = sync_result.snapshot_id
+    payload["manifest_sha256"] = sync_result.manifest_sha256
+    payload["changed"] = sync_result.changed
+    payload["agents_written"] = [str(p) for p in agents_result.written]
+    payload["next"] = f"cd translations/{profile} && booktx judge status ."
+    return payload
+
+
 def resolve_sources_csv(sources_csv: str | None) -> list[str]:
     from booktx.judge_store import parse_sources_csv
 
@@ -78,6 +172,88 @@ def resolve_sources_csv(sources_csv: str | None) -> list[str]:
     return values
 
 
+def _source_access_from_runtime(runtime: RuntimeContext) -> Literal["live", "snapshot"]:
+    """ "snapshot" in profile-root mode, "live" in project-root mode."""
+    return "snapshot" if runtime.mode.kind == "profile-root" else "live"
+
+
+def _snapshot_status(
+    proj: Project,
+    configured: list[str],
+    sources_csv: str | None,
+) -> tuple[dict[str, Any], dict[str, object]]:
+    """Classify the active snapshot and load its views.
+
+    Returns ``(snapshot_info, source_views)``. The snapshot is reported as
+    ``valid``/``missing``/``invalid``; on any failure no views are loaded and
+    the returned info carries a sanitized message (never a parent/sibling path).
+    """
+    from booktx.errors import BooktxError
+    from booktx.judge_sources import judge_sources_manifest_sha256
+
+    explicit = parse_sources_csv(sources_csv) if sources_csv else []
+    requested = explicit or configured
+    try:
+        manifest = validate_judge_sources_snapshot(proj)
+        views = load_snapshot_judge_source_views(proj, requested)
+    except BooktxError as exc:
+        state = "missing" if exc.code == "judge_source_snapshot_missing" else "invalid"
+        return (
+            {"state": state, "message": str(exc), "generated_at": None, "profiles": []},
+            {},
+        )
+    counts = [
+        {
+            "profile": name,
+            "records_total": manifest.profiles[name].records_total,
+            "effective_candidates_total": manifest.profiles[
+                name
+            ].effective_candidates_total,
+        }
+        for name in manifest.source_profiles
+    ]
+    try:
+        manifest_sha = judge_sources_manifest_sha256(proj)
+    except BooktxError:
+        manifest_sha = ""
+    return (
+        {
+            "state": "valid",
+            "snapshot_id": manifest.snapshot_id,
+            "generated_at": manifest.generated_at,
+            "manifest_sha256": manifest_sha,
+            "source_profiles": list(manifest.source_profiles),
+            "profiles": counts,
+            "message": None,
+        },
+        views,
+    )
+
+
+def _build_status_next_command(
+    runtime: RuntimeContext,
+    proj: Project,
+    source_profiles: list[str],
+    next_chapter: str | None,
+    source_access: Literal["live", "snapshot"],
+    snapshot_usable: bool,
+) -> str:
+    if next_chapter is None:
+        return ""
+    if source_access == "snapshot":
+        if not snapshot_usable:
+            return ""
+        return (
+            f"booktx judge next . --unit chapter --chapter {next_chapter} "
+            f"--max-words 900 --format block"
+        )
+    sources_arg = ",".join(source_profiles)
+    return (
+        f"booktx judge next . --profile {proj.profile} --sources {sources_arg} "
+        f"--unit chapter --chapter {next_chapter} --max-words 900 --format block"
+    )
+
+
 def build_judge_status_workflow(
     proj: Project,
     runtime: RuntimeContext,
@@ -85,20 +261,34 @@ def build_judge_status_workflow(
     bundle: StatusBundle,
     sources_csv: str | None,
 ) -> dict[str, Any]:
-    source_profiles = resolve_selection_sources(proj, sources_csv)
-    source_projects = load_source_profile_projects(proj, source_profiles)
+    source_access = _source_access_from_runtime(runtime)
     selected_ids = selected_record_ids(proj)
+    snapshot_info: dict[str, Any] | None = None
+    source_views: dict[str, object] = {}
+    source_profiles: list[str]
+    if source_access == "snapshot":
+        source_profiles = configured_selection_sources(proj)
+        snapshot_info, source_views = _snapshot_status(
+            proj, source_profiles, sources_csv
+        )
+    else:
+        source_profiles = resolve_selection_sources(proj, sources_csv)
+        source_views = load_live_judge_source_views(proj, source_profiles)
     chapters: list[dict[str, Any]] = []
     candidate_gaps = 0
     next_chapter: str | None = None
+    snapshot_usable = snapshot_info is None or snapshot_info.get("state") == "valid"
     for chapter_id, record_ids in bundle.index.record_ids_by_chapter.items():
         total = len(record_ids)
         selected = sum(1 for record_id in record_ids if record_id in selected_ids)
-        gaps = sum(
-            1
-            for record_id in record_ids
-            if record_has_candidate_gap(source_projects, record_id)
-        )
+        if snapshot_usable:
+            gaps = sum(
+                1
+                for record_id in record_ids
+                if record_has_candidate_gap(source_views, record_id)  # type: ignore[arg-type]
+            )
+        else:
+            gaps = 0
         candidate_gaps += gaps
         if next_chapter is None and selected < total:
             next_chapter = chapter_id
@@ -113,13 +303,9 @@ def build_judge_status_workflow(
                 "candidate_gap_records": gaps,
             }
         )
-    sources_arg = ",".join(source_profiles)
-    next_command = ""
-    if next_chapter is not None:
-        next_command = (
-            f"booktx judge next . --profile {proj.profile} --sources {sources_arg} "
-            f"--unit chapter --chapter {next_chapter} --max-words 900 --format block"
-        )
+    next_command = _build_status_next_command(
+        runtime, proj, source_profiles, next_chapter, source_access, snapshot_usable
+    )
     return {
         "profile": proj.profile or "",
         "source_profiles": source_profiles,
@@ -130,6 +316,8 @@ def build_judge_status_workflow(
         "chapters": chapters,
         "next_command": next_command,
         "mode": runtime.mode.kind,
+        "source_access": source_access,
+        "snapshot": snapshot_info,
     }
 
 
@@ -141,8 +329,16 @@ def create_next_judge_task_workflow(
     chapter: str | None,
     max_words: int,
     require_all_sources: bool,
+    source_access: Literal["live", "snapshot"] = "live",
 ) -> JudgeTask:
-    source_profiles = resolve_selection_sources(proj, sources_csv)
+    if source_access == "snapshot":
+        source_profiles = configured_selection_sources(proj)
+        if sources_csv:
+            # profile-root --sources may only select an order-preserving subset;
+            # the snapshot loader enforces that. Use the explicit list as-is.
+            source_profiles = parse_sources_csv(sources_csv)
+    else:
+        source_profiles = resolve_selection_sources(proj, sources_csv)
     effective_require_all_sources = _effective_require_all_sources(
         proj, require_all_sources
     )
@@ -155,6 +351,7 @@ def create_next_judge_task_workflow(
             record_id=None,
             max_words=max_words,
             require_all_sources=effective_require_all_sources,
+            source_access=source_access,
         )
     except ValueError as exc:
         raise _err("judge_next", str(exc)) from exc
@@ -175,8 +372,14 @@ def create_record_judge_task_workflow(
     sources_csv: str | None,
     record_id: str,
     require_all_sources: bool,
+    source_access: Literal["live", "snapshot"] = "live",
 ) -> JudgeTask:
-    source_profiles = resolve_selection_sources(proj, sources_csv)
+    if source_access == "snapshot":
+        source_profiles = configured_selection_sources(proj)
+        if sources_csv:
+            source_profiles = parse_sources_csv(sources_csv)
+    else:
+        source_profiles = resolve_selection_sources(proj, sources_csv)
     effective_require_all_sources = _effective_require_all_sources(
         proj, require_all_sources
     )
@@ -189,6 +392,7 @@ def create_record_judge_task_workflow(
             record_id=record_id,
             max_words=10**9,
             require_all_sources=effective_require_all_sources,
+            source_access=source_access,
         )
     except ValueError as exc:
         raise _err("judge_record", str(exc)) from exc
@@ -217,6 +421,7 @@ def accept_judge_submission_workflow(
     judge_task_id: str,
     file: Path,
     input_format: str,
+    runtime: RuntimeContext | None = None,
 ) -> dict[str, Any]:
     task = load_judge_task(proj, judge_task_id)
     if task is None:
@@ -234,12 +439,14 @@ def accept_judge_submission_workflow(
             f"submission judge_task_id {payload_task_id} does not match "
             f"{judge_task_id}",
         )
+    enforce_snapshot = runtime is not None and runtime.mode.kind == "profile-root"
     try:
         result = accept_judge_submission(
             proj,
             task,
             submitted,
             bundle=bundle,
+            enforce_snapshot=enforce_snapshot,
         )
     except SubmissionValidationError as exc:
         raise BooktxError(
