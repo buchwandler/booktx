@@ -31,7 +31,6 @@ Profile-layout projects::
         source-manifest.json
         names.json
         chapter-map.json
-        profile-state.json
         chunks/
       translations/
         <profile>/
@@ -48,7 +47,7 @@ Profile-layout projects::
           output/
 
 The shared ``.booktx/`` tree is source-derived state only. Mutable translation
-state lives under the selected profile.
+state lives under the explicitly resolved profile.
 """
 
 # ruff: noqa: E501
@@ -82,7 +81,6 @@ from booktx.models import (
     ProfileConfig,
     ProfileIdentityConfig,
     ProfileRootMarker,
-    ProfileState,
     ProjectConfig,
     SourceConfig,
     TranslationIdentity,
@@ -101,15 +99,12 @@ __all__ = [
     "Project",
     "detect_format",
     "source_config_path",
-    "profile_state_path",
     "translations_dir",
     "profile_dir",
     "profile_config_path",
     "profile_root_marker_path",
     "profile_source_cache_dir",
     "list_profiles",
-    "load_profile_state",
-    "write_profile_state",
     "load_profile_config",
     "load_profile_root_marker",
     "write_profile_config",
@@ -121,7 +116,6 @@ __all__ = [
     "init_source_project",
     "init_project",
     "create_profile",
-    "select_profile",
     "migrate_current_project",
     "write_manifest",
     "load_manifest",
@@ -227,7 +221,6 @@ class Project:
     names_path: Path
     chunks_dir: Path
     chapter_map_path: Path
-    profile_state_path: Path
     profile: str | None
     profile_dir: Path | None
     profile_config_path: Path | None
@@ -289,10 +282,6 @@ def _legacy_manifest_path(root_or_project: Project | Path | str) -> Path:
 
 def _source_manifest_path(root_or_project: Project | Path | str) -> Path:
     return _booktx_dir(root_or_project) / "source-manifest.json"
-
-
-def profile_state_path(root_or_project: Project | Path | str) -> Path:
-    return _booktx_dir(root_or_project) / "profile-state.json"
 
 
 def translations_dir(root_or_project: Project | Path | str) -> Path:
@@ -505,21 +494,6 @@ def list_profiles(project_or_root: Project | Path | str) -> list[str]:
     return names
 
 
-def load_profile_state(project_or_root: Project | Path | str) -> ProfileState:
-    path = profile_state_path(project_or_root)
-    if not path.is_file():
-        return ProfileState()
-    return ProfileState.model_validate_json(path.read_text("utf-8"))
-
-
-def write_profile_state(
-    project_or_root: Project | Path | str, state: ProfileState
-) -> None:
-    from booktx.io_utils import write_json_model_atomic
-
-    write_json_model_atomic(profile_state_path(project_or_root), state)
-
-
 def detect_format(filename: str | Path) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SOURCE_SUFFIXES:
@@ -583,14 +557,17 @@ def lexicon_language_keys(project: Project, language: str | None = None) -> list
         key = canonical_language_key(language)
         base = key.split("-", 1)[0]
         return [base] if key == base else [base, key]
-    cfg = project.profile_config
-    if cfg is None:
-        raise _err(
-            "lexicon_language_required",
-            "--language is required when no profile target language is available",
-        )
-    base = canonical_language_key(cfg.target_language)
-    locale_raw = (cfg.target_locale or "").strip()
+    if project.profile_config is None:
+        if not project.config.target_language:
+            raise _err(
+                "lexicon_language_required",
+                "--language is required when no profile target language is available",
+            )
+        base = canonical_language_key(project.config.target_language)
+        locale_raw = (project.config.target_locale or "").strip()
+    else:
+        base = canonical_language_key(project.profile_config.target_language)
+        locale_raw = (project.profile_config.target_locale or "").strip()
     if not locale_raw:
         return [base]
     locale = canonical_language_key(locale_raw)
@@ -674,7 +651,6 @@ def _base_profile_project(root: Path, source_cfg: SourceConfig) -> Project:
         names_path=_booktx_dir(root) / "names.json",
         chunks_dir=_booktx_dir(root) / "chunks",
         chapter_map_path=_booktx_dir(root) / "chapter-map.json",
-        profile_state_path=profile_state_path(root),
         profile=None,
         profile_dir=None,
         profile_config_path=None,
@@ -719,7 +695,6 @@ def _with_profile(
         names_path=base.names_path,
         chunks_dir=base.chunks_dir,
         chapter_map_path=base.chapter_map_path,
-        profile_state_path=base.profile_state_path,
         profile=profile_name,
         profile_dir=profile_root,
         profile_config_path=profile_config_path(base, profile_name),
@@ -748,7 +723,7 @@ def project_storage_root(project: Project) -> Path:
 
 
 def stored_path(project: Project, path: Path) -> str:
-    """Persist a path relative to the active profile when available."""
+    """Persist a path relative to the resolved profile when available."""
     return path.relative_to(project_storage_root(project)).as_posix()
 
 
@@ -786,25 +761,14 @@ def resolve_profile_name(
             )
         return explicit_profile
 
-    state = load_profile_state(project)
-    if state.active_profile:
-        if state.active_profile not in profiles:
+    if require_profile:
+        if profiles:
+            available = ", ".join(profiles)
+            suffix = f" Available profiles: {available}." if available else ""
             raise _err(
-                "profile_not_found",
-                f"active translation profile not found: {state.active_profile}",
+                "profile_required",
+                "translation profile required; pass --profile PROFILE." + suffix,
             )
-        return state.active_profile
-
-    if len(profiles) == 1:
-        return profiles[0]
-
-    if require_profile and len(profiles) > 1:
-        raise _err(
-            "multiple_profiles_ambiguous",
-            "multiple translation profiles exist; pass --profile or run "
-            "`booktx profile select PROJECT_DIR PROFILE`",
-        )
-    if require_profile and not profiles:
         raise _err(
             "no_profiles",
             "no translation profile exists; run "
@@ -870,7 +834,6 @@ def load_project(
             names_path=_booktx_dir(r) / "names.json",
             chunks_dir=_booktx_dir(r) / "chunks",
             chapter_map_path=_booktx_dir(r) / "chapter-map.json",
-            profile_state_path=profile_state_path(r),
             profile=None,
             profile_dir=None,
             profile_config_path=None,
@@ -1019,7 +982,6 @@ def create_profile(
     harness: str | None = None,
     model: str | None = None,
     output_filename: str | None = None,
-    select: bool = False,
     kind: Literal["translation", "pass-through", "selection"] = "translation",
 ) -> Project:
     validate_profile_name(profile_name)
@@ -1085,25 +1047,7 @@ def create_profile(
     )
     write_profile_root_marker(source_project, profile_name, profile_config=cfg)
     _materialize_source_analysis_snapshot(source_project, profile_name)
-    if select:
-        write_profile_state(source_project, ProfileState(active_profile=profile_name))
     return load_profile_project(source_project.root, profile_name)
-
-
-def select_profile(root: Path | str, profile_name: str) -> Project:
-    project = load_source_project(root)
-    if project.layout_version == "legacy":
-        raise _err(
-            "legacy_project_required",
-            "project uses the legacy single-layout format; it has no selectable translation profiles",
-        )
-    validate_profile_name(profile_name)
-    if profile_name not in list_profiles(project):
-        raise _err(
-            "profile_not_found", f"translation profile not found: {profile_name}"
-        )
-    write_profile_state(project, ProfileState(active_profile=profile_name))
-    return load_profile_project(project.root, profile_name)
 
 
 def init_project(
@@ -1128,7 +1072,6 @@ def init_project(
         profile_name or _default_profile_name(target_language),
         target_language=target_language,
         target_locale=target_language,
-        select=True,
     )
 
 
@@ -1220,7 +1163,7 @@ def _require_profile_paths(project: Project, thing: str) -> None:
     ):
         raise _err(
             "profile_required",
-            f"{thing} requires a translation profile; pass --profile or run `booktx profile select`.",
+            f"{thing} requires a translation profile; pass --profile PROFILE.",
         )
 
 

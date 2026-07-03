@@ -12,7 +12,6 @@ book/
     source-manifest.json
     names.json
     chapter-map.json
-    profile-state.json
     chunks/
       0001.json
       0002.json
@@ -43,7 +42,6 @@ book/
 | `.booktx/source-manifest.json` | shared | Source digest and rebuild metadata               |
 | `.booktx/names.json`           | shared | Protected terms                                  |
 | `.booktx/chapter-map.json`     | shared | Chapter-to-record/chunk metadata                 |
-| `.booktx/profile-state.json`   | shared | Active profile selection only                    |
 | `.booktx/chunks/`              | shared | Extracted source chunks                          |
 
 Do **not** put target-language translation state under `.booktx/` in a profile
@@ -75,7 +73,7 @@ Every translation effort lives under `translations/<profile>/`.
 1. A profile is the hard isolation boundary.
 2. Different languages must not share one translation store.
 3. Model experiments should usually be separate profiles, even for the same target language.
-4. When multiple profiles exist, pass `--profile` or select one with `booktx profile select`.
+4. Project-root profile-local commands require `--profile PROFILE`.
 5. Legacy single-layout projects should be migrated with `booktx profile migrate-current`.
 6. `translations/<profile>/translated/` and `translations/<profile>/output/` are
    generated artifacts. They can be deleted and regenerated; do not treat them
@@ -102,7 +100,7 @@ book/.booktx/
 book/output/               # build output lived at the project root
 ```
 
-After `booktx profile migrate-current ./book PROFILE --select`, mutable state
+After `booktx profile migrate-current ./book PROFILE`, mutable state
 moves under `translations/PROFILE/`, shared source state stays under
 `.booktx/`, and build output moves under `translations/PROFILE/output/`. The
 legacy `config.toml` is removed once migration completes.

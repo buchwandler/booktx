@@ -22,7 +22,6 @@ review:
 ```bash
 booktx status .
 booktx profile list .
-booktx profile select . de_gpt5_5
 ```
 
 If multiple profiles exist, pass `--profile` on all translation-state commands.
@@ -205,7 +204,7 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
   --model gpt-5.5 \
-  --select
+
 
 booktx context init ./book --profile de_judge_gpt5_5 --non-interactive
 booktx context sync ./book \

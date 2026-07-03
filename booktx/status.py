@@ -40,7 +40,6 @@ from booktx.config import (
     load_manifest,
     load_profile_config,
     load_profile_project,
-    load_profile_state,
     load_translation_store,
     load_translation_version_ledger,
     project_source_sha256,
@@ -198,7 +197,6 @@ class ProfileOverview(BaseModel):
     path: str
     translated_records: int = 0
     total_records: int = 0
-    active: bool = False
 
 
 class ProfilesOverview(BaseModel):
@@ -207,7 +205,6 @@ class ProfilesOverview(BaseModel):
     project: str
     source: str = ""
     source_records: int = 0
-    active_profile: str | None = None
     profiles: list[ProfileOverview] = Field(default_factory=list)
 
 
@@ -612,7 +609,6 @@ def build_status_snapshot(
 
 def build_profiles_overview(project: Project) -> ProfilesOverview:
     profiles = list_profiles(project)
-    active_profile = load_profile_state(project).active_profile
     source = ""
     source_records = 0
     try:
@@ -664,14 +660,12 @@ def build_profiles_overview(project: Project) -> ProfilesOverview:
                 else "",
                 translated_records=translated_records,
                 total_records=shared_total_records,
-                active=profile_name == active_profile,
             )
         )
     return ProfilesOverview(
         project=str(project.root),
         source=source,
         source_records=source_records,
-        active_profile=active_profile,
         profiles=items,
     )
 

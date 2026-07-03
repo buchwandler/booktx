@@ -250,7 +250,6 @@ def test_pass_through_cli_requires_explicit_profile(tmp_path: Path):
             "de_real",
             "--target",
             "de",
-            "--select",
         ],
     )
 
@@ -290,7 +289,7 @@ def test_profile_create_pass_through_command(tmp_path: Path):
 
     res = runner.invoke(
         app,
-        ["profile", "create-pass-through", str(project_dir), "pt", "--select"],
+        ["profile", "create-pass-through", str(project_dir), "pt"],
     )
 
     assert res.exit_code == 0, res.output

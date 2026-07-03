@@ -55,7 +55,6 @@ book/
     source-manifest.json
     names.json
     chapter-map.json
-    profile-state.json
     chunks/
 
   translations/
@@ -85,7 +84,7 @@ booktx profile create ./demo de_gpt5_5 \
   --target de \
   --target-locale de-DE \
   --model codex-openai/gpt-5.5@low \
-  --select
+
 
 booktx context init ./demo --profile de_gpt5_5 --non-interactive
 booktx context questions ./demo --profile de_gpt5_5
@@ -339,7 +338,7 @@ booktx profile create ./demo fr_gpt5_5 --target fr --model codex-openai/gpt-5.5@
 When a command needs a single profile, booktx resolves it in this order:
 
 ```text
---profile wins; otherwise the active profile; otherwise exactly one profile;
+Project-root profile commands require --profile PROFILE;
 otherwise fail for target-state commands.
 ```
 
@@ -357,7 +356,7 @@ If a project has more than one profile, always pass `--profile`.
 Old single-layout projects can be migrated in place:
 
 ```bash
-booktx profile migrate-current ./demo de_gpt5_5 --select
+booktx profile migrate-current ./demo de_gpt5_5
 ```
 
 CLI identity overrides (`--model`, `--actor`, `--harness`) are honored over any
@@ -397,7 +396,7 @@ booktx judge create-profile ./demo de_judge_gpt5_5 \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
   --model gpt-5.5 \
-  --select
+
 booktx context init ./demo --profile de_judge_gpt5_5 --non-interactive
 booktx context sync ./demo \
   --from de_gpt5_5 \

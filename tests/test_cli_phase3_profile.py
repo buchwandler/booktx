@@ -64,7 +64,6 @@ def _add_profile(project_dir: Path, name: str = "de_test") -> None:
             "de",
             "--model",
             "human",
-            "--select",
         ],
     )
     assert res.exit_code == 0, res.output
@@ -143,7 +142,6 @@ def test_profile_create_then_list_command(tmp_path: Path) -> None:
             "de_one",
             "--target",
             "de",
-            "--select",
         ],
     )
     assert res.exit_code == 0, res.output

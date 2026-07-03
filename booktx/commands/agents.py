@@ -39,9 +39,7 @@ _HINTS: dict[str, str] = {
     "agents_unmanaged_target": (
         "inspect it manually, then rerun with --replace-unmanaged to replace it"
     ),
-    "agents_profile_required": (
-        "pass --profile PROFILE, or run `booktx profile select PROJECT PROFILE`"
-    ),
+    "agents_profile_required": ("pass --profile PROFILE"),
     "agents_unmanaged_ancestor": (
         "resolve the project-root AGENTS.md first, then rerun "
         "`booktx agents write . --mode isolated --profile PROFILE`"

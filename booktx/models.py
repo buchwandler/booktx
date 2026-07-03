@@ -65,7 +65,6 @@ __all__ = [
     "ProfileIdentityConfig",
     "ProfileConfig",
     "ProfileRootMarker",
-    "ProfileState",
     "ProjectConfig",
     "EpubSpanRef",
     "EpubNavigationRef",
@@ -1403,15 +1402,6 @@ class ProfileRootMarker(BaseModel):
     target_language: str
     target_locale: str
     mode_hint: Literal["profile-root"] = "profile-root"
-
-
-class ProfileState(BaseModel):
-    """Active-profile selector stored in ``.booktx/profile-state.json``."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    version: Literal[1] = 1
-    active_profile: str | None = None
 
 
 class ProjectConfig(BaseModel):

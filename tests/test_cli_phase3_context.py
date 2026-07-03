@@ -60,7 +60,6 @@ def _add_profile(project_dir: Path, name: str = "de_ctx") -> None:
             "de",
             "--model",
             "human",
-            "--select",
         ],
     )
     assert res.exit_code == 0, res.output

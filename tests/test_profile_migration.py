@@ -68,26 +68,28 @@ def _write_legacy_project(tmp_path: Path, *, include_target: bool = True) -> Pat
         ).exit_code
         == 0
     )
-    next_res = runner.invoke(
-        app, ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"]
-    )
-    assert next_res.exit_code == 0, next_res.output
-    first_chunk = json.loads(
-        next((booktx_dir / "chunks").glob("*.json")).read_text("utf-8")
-    )
-    translated = {
-        "chunk_id": first_chunk["chunk_id"],
-        "records": [
-            {"id": record["id"], "target": record["source"]}
-            for record in first_chunk["records"]
-        ],
-    }
-    (booktx_dir / "translated" / f"{first_chunk['chunk_id']}.json").write_text(
-        json.dumps(translated), encoding="utf-8"
-    )
-    (project_dir / "output" / "book.de.md").write_text(
-        "legacy output", encoding="utf-8"
-    )
+    if include_target:
+        next_res = runner.invoke(
+            app,
+            ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        )
+        assert next_res.exit_code == 0, next_res.output
+        first_chunk = json.loads(
+            next((booktx_dir / "chunks").glob("*.json")).read_text("utf-8")
+        )
+        translated = {
+            "chunk_id": first_chunk["chunk_id"],
+            "records": [
+                {"id": record["id"], "target": record["source"]}
+                for record in first_chunk["records"]
+            ],
+        }
+        (booktx_dir / "translated" / f"{first_chunk['chunk_id']}.json").write_text(
+            json.dumps(translated), encoding="utf-8"
+        )
+        (project_dir / "output" / "book.de.md").write_text(
+            "legacy output", encoding="utf-8"
+        )
     return project_dir
 
 
@@ -121,7 +123,6 @@ def test_profile_migrate_current_moves_mutable_state_and_stamps_tasks(tmp_path: 
             "migrate-current",
             str(project_dir),
             "de_gpt5_5",
-            "--select",
         ],
     )
 
@@ -139,7 +140,8 @@ def test_profile_migrate_current_moves_mutable_state_and_stamps_tasks(tmp_path: 
     task = json.loads(task_path.read_text("utf-8"))
     assert task["profile"] == "de_gpt5_5"
     assert task["target_locale"] == "de"
-    assert load_project(project_dir).profile == "de_gpt5_5"
+    assert load_project(project_dir).profile is None
+    assert load_project(project_dir, profile="de_gpt5_5").profile == "de_gpt5_5"
 
 
 def test_profile_migrate_current_validate_and_build_work_after_migration(
@@ -149,7 +151,7 @@ def test_profile_migrate_current_validate_and_build_work_after_migration(
     assert (
         runner.invoke(
             app,
-            ["profile", "migrate-current", str(project_dir), "de_gpt5_5", "--select"],
+            ["profile", "migrate-current", str(project_dir), "de_gpt5_5"],
         ).exit_code
         == 0
     )
@@ -224,7 +226,6 @@ def test_profile_migrate_current_honors_model_override_when_legacy_identity_exis
             "de_gpt5_5",
             "--model",
             "codex-openai/gpt-5.5@low",
-            "--select",
         ],
     )
 
@@ -262,7 +263,6 @@ def test_profile_migrate_current_honors_actor_and_harness_overrides(tmp_path: Pa
             "agent:translator",
             "--harness",
             "codex",
-            "--select",
         ],
     )
 
@@ -293,7 +293,7 @@ def test_profile_migrate_current_creates_empty_profile_dirs_when_legacy_dirs_mis
 
     res = runner.invoke(
         app,
-        ["profile", "migrate-current", str(project_dir), "de_gpt5_5", "--select"],
+        ["profile", "migrate-current", str(project_dir), "de_gpt5_5"],
     )
 
     assert res.exit_code == 0, res.output
@@ -307,7 +307,7 @@ def test_profile_migration_manifest_uses_project_relative_paths(tmp_path: Path):
 
     res = runner.invoke(
         app,
-        ["profile", "migrate-current", str(project_dir), "de_gpt5_5", "--select"],
+        ["profile", "migrate-current", str(project_dir), "de_gpt5_5"],
     )
 
     assert res.exit_code == 0, res.output

@@ -311,7 +311,7 @@ def context_init(
         help="Path to a JSON seed file with extra questions and glossary.",
     ),
 ) -> None:
-    """Create the active profile's context.json and rendered context.md."""
+    """Create the resolved profile's context.json and rendered context.md."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     try:
         message = init_context_workflow(
@@ -500,7 +500,7 @@ def context_render(
     write: bool = typer.Option(
         False,
         "--write",
-        help="Write the active profile's context.md.",
+        help="Write the resolved profile's context.md.",
     ),
     stdout: bool = typer.Option(
         False, "--stdout", help="Print rendered Markdown without writing."

@@ -64,7 +64,7 @@ booktx validate .
 booktx build .
 ```
 
-`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile select`, `profile create`, `profile migrate-current`, `context sync`, and `judge create-profile`/`judge sync-sources`/`judge prepare-isolation`) remain blocked in isolated mode. For selection profiles, `judge status/next/record/insert` are allowed in profile-root mode after snapshot preparation.
+`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile create`, `profile migrate-current`, `context sync`, and `judge create-profile`/`judge sync-sources`/`judge prepare-isolation`) remain blocked in isolated mode. For selection profiles, `judge status/next/record/insert` are allowed in profile-root mode after snapshot preparation.
 
 The todo commands (`todo-next`, `todo-status`, `todo-resume`) are runtime-aware: in
 profile-root mode they omit `--profile`, use profile-local paths (`todos/`,
@@ -96,7 +96,7 @@ Then determine the target profile.
 Resolution rules:
 
 1. Explicit `--profile PROFILE` wins.
-2. Otherwise `.booktx/profile-state.json` active profile is used.
+2. Otherwise `.booktx/profile state` explicit profile is used.
 3. Otherwise exactly one existing profile may be auto-resolved.
 4. If multiple profiles exist, always pass `--profile`.
 
@@ -119,7 +119,7 @@ booktx profile create ./book PROFILE \
   --target de \
   --target-locale de-DE \
   --model MODEL_LABEL \
-  --select
+
 ```
 
 Use a new profile for each target language, model experiment, or hard-isolated
@@ -486,7 +486,7 @@ booktx check . --profile PROFILE --chapter CHAPTER --fail-on-warnings
 ```
 
 Read the generated todo markdown and follow its loop. Stop only when the todo
-Do not use old profile-state paths in a profile project:
+Do not use old implicit profile state paths in a profile project:
 
 ```text
 .booktx/context.json
@@ -509,7 +509,7 @@ requests a whole-chapter task.
 For a legacy single-layout project:
 
 ```bash
-booktx profile migrate-current ./book PROFILE --select
+booktx profile migrate-current ./book PROFILE
 ```
 
 After migration, use only `translations/PROFILE/...` for translation work.
@@ -791,7 +791,7 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
   --model gpt-5.5 \
-  --select
+
 ```
 
 Before judging, initialize and ready the selection profile context. Sync policy

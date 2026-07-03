@@ -117,20 +117,16 @@ def _render_profiles_overview_human(overview: ProfilesOverview) -> None:
         return
     console.print("profiles:")
     for item in overview.profiles:
-        marker = "*" if item.active else " "
         coverage = (
             f"translated={item.translated_records}/{item.total_records}"
             if item.total_records
             else "translated=0/0"
         )
         console.print(
-            f"  {marker} {item.profile}   kind={item.kind}  "
+            f"  {item.profile}   kind={item.kind}  "
             f"target={item.target_locale or item.target_language}  "
             f"model={item.model or 'human'}  {coverage}"
         )
-    if overview.active_profile:
-        console.print()
-        console.print(f"active profile: {overview.active_profile}")
 
 
 def _load_context_status(proj: Project) -> tuple[bool, bool]:
@@ -161,7 +157,7 @@ def _die(message: str, code: int = 1) -> None:
 
 
 def resolve_profile_local_path(project: Project, rel: Path, *, purpose: str) -> Path:
-    """Resolve a profile-local relative path under the active profile storage root."""
+    """Resolve a profile-local relative path under the resolved profile storage root."""
     if rel.is_absolute() or ".." in rel.parts:
         raise BooktxError(
             "profile_local_path_invalid",
@@ -173,7 +169,7 @@ def resolve_profile_local_path(project: Project, rel: Path, *, purpose: str) -> 
     if root != path and root not in path.parents:
         raise BooktxError(
             "profile_local_path_escape",
-            f"{purpose} must stay inside the active profile",
+            f"{purpose} must stay inside the resolved profile",
         )
     return path
 

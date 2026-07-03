@@ -21,18 +21,17 @@ Profiles prevent that by moving mutable translation state under
 ## Commands
 
 ```bash
-booktx profile create ./book de_gpt5_5 --target de --target-locale de-DE --select
+booktx profile create ./book de_gpt5_5 --target de --target-locale de-DE
 booktx profile list ./book
 booktx profile show ./book de_gpt5_5
-booktx profile select ./book de_gpt5_5
 booktx profile compare ./book --profiles de_gpt5_5,de_glm_5_2 --record 0001-000001
-booktx profile migrate-current ./book de_gpt5_5 --select
+booktx profile migrate-current ./book de_gpt5_5
 ```
 
 ## Resolution rules
 
 1. Explicit `--profile` wins.
-2. Otherwise the active profile from `.booktx/profile-state.json` is used.
+2. Otherwise the explicit profile from `.booktx/profile state` is used.
 3. Otherwise exactly one existing profile is auto-resolved.
 4. Otherwise target-dependent commands fail until a profile is chosen explicitly.
 
@@ -81,7 +80,7 @@ booktx validate .
 booktx build .
 ```
 
-`profile list` in isolated mode shows only the current profile (no sibling profile names, no absolute paths, no `../`). Cross-profile commands like `profile compare`, `profile select`, `profile create`, and `profile migrate-current` remain blocked.
+`profile list` in isolated mode shows only the current profile (no sibling profile names, no absolute paths, no `../`). Cross-profile commands like `profile compare`, `profile create`, and `profile migrate-current` remain blocked.
 
 If a command in profile-root mode suggests `../`, prints an absolute path, or
 reveals another profile, stop and report a booktx isolation bug.
@@ -133,7 +132,6 @@ Source-derived state under `.booktx/` is shared by all profiles:
 | `names.json`           | Protected-term glossary             |
 | `chapter-map.json`     | Cached chapter boundaries           |
 | `chunks/`              | Immutable extracted source records  |
-| `profile-state.json`   | Active-profile selector             |
 
 Re-extracting the source updates the shared state for every profile at once.
 
@@ -205,7 +203,7 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
   --model gpt-5.5 \
-  --select
+
 ```
 
 Before judging, initialize the selection profile context, sync policy from a
@@ -259,7 +257,7 @@ A legacy single-layout project keeps all state under `.booktx/`. Migrate it
 into the profile layout:
 
 ```bash
-booktx profile migrate-current ./book PROFILE --select
+booktx profile migrate-current ./book PROFILE
 ```
 
 Before:

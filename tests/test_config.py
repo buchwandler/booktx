@@ -136,7 +136,7 @@ def test_init_rejects_unsupported_source(tmp_path: Path):
     import tomli_w
 
     cfg_path.write_bytes(tomli_w.dumps(data).encode("utf-8"))
-    proj2 = load_project(tmp_path / "book")
+    proj2 = load_project(tmp_path / "book", profile="fr_default")
     assert proj2.config.chunk_size == 25
     assert proj2.config.target_language == "fr"
 
@@ -172,7 +172,7 @@ def test_find_source_file_syncs_config(tmp_path: Path):
 def test_translation_store_helpers_roundtrip(tmp_path: Path):
     proj = init_project(tmp_path / "book", target_language="de")
     (proj.source_dir / "story.md").write_text("# Hi\n", encoding="utf-8")
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
 
     assert translation_store_path(proj).name == "translation-store.json"
 
@@ -287,7 +287,7 @@ def _make_project_with_context(tmp_path: Path) -> Path:
 
 
 def test_version_resolution_reuses_same_identity_and_context(tmp_path: Path):
-    proj = load_project(_make_project_with_context(tmp_path))
+    proj = load_project(_make_project_with_context(tmp_path), profile="de_default")
     write_identity(
         proj,
         TranslationIdentity(
@@ -311,7 +311,7 @@ def test_version_resolution_reuses_same_identity_and_context(tmp_path: Path):
 def test_version_resolution_keeps_same_subversion_for_chapter_note_only_change(
     tmp_path: Path,
 ):
-    proj = load_project(_make_project_with_context(tmp_path))
+    proj = load_project(_make_project_with_context(tmp_path), profile="de_default")
     write_identity(
         proj,
         TranslationIdentity(
@@ -342,7 +342,7 @@ def test_version_resolution_keeps_same_subversion_for_chapter_note_only_change(
 
 
 def test_version_resolution_creates_new_subversion_on_baseline_change(tmp_path: Path):
-    proj = load_project(_make_project_with_context(tmp_path))
+    proj = load_project(_make_project_with_context(tmp_path), profile="de_default")
     write_identity(
         proj,
         TranslationIdentity(
@@ -368,7 +368,7 @@ def test_version_resolution_creates_new_subversion_on_baseline_change(tmp_path: 
 
 
 def test_version_resolution_creates_new_major_track_on_model_change(tmp_path: Path):
-    proj = load_project(_make_project_with_context(tmp_path))
+    proj = load_project(_make_project_with_context(tmp_path), profile="de_default")
     write_identity(
         proj,
         TranslationIdentity(
@@ -445,14 +445,16 @@ def test_source_only_project_loads_without_profile(tmp_path: Path):
     assert loaded.output_dir is None
 
 
-def test_load_project_auto_resolves_single_profile(tmp_path: Path):
+def test_load_project_without_profile_returns_source_project(tmp_path: Path):
     proj = init_source_project(tmp_path / "book")
     create_profile(proj.root, "de_gpt5_5", target_language="de")
 
     loaded = load_project(proj.root)
 
-    assert loaded.profile == "de_gpt5_5"
-    assert loaded.config.target_language == "de"
+    assert loaded.profile is None
+    resolved = load_project(proj.root, profile="de_gpt5_5")
+    assert resolved.profile == "de_gpt5_5"
+    assert resolved.config.target_language == "de"
 
 
 def test_load_project_rejects_ambiguous_profiles_when_required(tmp_path: Path):
@@ -460,7 +462,7 @@ def test_load_project_rejects_ambiguous_profiles_when_required(tmp_path: Path):
     create_profile(proj.root, "de_gpt5_5", target_language="de")
     create_profile(proj.root, "fr_gpt5_5", target_language="fr")
 
-    with pytest.raises(BooktxError, match="multiple translation profiles exist"):
+    with pytest.raises(BooktxError, match="translation profile required"):
         load_project(proj.root, require_profile=True)
 
 
@@ -652,12 +654,7 @@ def test_review_path_helpers_resolve_profile_local(tmp_path: Path):
 
     proj = init_source_project(tmp_path / "book")
     create_profile(proj.root, "de_default", target_language="de")
-    loaded = load_project(proj.root)
-    # Select the profile so path helpers resolve.
-    from booktx.config import select_profile
-
-    select_profile(loaded.root, "de_default")
-    proj2 = load_project(loaded.root)
+    proj2 = load_project(proj.root, profile="de_default")
     rid = "btr-20260625T120000Z-0002-r1-a1b2c3d4"
     assert translation_review_dir(proj2).name == "reviews"
     assert translation_review_task_path(proj2, rid).name == f"{rid}.json"

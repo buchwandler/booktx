@@ -396,7 +396,6 @@ def test_lexicon_locale_precedence_prefers_profile_locale_override(
             "de",
             "--target-locale",
             "de-DE",
-            "--select",
         ],
     )
     assert create.exit_code == 0, create.output

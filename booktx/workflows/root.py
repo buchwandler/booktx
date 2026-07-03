@@ -113,7 +113,6 @@ def init(
     if target:
         console.print(f"[green]Initialized source project:[/green] {proj.root}")
         console.print(f"[green]Created profile:[/green] {proj.profile}")
-        console.print(f"[green]Selected active profile:[/green] {proj.profile}")
     else:
         console.print(f"[green]Initialized source project:[/green] {proj.root}")
     console.print(f"  source_language: {proj.config.source_language}")
@@ -917,7 +916,6 @@ def pass_through_cmd(
     create: bool = typer.Option(
         False, "--create", help="Create the pass-through profile if missing."
     ),
-    select: bool = typer.Option(False, "--select", help="Select the created profile."),
     output_filename: str | None = typer.Option(
         None, "--output-filename", help="Output filename for a newly created profile."
     ),
@@ -955,7 +953,6 @@ def pass_through_cmd(
             runtime.project.root,
             profile,
             create=create,
-            select=select,
             output_filename=output_filename,
         )
         result = run_pass_through(

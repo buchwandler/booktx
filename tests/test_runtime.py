@@ -41,7 +41,6 @@ def _make_project(tmp_path: Path) -> Path:
             "de",
             "--target-locale",
             "de-DE",
-            "--select",
         ],
     )
     assert create_res.exit_code == 0, create_res.output

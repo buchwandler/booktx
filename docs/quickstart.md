@@ -19,7 +19,7 @@ booktx profile create ./demo de_gpt5_5 \
   --target de \
   --target-locale de-DE \
   --model codex-openai/gpt-5.5@low \
-  --select
+
 ```
 
 ## 4. Initialize the profile-local context
@@ -70,7 +70,7 @@ demo/translations/de_gpt5_5/output/
 Old single-layout projects can be migrated with:
 
 ```bash
-booktx profile migrate-current ./demo de_gpt5_5 --select
+booktx profile migrate-current ./demo de_gpt5_5
 ```
 
 ## Context approval

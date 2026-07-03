@@ -1,6 +1,6 @@
 """Typer commands for translation-profile management (Phase 3 slice 4).
 
-Thin command layer for the ``profile`` group (create / list / select / show /
+Thin command layer for the ``profile`` group (create / list / show /
 compare / migrate-current / create-pass-through) plus rendering helpers.
 Commands delegate to :mod:`booktx.workflows.profile` and :mod:`booktx.cli_support`
 and never import ``booktx.config`` or ``booktx.translation_store`` directly.
@@ -30,7 +30,6 @@ from booktx.workflows.profile import (
     create_pass_through_workflow,
     create_profile_workflow,
     migrate_current_workflow,
-    select_profile_workflow,
 )
 
 profile_app = typer.Typer(help="Manage isolated translation profiles.")
@@ -52,7 +51,6 @@ def profile_create_cmd(
     output_filename: str | None = typer.Option(
         None, "--output-filename", help="Optional output filename override."
     ),
-    select: bool = typer.Option(False, "--select", help="Select the created profile."),
 ) -> None:
     try:
         project = create_profile_workflow(
@@ -64,14 +62,11 @@ def profile_create_cmd(
             harness=harness,
             model=model,
             output_filename=output_filename,
-            select=select,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
     console.print(f"created profile: {project.profile}")
-    if select:
-        console.print(f"selected active profile: {project.profile}")
 
 
 @profile_app.command(name="list")
@@ -97,7 +92,7 @@ def profile_list_cmd(
             "isolated mode: showing current profile only; "
             "run from project root for all profiles"  # noqa: E501
         )
-        console.print(f"  * {profile_name}")
+        console.print(f"  {profile_name}")
         return
     overview = build_profiles_overview_payload(runtime.project.root)
     if as_json:
@@ -106,21 +101,6 @@ def profile_list_cmd(
         )
         return
     _render_profiles_overview_human(overview)
-
-
-@profile_app.command(name="select")
-def profile_select_cmd(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    profile_name: str = typer.Argument(..., help="Translation profile name."),
-) -> None:
-    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
-    _reject_if_isolated(runtime)
-    try:
-        project = select_profile_workflow(runtime.project.root, profile_name)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        return
-    console.print(project.profile or profile_name)
 
 
 @profile_app.command(name="show")
@@ -221,7 +201,6 @@ def profile_migrate_current_cmd(
         None, "--harness", help="Profile harness label."
     ),
     model: str | None = typer.Option(None, "--model", help="Profile model label."),
-    select: bool = typer.Option(False, "--select", help="Select the migrated profile."),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print the migration plan only."
     ),
@@ -235,7 +214,6 @@ def profile_migrate_current_cmd(
             actor=actor,
             harness=harness,
             model=model,
-            select=select,
             dry_run=dry_run,
         )
     except BooktxError as exc:
@@ -253,8 +231,6 @@ def profile_migrate_current_cmd(
     console.print(f"migrated profile: {payload['profile']}")
     if "migration_manifest" in payload:
         console.print(f"migration manifest: {payload['migration_manifest']}")
-    if select:
-        console.print(f"selected active profile: {profile_name}")
     console.print(f"next: booktx status {project_dir} --profile {profile_name}")
     console.print(
         "next: booktx translate next "
@@ -270,7 +246,6 @@ def profile_create_pass_through_cmd(
     output_filename: str | None = typer.Option(
         None, "--output-filename", help="Optional output filename override."
     ),
-    select: bool = typer.Option(False, "--select", help="Select the created profile."),
 ) -> None:
     """Create a pass-through profile whose target language equals the source language."""  # noqa: E501
     try:
@@ -278,11 +253,8 @@ def profile_create_pass_through_cmd(
             project_dir,
             profile_name,
             output_filename=output_filename,
-            select=select,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
     console.print(f"created pass-through profile: {project.profile}")
-    if select:
-        console.print(f"selected active profile: {project.profile}")

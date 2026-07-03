@@ -64,7 +64,6 @@ def create_judge_profile_workflow(
     target_locale: str | None,
     sources_csv: str | None,
     model: str | None,
-    select: bool,
 ) -> Project:
     project = create_profile_workflow(
         project_dir,
@@ -72,7 +71,6 @@ def create_judge_profile_workflow(
         target_language=target_language,
         target_locale=target_locale,
         model=model,
-        select=select,
         kind="selection",
     )
     cfg = load_profile_config(project.root, profile_name)

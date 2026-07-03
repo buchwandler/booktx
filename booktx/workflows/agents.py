@@ -207,12 +207,11 @@ def _write_project_root(
             "isolated AGENTS.md mode requires a profile-layout project; "
             "this project uses the legacy single layout",
         )
-    target_profile = resolve_profile_name(project, profile, require_profile=False)
+    target_profile = resolve_profile_name(project, profile, require_profile=True)
     if target_profile is None:
         raise _err(
             "agents_profile_required",
-            "isolated AGENTS.md mode requires a target profile; "
-            "pass --profile or select an active profile",
+            "isolated AGENTS.md mode requires a target profile; pass --profile PROFILE",
         )
     _reject_ancestor_conflict(root, sanitize=False)
 
@@ -380,12 +379,12 @@ def _clean_project_root(
             "agents_legacy_isolated_unsupported",
             "isolated AGENTS.md cleanup requires a profile-layout project",
         )
-    target_profile = resolve_profile_name(project, profile, require_profile=False)
+    target_profile = resolve_profile_name(project, profile, require_profile=True)
     if target_profile is None:
         raise _err(
             "agents_profile_required",
             "isolated AGENTS.md cleanup requires a target profile; "
-            "pass --profile or select an active profile",
+            "pass --profile PROFILE",
         )
     _safe_delete(
         profile_dir(root, target_profile) / AGENTS_FILENAME,

@@ -48,7 +48,7 @@ judge_app = typer.Typer(help="Judge and selection-profile workflows.")
 
 
 def _require_selection_runtime(runtime: RuntimeContext) -> None:
-    """Reject judge commands unless the active profile is a selection profile."""
+    """Reject judge commands unless the resolved profile is a selection profile."""
     cfg = runtime.project.profile_config
     if cfg is None or cfg.kind != "selection":
         _die("judge workflows require a selection profile")
@@ -163,7 +163,6 @@ def judge_create_profile(
         ..., "--sources", help="Comma-separated source profiles."
     ),
     model: str | None = typer.Option(None, "--model", help="Judge model label."),
-    select: bool = typer.Option(False, "--select", help="Select the created profile."),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     _reject_if_isolated(runtime)
@@ -175,14 +174,11 @@ def judge_create_profile(
             target_locale=target_locale,
             sources_csv=sources,
             model=model,
-            select=select,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
     console.print(f"created selection profile: {project.profile}")
-    if select:
-        console.print(f"selected active profile: {project.profile}")
 
 
 # --------------------------------------------------------------------------

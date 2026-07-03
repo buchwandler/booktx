@@ -264,7 +264,7 @@ def next_question_id(context: TranslationContext, prefix: str = "Q") -> str:
 
 
 def write_context(project: Project, context: TranslationContext) -> None:
-    """Persist ``context`` to the active profile's ``context.json``."""
+    """Persist ``context`` to the resolved profile's ``context.json``."""
     from booktx.io_utils import write_json_text_atomic
 
     write_json_text_atomic(
@@ -915,7 +915,7 @@ def render_context_markdown(
 
 
 def write_context_markdown(project: Project, context: TranslationContext) -> None:
-    """Render ``context`` to the active profile's ``context.md``."""
+    """Render ``context`` to the resolved profile's ``context.md``."""
     from booktx.io_utils import write_text_atomic
 
     write_text_atomic(

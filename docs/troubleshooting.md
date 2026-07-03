@@ -5,7 +5,7 @@
 Pass `--profile` or select one first:
 
 ```bash
-booktx profile select ./book de_gpt5_5
+
 ```
 
 ## `no translation profile exists`

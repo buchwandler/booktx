@@ -29,9 +29,9 @@ It owns:
 - validation reports
 - rebuilt output
 
-## Active profile
+## Explicit profile selection
 
-`.booktx/profile-state.json` records the currently selected profile. When
+`.booktx/profile state` records the currently selected profile. When
 multiple profiles exist, commands that read or mutate translation state should
 use `--profile` or rely on the active selection.
 

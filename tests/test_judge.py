@@ -238,7 +238,6 @@ def test_judge_create_profile_creates_selection_kind(tmp_path: Path):
             "de_a,de_b",
             "--model",
             "gpt-5.5",
-            "--select",
         ],
     )
 

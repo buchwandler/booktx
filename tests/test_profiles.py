@@ -54,7 +54,6 @@ def test_profile_create_creates_profile_local_layout(tmp_path: Path):
             "de-DE",
             "--model",
             "codex-openai/gpt-5.5@low",
-            "--select",
         ],
     )
 
@@ -67,10 +66,12 @@ def test_profile_create_creates_profile_local_layout(tmp_path: Path):
     assert (profile_dir / "translated").is_dir()
     assert (profile_dir / "reports").is_dir()
     assert (profile_dir / "output").is_dir()
-    assert load_project(project_dir).profile == "de_gpt5_5"
+    assert not (project_dir / ".booktx" / "profile-state.json").exists()
+    assert load_project(project_dir).profile is None
+    assert load_project(project_dir, profile="de_gpt5_5").profile == "de_gpt5_5"
 
 
-def test_profile_list_marks_active_profile(tmp_path: Path):
+def test_profile_list_does_not_mark_active_profile(tmp_path: Path):
     project_dir = _make_source_project(tmp_path)
     runner.invoke(
         app,
@@ -81,7 +82,6 @@ def test_profile_list_marks_active_profile(tmp_path: Path):
             "de_gpt5_5",
             "--target",
             "de",
-            "--select",
         ],
     )
     runner.invoke(
@@ -92,26 +92,22 @@ def test_profile_list_marks_active_profile(tmp_path: Path):
     res = runner.invoke(app, ["profile", "list", str(project_dir)])
 
     assert res.exit_code == 0, res.output
-    assert "* de_gpt5_5" in res.output
+    assert "* de_gpt5_5" not in res.output
+    assert "active profile:" not in res.output
+    assert "de_gpt5_5" in res.output
     assert "fr_gpt5_5" in res.output
 
 
-def test_profile_select_persists_active_profile(tmp_path: Path):
+def test_profile_select_command_removed(tmp_path: Path):
     project_dir = _make_source_project(tmp_path)
     runner.invoke(
         app,
         ["profile", "create", str(project_dir), "de_gpt5_5", "--target", "de"],
     )
-    runner.invoke(
-        app,
-        ["profile", "create", str(project_dir), "fr_gpt5_5", "--target", "fr"],
-    )
 
-    res = runner.invoke(app, ["profile", "select", str(project_dir), "fr_gpt5_5"])
+    res = runner.invoke(app, ["profile", "select", str(project_dir), "de_gpt5_5"])
 
-    assert res.exit_code == 0, res.output
-    assert res.output.strip() == "fr_gpt5_5"
-    assert load_project(project_dir).profile == "fr_gpt5_5"
+    assert res.exit_code != 0
 
 
 def test_profile_create_rejects_invalid_name(tmp_path: Path):
@@ -193,7 +189,6 @@ def test_status_with_profile_shows_selected_profile_detail(tmp_path: Path):
             "de_gpt5_5",
             "--target",
             "de",
-            "--select",
         ],
     )
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
@@ -219,7 +214,6 @@ def test_profile_show_json_reports_profile_metadata(tmp_path: Path):
             "de-DE",
             "--model",
             "codex-openai/gpt-5.5@low",
-            "--select",
         ],
     )
 
@@ -317,7 +311,6 @@ def test_profile_show_uses_identity_json_after_model_set(tmp_path: Path):
             "de",
             "--model",
             "human",
-            "--select",
         ],
     )
 
@@ -363,7 +356,6 @@ def test_profile_list_uses_identity_json_after_model_set(tmp_path: Path):
             "de",
             "--model",
             "human",
-            "--select",
         ],
     )
     runner.invoke(
@@ -398,10 +390,47 @@ def test_profile_create_still_initializes_all_standard_dirs(tmp_path: Path):
             "de_gpt5_5",
             "--target",
             "de",
-            "--select",
         ],
     )
     assert res.exit_code == 0, res.output
     profile_dir = project_dir / "translations" / "de_gpt5_5"
     for name in ("tasks", "ingest", "translated", "reports", "output"):
         assert (profile_dir / name).is_dir(), f"missing profile dir: {name}"
+
+
+def test_profile_list_json_has_no_active_profile(tmp_path: Path):
+    project_dir = _make_source_project(tmp_path)
+    runner.invoke(app, ["profile", "create", str(project_dir), "de", "--target", "de"])
+
+    res = runner.invoke(app, ["profile", "list", str(project_dir), "--json"])
+
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert "active_profile" not in payload
+    assert all("active" not in item for item in payload["profiles"])
+
+
+def test_project_root_requires_explicit_profile_even_with_one_profile(tmp_path: Path):
+    project_dir = _make_source_project(tmp_path)
+    runner.invoke(app, ["profile", "create", str(project_dir), "de", "--target", "de"])
+
+    res = runner.invoke(app, ["validate", str(project_dir)])
+
+    assert res.exit_code != 0
+    assert "--profile" in res.output
+    assert "profile select" not in res.output
+
+
+def test_stale_profile_state_json_is_ignored(tmp_path: Path):
+    project_dir = _make_source_project(tmp_path)
+    runner.invoke(app, ["profile", "create", str(project_dir), "de", "--target", "de"])
+    runner.invoke(app, ["profile", "create", str(project_dir), "fr", "--target", "fr"])
+    state_path = project_dir / ".booktx" / "profile-state.json"
+    state_path.write_text('{"version":1,"active_profile":"fr"}\n', encoding="utf-8")
+
+    project = load_project(project_dir)
+    res = runner.invoke(app, ["validate", str(project_dir)])
+
+    assert project.profile is None
+    assert res.exit_code != 0
+    assert "--profile" in res.output

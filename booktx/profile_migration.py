@@ -51,14 +51,12 @@ from booktx.config import (
     validate_profile_name,
     write_profile_config,
     write_profile_root_marker,
-    write_profile_state,
 )
 from booktx.epub_manifest import sha256_path
 from booktx.io_utils import write_json_model_atomic, write_json_text_atomic
 from booktx.models import (
     ProfileConfig,
     ProfileIdentityConfig,
-    ProfileState,
     SourceConfig,
     TranslationIdentity,
     TranslationTask,
@@ -276,7 +274,6 @@ def migrate_current_project(
     actor: str | None = None,
     harness: str | None = None,
     model: str | None = None,
-    select: bool = False,
     dry_run: bool = False,
 ) -> dict[str, object]:
     validate_profile_name(profile_name)
@@ -372,7 +369,7 @@ def migrate_current_project(
                 dst.unlink()
         shutil.move(str(src), str(dst))
 
-    # Write final config/identity/state only after all moves succeeded. The
+    # Write final config/identity only after all moves succeeded. The
     # plan's identity is authoritative and honors CLI overrides over the
     # moved legacy identity (P0 override-overwrite fix).
     _write_source_config(source_config_path(project_root), plan.source_config)
@@ -386,9 +383,6 @@ def migrate_current_project(
         profile_name,
         profile_config=plan.profile_config,
     )
-    if select:
-        write_profile_state(project_root, ProfileState(active_profile=profile_name))
-
     # Remove the legacy config only after every required write/move has
     # succeeded, so a failure never leaves a project that is neither legacy
     # nor profile layout.

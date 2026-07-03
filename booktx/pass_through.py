@@ -54,7 +54,6 @@ def ensure_pass_through_profile(
     profile: str,
     *,
     create: bool = False,
-    select: bool = False,
     output_filename: str | None = None,
 ) -> Project:
     try:
@@ -73,7 +72,6 @@ def ensure_pass_through_profile(
             harness=PASS_THROUGH_HARNESS,
             model=PASS_THROUGH_MODEL,
             output_filename=output_filename,
-            select=select,
             kind="pass-through",
         )
 

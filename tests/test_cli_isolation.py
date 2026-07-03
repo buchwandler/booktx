@@ -35,7 +35,15 @@ def _make_project(tmp_path: Path) -> tuple[Path, Path]:
     extract_res = runner.invoke(app, ["extract", str(project_dir)])
     assert extract_res.exit_code == 0, extract_res.output
     init_ctx = runner.invoke(
-        app, ["context", "init", str(project_dir), "--non-interactive"]
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
     )
     assert init_ctx.exit_code == 0, init_ctx.output
     ready_ctx = runner.invoke(
@@ -44,6 +52,8 @@ def _make_project(tmp_path: Path) -> tuple[Path, Path]:
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
@@ -622,7 +632,16 @@ def test_review_configure_show_isolated_from_profile_root(monkeypatch, tmp_path:
     # Enable quality review for the active (de_default) profile.
     enable = runner.invoke(
         app,
-        ["review", "configure", str(project_dir), "--enable", "--pass", "1"],
+        [
+            "review",
+            "configure",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--enable",
+            "--pass",
+            "1",
+        ],
     )
     assert enable.exit_code == 0, enable.output
     monkeypatch.chdir(profile_root)
@@ -634,7 +653,16 @@ def test_review_status_isolated_from_profile_root(monkeypatch, tmp_path: Path):
     project_dir, profile_root = _make_project(tmp_path)
     enable = runner.invoke(
         app,
-        ["review", "configure", str(project_dir), "--enable", "--pass", "1"],
+        [
+            "review",
+            "configure",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--enable",
+            "--pass",
+            "1",
+        ],
     )
     assert enable.exit_code == 0, enable.output
     monkeypatch.chdir(profile_root)
@@ -657,7 +685,7 @@ def test_epub_inspect_grep_extract_isolated_from_profile_root(
 
     project_dir, profile_root = _make_project(tmp_path)
     # Populate the profile-local output dir with xhtml.
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     assert proj.output_dir is not None
     proj.output_dir.mkdir(parents=True, exist_ok=True)
     (proj.output_dir / "chapter_1.xhtml").write_text(

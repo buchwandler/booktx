@@ -18,13 +18,12 @@ That creates and selects a default profile such as `de_default`.
 ## Profile commands
 
 ```bash
-booktx profile create ./book de_gpt5_5 --target de --target-locale de-DE --model codex-openai/gpt-5.5@low --select
+booktx profile create ./book de_gpt5_5 --target de --target-locale de-DE --model codex-openai/gpt-5.5@low
 booktx profile list ./book
 booktx profile show ./book de_gpt5_5
-booktx profile select ./book de_gpt5_5
 booktx profile compare ./book --profiles de_gpt5_5,de_glm_5_2 --record 0001-000001
-booktx profile migrate-current ./book de_gpt5_5 --select
-booktx profile create-pass-through ./book passthrough_en --select
+booktx profile migrate-current ./book de_gpt5_5
+booktx profile create-pass-through ./book passthrough_en
 ```
 
 ## Generated AGENTS.md files
@@ -343,7 +342,7 @@ Questions start as `open`. Agents may store draft defaults with `context recomme
 - `booktx review configure . --disable` -- disable quality review entirely
 - `booktx review status .` -- report review coverage by pass (eligible/reviewed/missing/stale/blocked); JSON includes `next_command`, `first_missing_record`, `first_missing_chapter`
 - `booktx review next . --pass 1` -- create the next durable review task for a pass; supports `--selection missing|stale|reviewed|all|changed-base` and `--base active_translation|active_review|pass:N`
-- `booktx review next . --pass 1 --selection reviewed --base active_review` -- rerun a pass over already-reviewed records, creating `R1.2` from `R1.1`
+- `booktx review next . --pass 1ion reviewed --base active_review` -- rerun a pass over already-reviewed records, creating `R1.2` from `R1.1`
 - `booktx review insert . --review-task-id TASK --file reviews/TASK.block.txt --format block` -- parse and accept a review submission
 - `booktx review activate . RECORD R1.2` -- manually activate an existing review candidate for a record
 - `booktx review deactivate . RECORD` -- deactivate the active review, falling back to the active translation version
@@ -371,7 +370,7 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
   --model gpt-5.5 \
-  --select
+
 
 booktx context init ./book --profile de_judge_gpt5_5 --non-interactive
 booktx context sync ./book \

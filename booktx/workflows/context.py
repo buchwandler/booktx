@@ -257,7 +257,7 @@ def init_context_workflow(
     seed: str | None,
     seed_file: Path | None,
 ) -> str:
-    """Create the active profile's context.json and rendered context.md."""
+    """Create the resolved profile's context.json and rendered context.md."""
     existing = None if force else load_context(project)
     if existing is not None:
         _guard_md_safe_or_die(project, existing)

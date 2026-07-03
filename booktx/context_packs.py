@@ -444,7 +444,7 @@ def export_context_pack(
 ) -> SeriesContextPack:
     """Build a :class:`SeriesContextPack` from the selected profile context.
 
-    Loads and validates ``context.json`` for the active profile, refuses unsafe
+    Loads and validates ``context.json`` for the resolved profile, refuses unsafe
     ``context.md`` drift, requires ``ready`` and not ``ready_forced`` unless
     ``allow_not_ready`` is set, and exports only reusable fields. Exports all
     glossary entries (including open entries) and only reusable answered

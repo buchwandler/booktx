@@ -272,7 +272,7 @@ def read_source_analysis(project: Project, *, isolated: bool) -> SourceAnalysisR
         if project.profile is None:
             raise BooktxError(
                 "source_analysis_no_profile",
-                "profile-root read requires an active profile",
+                "profile-root read requires a resolved profile",
             )
         snap_path = profile_source_analysis_path(project)
         canonical = read_canonical_report(project)

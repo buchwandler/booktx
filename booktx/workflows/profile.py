@@ -19,7 +19,6 @@ from booktx.config import (
     load_translation_store,
     load_translation_version_ledger,
     migrate_current_project,
-    select_profile,
 )
 from booktx.context import load_context
 from booktx.errors import BooktxError
@@ -96,7 +95,6 @@ def create_profile_workflow(
     harness: str | None = None,
     model: str | None = None,
     output_filename: str | None = None,
-    select: bool = False,
     kind: str = "translation",
 ) -> Project:
     return create_profile(
@@ -108,13 +106,8 @@ def create_profile_workflow(
         harness=harness,
         model=model,
         output_filename=output_filename,
-        select=select,
         kind=kind,  # type: ignore[arg-type]
     )
-
-
-def select_profile_workflow(root: Path, profile_name: str) -> Project:
-    return select_profile(root, profile_name)
 
 
 def migrate_current_workflow(
@@ -126,7 +119,6 @@ def migrate_current_workflow(
     actor: str | None = None,
     harness: str | None = None,
     model: str | None = None,
-    select: bool = False,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     return migrate_current_project(
@@ -137,7 +129,6 @@ def migrate_current_workflow(
         actor=actor,
         harness=harness,
         model=model,
-        select=select,
         dry_run=dry_run,
     )
 
@@ -147,7 +138,6 @@ def create_pass_through_workflow(
     profile_name: str,
     *,
     output_filename: str | None = None,
-    select: bool = False,
 ) -> Project:
     source_project = load_source_project(project_dir)
     target = source_project.source_config.source_language
@@ -160,7 +150,6 @@ def create_pass_through_workflow(
         harness="booktx",
         model="booktx/pass-through",
         output_filename=output_filename,
-        select=select,
         kind="pass-through",
     )
 
@@ -232,5 +221,4 @@ __all__ = [
     "create_pass_through_workflow",
     "create_profile_workflow",
     "migrate_current_workflow",
-    "select_profile_workflow",
 ]
