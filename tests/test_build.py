@@ -133,7 +133,7 @@ def test_build_markdown_identity_roundtrip(tmp_path: Path):
     proj = init_project(tmp_path / "book", target_language="de")
     (proj.source_dir / "book.md").write_text(MARKDOWN_DOC, encoding="utf-8")
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
 
     chunks = _write_source_chunks_markdown(proj)
     _write_translations(proj, _identity_translation(chunks))
@@ -160,7 +160,7 @@ def test_build_markdown_translates_text(tmp_path: Path):
     )
     (proj.source_dir / "book.md").write_text(doc, encoding="utf-8")
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     chunks = _write_source_chunks_markdown(proj, doc)
 
     translated = {}
@@ -189,7 +189,7 @@ def test_build_markdown_uses_translation_store(tmp_path: Path):
     )
     (proj.source_dir / "book.md").write_text(doc, encoding="utf-8")
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     chunks = _write_source_chunks_markdown(proj, doc)
 
     _write_store_identity_translation(proj, chunks)
@@ -206,7 +206,7 @@ def test_build_require_complete_fails_when_records_missing(tmp_path: Path):
         "# Hello\n\nAlice ran fast.\n", encoding="utf-8"
     )
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     _write_source_chunks_markdown(proj, "# Hello\n\nAlice ran fast.\n")
 
     with pytest.raises(BuildError, match="build requires complete translations"):
@@ -219,7 +219,7 @@ def test_build_epub_without_translations_produces_valid_output(tmp_path: Path):
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="en_default")
 
     result = build_project(proj)
 
@@ -238,7 +238,7 @@ def test_build_epub_identity_translations_have_no_token_leaks(tmp_path: Path):
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="en_default")
 
     translations: dict[str, object] = {}
     for chunk in _load_chunk_payloads(proj):
@@ -271,7 +271,7 @@ def test_build_epub_changed_translation_has_no_token_leaks(tmp_path: Path):
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
 
     translations: dict[str, object] = {}
     for chunk in _load_chunk_payloads(proj):
@@ -316,7 +316,7 @@ def test_build_epub_report_has_output_policy_detail_for_translation(tmp_path: Pa
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     from booktx.config import write_profile_config
     from booktx.models import EpubOutputConfig
 
@@ -327,7 +327,7 @@ def test_build_epub_report_has_output_policy_detail_for_translation(tmp_path: Pa
         }
     )
     write_profile_config(proj.root, cfg)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
 
     translations: dict[str, object] = {}
     for chunk in _load_chunk_payloads(proj):
@@ -366,7 +366,7 @@ def test_build_epub_failure_leaves_existing_output_untouched(tmp_path: Path):
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
 
     # First, a successful build produces a valid output.
     good = build_project(proj)
@@ -401,7 +401,7 @@ def test_build_epub_fails_on_unresolved_placeholder_token(tmp_path: Path):
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
 
     translations: dict[str, object] = {}
     for chunk in _load_chunk_payloads(proj):
@@ -424,7 +424,7 @@ def test_build_epub_fails_on_source_sha_mismatch(tmp_path: Path):
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
 
     different_source = proj.source_dir / "replacement.epub"
     epub_fixtures._make_epub(different_source)
@@ -521,7 +521,7 @@ def _enable_quality_review(proj, *, active_passes=(1,), enforce="warn"):
         }
     )
     write_profile_config(proj, cfg)
-    return load_project(proj.root)
+    return load_project(proj.root, profile="de_default")
 
 
 def test_build_require_reviewed_fails_on_missing_review(tmp_path: Path):
@@ -530,7 +530,7 @@ def test_build_require_reviewed_fails_on_missing_review(tmp_path: Path):
         "# Hello\n\nAlice ran fast.\n", encoding="utf-8"
     )
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     chunks = _write_source_chunks_markdown(proj, "# Hello\n\nAlice ran fast.\n")
     _write_v2_store_identity(proj, chunks)
     proj = _enable_quality_review(proj, enforce="warn")
@@ -546,7 +546,7 @@ def test_build_without_require_reviewed_succeeds_with_warn_coverage_gap(tmp_path
         "# Hello\n\nAlice ran fast.\n", encoding="utf-8"
     )
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     chunks = _write_source_chunks_markdown(proj, "# Hello\n\nAlice ran fast.\n")
     _write_v2_store_identity(proj, chunks)
     proj = _enable_quality_review(proj, enforce="warn")
@@ -563,7 +563,7 @@ def test_build_require_reviewed_fails_on_stale_active_review(tmp_path: Path):
         "# Hello\n\nAlice ran fast.\n", encoding="utf-8"
     )
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     chunks = _write_source_chunks_markdown(proj, "# Hello\n\nAlice ran fast.\n")
     record = chunks[0].records[0]
     review = TranslationReviewCandidate(
@@ -594,7 +594,7 @@ def test_build_uses_active_review_output_when_valid(tmp_path: Path):
         "# Hello\n\nAlice ran fast.\n", encoding="utf-8"
     )
     find_source_file(proj)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     chunks = _write_source_chunks_markdown(proj, "# Hello\n\nAlice ran fast.\n")
     record = next(r for c in chunks for r in c.records if "ran fast" in r.source)
     polished = record.source.replace("ran fast", "ran sehr schnell")
@@ -625,7 +625,7 @@ def test_build_and_validate_share_preflight(tmp_path: Path):
     epub_fixtures._make_epub(epub_path)
     find_source_file(proj)
     _extract_epub_project(proj.root)
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     # Simulate old project (plain records) so the span sanitizer is the catcher.
     for path in proj.chunks():
         chunk = json.loads(path.read_text("utf-8"))

@@ -52,7 +52,7 @@ def _make_project(tmp_path: Path) -> Path:
 
 def test_task_paths_bundles_four_durable_files(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     paths = task_paths(proj, "bt-task-x")
     assert isinstance(paths, TaskPaths)
     assert paths.task_json.name == "bt-task-x.json"
@@ -202,6 +202,8 @@ def test_missing_submission_file_hint_points_at_profile_local_ingest(tmp_path: P
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--unit",
             "paragraph",
             "--json",
@@ -217,6 +219,8 @@ def test_missing_submission_file_hint_points_at_profile_local_ingest(tmp_path: P
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task_id,
             "--file",

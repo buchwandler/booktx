@@ -66,7 +66,17 @@ def _add_profile(project_dir: Path, name: str = "de_ctx") -> None:
 
 
 def _init_context(project_dir: Path) -> None:
-    res = runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_ctx",
+            "--non-interactive",
+        ],
+    )
     assert res.exit_code == 0, res.output
 
 
@@ -89,7 +99,17 @@ def _answer_core(project_dir: Path) -> None:
     ]
     for qid, text in answers:
         res = runner.invoke(
-            app, ["context", "answer", str(project_dir), qid, "--text", text]
+            app,
+            [
+                "context",
+                "answer",
+                str(project_dir),
+                "--profile",
+                "de_ctx",
+                qid,
+                "--text",
+                text,
+            ],
         )
         assert res.exit_code == 0, res.output
 
@@ -103,14 +123,14 @@ def test_load_context_or_die_missing_raises(tmp_path: Path) -> None:
     from booktx.config import load_project
 
     with pytest.raises(BooktxError, match="missing"):
-        load_context_or_die(load_project(project_dir))
+        load_context_or_die(load_project(project_dir, profile="de_ctx"))
 
 
 def test_add_question_workflow_appends_required_question(tmp_path: Path) -> None:
     project_dir = _ready_project(tmp_path)
     from booktx.config import load_project
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_ctx")
     ctx = load_context_or_die(proj)
     message = add_question_workflow(
         proj,
@@ -133,7 +153,7 @@ def test_remove_term_workflow_missing_raises(tmp_path: Path) -> None:
     project_dir = _ready_project(tmp_path)
     from booktx.config import load_project
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_ctx")
     ctx = load_context_or_die(proj)
     with pytest.raises(BooktxError, match="no glossary entry"):
         remove_term_workflow(proj, ctx, source="MissingTerm", missing_ok=False)
@@ -143,7 +163,7 @@ def test_add_or_update_term_workflow_creates_new_entry(tmp_path: Path) -> None:
     project_dir = _ready_project(tmp_path)
     from booktx.config import load_project
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_ctx")
     ctx = load_context_or_die(proj)
     message = add_or_update_term_workflow(
         proj,
@@ -171,7 +191,7 @@ def test_mark_ready_workflow_blocks_with_open_required(tmp_path: Path) -> None:
     project_dir = _ready_project(tmp_path)
     from booktx.config import load_project
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_ctx")
     ctx = load_context_or_die(proj)
     # No required questions have been answered yet.
     with pytest.raises(BooktxError, match="unresolved or unapproved"):
@@ -187,7 +207,7 @@ def test_context_init_command_creates_files(tmp_path: Path) -> None:
     from booktx.config import load_project
     from booktx.context import context_markdown_path, context_path
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_ctx")
     assert context_path(proj).is_file()
     assert context_markdown_path(proj).is_file()
     data = json.loads(context_path(proj).read_text("utf-8"))
@@ -196,7 +216,9 @@ def test_context_init_command_creates_files(tmp_path: Path) -> None:
 
 def test_context_status_command(tmp_path: Path) -> None:
     project_dir = _ready_project(tmp_path)
-    res = runner.invoke(app, ["context", "status", str(project_dir)])
+    res = runner.invoke(
+        app, ["context", "status", str(project_dir), "--profile", "de_ctx"]
+    )
     assert res.exit_code == 0, res.output
     assert "Status:" in res.output
     assert "open_required=" in res.output
@@ -210,6 +232,8 @@ def test_context_add_term_command_success(tmp_path: Path) -> None:
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_ctx",
             "Alice",
             "--target",
             "Alicia",
@@ -223,7 +247,9 @@ def test_context_add_term_command_success(tmp_path: Path) -> None:
 
 def test_context_questions_command(tmp_path: Path) -> None:
     project_dir = _ready_project(tmp_path)
-    res = runner.invoke(app, ["context", "questions", str(project_dir)])
+    res = runner.invoke(
+        app, ["context", "questions", str(project_dir), "--profile", "de_ctx"]
+    )
     assert res.exit_code == 0, res.output
     assert "Q001" in res.output
 
@@ -239,6 +265,8 @@ def test_context_add_term_enforce_off_refused(tmp_path: Path) -> None:
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_ctx",
             "Alice",
             "--target",
             "Alicia",
@@ -254,7 +282,10 @@ def test_context_add_term_enforce_off_refused(tmp_path: Path) -> None:
 
 def test_context_mark_ready_force_requires_reason(tmp_path: Path) -> None:
     project_dir = _ready_project(tmp_path)
-    res = runner.invoke(app, ["context", "mark-ready", str(project_dir), "--force"])
+    res = runner.invoke(
+        app,
+        ["context", "mark-ready", str(project_dir), "--profile", "de_ctx", "--force"],
+    )
     assert res.exit_code != 0
     assert "error:" in res.output
     assert "--force requires --reason" in res.output
@@ -268,6 +299,8 @@ def test_context_add_question_duplicate_rejected(tmp_path: Path) -> None:
             "context",
             "add-question",
             str(project_dir),
+            "--profile",
+            "de_ctx",
             "--topic",
             "tone",
             "--question",
@@ -282,6 +315,8 @@ def test_context_add_question_duplicate_rejected(tmp_path: Path) -> None:
             "context",
             "add-question",
             str(project_dir),
+            "--profile",
+            "de_ctx",
             "--topic",
             "tone",
             "--question",
@@ -300,6 +335,8 @@ def test_context_chapter_note_replace_all_conflict(tmp_path: Path) -> None:
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_ctx",
             "0001",
             "--title",
             "First",

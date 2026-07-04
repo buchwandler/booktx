@@ -120,7 +120,7 @@ def _store_record(rid: str, source: str):
 def _build_review_task(tmp_path: Path):
     """Create a project, store, and a pass-1 review task over all records."""
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     for path in sorted(proj.chunks_dir.glob("*.json")):
         chunk = json.loads(path.read_text("utf-8"))
@@ -128,7 +128,7 @@ def _build_review_task(tmp_path: Path):
             records[rec["id"]] = _store_record(rec["id"], rec["source"])
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     cfg = QualityReviewConfig(
         enabled=True,

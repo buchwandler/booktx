@@ -85,7 +85,7 @@ def _write_accepted_store_record(project_dir: Path) -> None:
         next((project_dir / ".booktx" / "chunks").glob("*.json")).read_text("utf-8")
     )
     record = chunk["records"][0]
-    translation_store_path(load_project(project_dir)).write_text(
+    translation_store_path(load_project(project_dir, profile="de_default")).write_text(
         json.dumps(
             {
                 "version": 2,
@@ -116,7 +116,7 @@ def _write_accepted_store_record(project_dir: Path) -> None:
 
 
 def _selected_project(project_dir: Path):
-    return load_project(project_dir)
+    return load_project(project_dir, profile="de_default")
 
 
 def test_version_flag():
@@ -141,7 +141,7 @@ def test_version_group_without_subcommand_errors():
 def test_whoami_reports_missing_context_without_failing(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
 
-    res = runner.invoke(app, ["whoami", str(project_dir)])
+    res = runner.invoke(app, ["whoami", str(project_dir), "--profile", "de_default"])
 
     assert res.exit_code == 0, res.output
     assert f"booktx identity: {project_dir}" in res.output
@@ -156,7 +156,9 @@ def test_whoami_reports_missing_context_without_failing(tmp_path: Path):
 def test_whoami_json_is_stable_when_optional_state_is_missing(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
 
-    res = runner.invoke(app, ["whoami", str(project_dir), "--json"])
+    res = runner.invoke(
+        app, ["whoami", str(project_dir), "--profile", "de_default", "--json"]
+    )
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -175,28 +177,54 @@ def test_harness_set_accepts_all_supported_argument_orders(tmp_path: Path, monke
     project_dir = _make_markdown_project(tmp_path)
 
     monkeypatch.chdir(project_dir)
-    res = runner.invoke(app, ["harness", "set", "pi"])
-    assert res.exit_code == 0, res.output
-    assert runner.invoke(app, ["harness", "whoami", "."]).output.strip() == "pi"
-
-    res = runner.invoke(app, ["harness", "set", "qa", str(project_dir)])
+    res = runner.invoke(app, ["harness", "set", "pi", "--profile", "de_default"])
     assert res.exit_code == 0, res.output
     assert (
-        runner.invoke(app, ["harness", "whoami", str(project_dir)]).output.strip()
+        runner.invoke(
+            app, ["harness", "whoami", ".", "--profile", "de_default"]
+        ).output.strip()
+        == "pi"
+    )
+
+    res = runner.invoke(
+        app, ["harness", "set", "qa", str(project_dir), "--profile", "de_default"]
+    )
+    assert res.exit_code == 0, res.output
+    assert (
+        runner.invoke(
+            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
+        ).output.strip()
         == "qa"
     )
 
-    res = runner.invoke(app, ["harness", "set", str(project_dir), "ops"])
+    res = runner.invoke(
+        app, ["harness", "set", str(project_dir), "ops", "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert (
-        runner.invoke(app, ["harness", "whoami", str(project_dir)]).output.strip()
+        runner.invoke(
+            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
+        ).output.strip()
         == "ops"
     )
 
-    res = runner.invoke(app, ["harness", "set", "--project", str(project_dir), "pi"])
+    res = runner.invoke(
+        app,
+        [
+            "harness",
+            "set",
+            "--project",
+            str(project_dir),
+            "pi",
+            "--profile",
+            "de_default",
+        ],
+    )
     assert res.exit_code == 0, res.output
     assert (
-        runner.invoke(app, ["harness", "whoami", str(project_dir)]).output.strip()
+        runner.invoke(
+            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
+        ).output.strip()
         == "pi"
     )
 
@@ -205,20 +233,42 @@ def test_actor_and_model_set_support_project_option(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
 
     actor_res = runner.invoke(
-        app, ["actor", "set", "--project", str(project_dir), "user:test"]
+        app,
+        [
+            "actor",
+            "set",
+            "--project",
+            str(project_dir),
+            "user:test",
+            "--profile",
+            "de_default",
+        ],
     )
     model_res = runner.invoke(
-        app, ["model", "set", "--project", str(project_dir), "codex-openai/gpt-5.5@low"]
+        app,
+        [
+            "model",
+            "set",
+            "--project",
+            str(project_dir),
+            "codex-openai/gpt-5.5@low",
+            "--profile",
+            "de_default",
+        ],
     )
 
     assert actor_res.exit_code == 0, actor_res.output
     assert model_res.exit_code == 0, model_res.output
     assert (
-        runner.invoke(app, ["actor", "whoami", str(project_dir)]).output.strip()
+        runner.invoke(
+            app, ["actor", "whoami", str(project_dir), "--profile", "de_default"]
+        ).output.strip()
         == "user:test"
     )
     assert (
-        runner.invoke(app, ["model", "whoami", str(project_dir)]).output.strip()
+        runner.invoke(
+            app, ["model", "whoami", str(project_dir), "--profile", "de_default"]
+        ).output.strip()
         == "codex-openai/gpt-5.5@low"
     )
 
@@ -466,7 +516,16 @@ def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: P
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
     # First untranslated
-    res = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
+    res = runner.invoke(
+        app,
+        [
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--allow-missing-context",
+        ],
+    )
     assert res.exit_code == 0, res.output
     assert "0001" in res.output
     # Provide a translation for every chunk
@@ -483,7 +542,16 @@ def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: P
         (translated_dir / chunk_file.name).write_text(
             json.dumps(payload), encoding="utf-8"
         )
-    res2 = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
+    res2 = runner.invoke(
+        app,
+        [
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--allow-missing-context",
+        ],
+    )
     assert res2.exit_code == 1
     assert "All" in res2.output
 
@@ -491,7 +559,7 @@ def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: P
 def test_next_requires_ready_context(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
-    res = runner.invoke(app, ["next", str(project_dir)])
+    res = runner.invoke(app, ["next", str(project_dir), "--profile", "de_default"])
     assert res.exit_code == 1
     assert "context" in res.output.lower()
     assert "booktx context init" in res.output
@@ -500,14 +568,32 @@ def test_next_requires_ready_context(tmp_path: Path):
 def test_next_allow_missing_context_legacy_override(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
-    res = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
+    res = runner.invoke(
+        app,
+        [
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--allow-missing-context",
+        ],
+    )
     assert res.exit_code == 0
     assert "0001" in res.output
 
 
 def test_next_without_chunks_tells_user_to_extract(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
-    res = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
+    res = runner.invoke(
+        app,
+        [
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--allow-missing-context",
+        ],
+    )
     assert res.exit_code == 1
     assert "booktx extract" in res.output
 
@@ -516,7 +602,15 @@ def test_next_unit_chapter_without_chunks_tells_user_to_extract(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     res = runner.invoke(
         app,
-        ["next", str(project_dir), "--unit", "chapter", "--allow-missing-context"],
+        [
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "chapter",
+            "--allow-missing-context",
+        ],
     )
     assert res.exit_code == 1
     assert "booktx extract" in res.output
@@ -525,19 +619,31 @@ def test_next_unit_chapter_without_chunks_tells_user_to_extract(tmp_path: Path):
 def test_next_prints_context_path_when_context_ready(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
         ],
     )
-    res = runner.invoke(app, ["next", str(project_dir)])
+    res = runner.invoke(app, ["next", str(project_dir), "--profile", "de_default"])
     assert res.exit_code == 0, res.output
     assert "context:" in res.output
     assert "context.md" in res.output
@@ -560,7 +666,7 @@ def test_validate_passes_with_identity_translation(tmp_path: Path):
         (translated_dir / chunk_file.name).write_text(
             json.dumps(payload), encoding="utf-8"
         )
-    res = runner.invoke(app, ["validate", str(project_dir)])
+    res = runner.invoke(app, ["validate", str(project_dir), "--profile", "de_default"])
     assert res.exit_code == 0, res.output
     assert "errors=0" in res.output
 
@@ -577,7 +683,7 @@ def test_validate_fails_on_empty_target(tmp_path: Path):
         "records": [{"id": r["id"], "target": "   "} for r in chunk["records"]],
     }
     (translated_dir / chunk_file.name).write_text(json.dumps(payload), encoding="utf-8")
-    res = runner.invoke(app, ["validate", str(project_dir)])
+    res = runner.invoke(app, ["validate", str(project_dir), "--profile", "de_default"])
     assert res.exit_code == 1
     assert "empty_target" in res.output
 
@@ -598,7 +704,7 @@ def test_build_produces_output(tmp_path: Path):
         (translated_dir / chunk_file.name).write_text(
             json.dumps(payload), encoding="utf-8"
         )
-    res = runner.invoke(app, ["build", str(project_dir)])
+    res = runner.invoke(app, ["build", str(project_dir), "--profile", "de_default"])
     assert res.exit_code == 0, res.output
     out_file = project_dir / "translations" / "de_default" / "output" / "novel.de.md"
     assert out_file.is_file()
@@ -613,7 +719,16 @@ def test_full_pipeline_end_to_end(tmp_path: Path):
     # extract
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
     # next
-    res_next = runner.invoke(app, ["next", str(project_dir), "--allow-missing-context"])
+    res_next = runner.invoke(
+        app,
+        [
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--allow-missing-context",
+        ],
+    )
     assert res_next.exit_code == 0
     # translate identity
     translated_dir = _selected_project(project_dir).translated_dir
@@ -630,8 +745,18 @@ def test_full_pipeline_end_to_end(tmp_path: Path):
             json.dumps(payload), encoding="utf-8"
         )
     # validate + build
-    assert runner.invoke(app, ["validate", str(project_dir)]).exit_code == 0
-    assert runner.invoke(app, ["build", str(project_dir)]).exit_code == 0
+    assert (
+        runner.invoke(
+            app, ["validate", str(project_dir), "--profile", "de_default"]
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app, ["build", str(project_dir), "--profile", "de_default"]
+        ).exit_code
+        == 0
+    )
     assert (
         project_dir / "translations" / "de_default" / "output" / "novel.de.md"
     ).is_file()
@@ -741,6 +866,7 @@ def test_command_tree_top_level_snapshot():
         "init",
         "inspect",
         "judge",
+        "lexicon",
         "mode",
         "model",
         "next",
@@ -843,7 +969,6 @@ def test_command_tree_group_snapshots():
             "create-pass-through",
             "list",
             "migrate-current",
-            "select",
             "show",
         },
         "version": {

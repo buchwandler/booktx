@@ -46,8 +46,8 @@ def _make_project(tmp_path: Path, source_text: str | None = None) -> tuple[Path,
     return project_dir, profile_root
 
 
-def _store_record(project_dir: Path, target: str) -> None:
-    project = load_project(project_dir)
+def _store_record(project_dir: Path, target: str, profile: str = "de_default") -> None:
+    project = load_project(project_dir, profile=profile)
     chunk = json.loads(next(project.chunks_dir.glob("*.json")).read_text("utf-8"))
     record = next(
         (
@@ -258,11 +258,24 @@ def test_lexicon_scan_source_and_audit_jsonl(monkeypatch, tmp_path: Path):
         "Wie jede Mottenart hatte sie die schimmligen Prinzipien der Magie erlernt.",
     )
 
-    scan = runner.invoke(app, ["lexicon", "scan-source", str(project_dir), "--jsonl"])
+    scan = runner.invoke(
+        app,
+        [
+            "lexicon",
+            "scan-source",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--jsonl",
+        ],
+    )
     assert scan.exit_code == 0, scan.output
     assert "LEX-MOULDY" in scan.output
 
-    audit = runner.invoke(app, ["lexicon", "audit", str(project_dir), "--jsonl"])
+    audit = runner.invoke(
+        app,
+        ["lexicon", "audit", str(project_dir), "--profile", "de_default", "--jsonl"],
+    )
     assert audit.exit_code == 0, audit.output
     assert "forbidden_target" in audit.output
     assert "schimmligen Prinzipien" in audit.output
@@ -271,7 +284,7 @@ def test_lexicon_scan_source_and_audit_jsonl(monkeypatch, tmp_path: Path):
 def test_lexicon_status_merges_layers(monkeypatch, tmp_path: Path):
     shard_path = _global_shard(monkeypatch, tmp_path)
     project_dir, _ = _make_project(tmp_path)
-    project = load_project(project_dir)
+    project = load_project(project_dir, profile="de_default")
     write_lexicon_shard(
         shard_path,
         TranslationLexicon.model_validate(
@@ -312,7 +325,10 @@ def test_lexicon_status_merges_layers(monkeypatch, tmp_path: Path):
         ),
     )
 
-    status = runner.invoke(app, ["lexicon", "status", str(project_dir), "--json"])
+    status = runner.invoke(
+        app,
+        ["lexicon", "status", str(project_dir), "--profile", "de_default", "--json"],
+    )
     assert status.exit_code == 0, status.output
     payload = json.loads(status.output)
     assert payload["disabled_entries"] == 1
@@ -376,7 +392,7 @@ def test_lexicon_isolated_global_reads_and_profile_writes(monkeypatch, tmp_path:
         ],
     )
     assert allowed.exit_code == 0, allowed.output
-    project = load_project(project_dir)
+    project = load_project(project_dir, profile="de_default")
     assert profile_lexicon_path(project, "de").is_file()
 
 
@@ -449,6 +465,7 @@ def test_lexicon_locale_precedence_prefers_profile_locale_override(
     _store_record(
         project_dir,
         "Wie jede Mottenart hatte sie die modrigen Prinzipien der Magie erlernt.",
+        profile="de_locale",
     )
 
     audit = runner.invoke(

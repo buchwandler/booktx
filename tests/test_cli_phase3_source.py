@@ -146,7 +146,7 @@ def test_source_chapter_command_json(tmp_path: Path) -> None:
     from booktx.cli_support import _project_status_snapshot
     from booktx.config import load_project
 
-    bundle = _project_status_snapshot(load_project(project_dir))
+    bundle = _project_status_snapshot(load_project(project_dir, profile="de_src"))
     chapter_id = next(iter(bundle.index.chapters_by_id))
     result = collect_chapter_records(bundle, chapter_id)
     assert result.chapter_id == chapter_id
@@ -154,7 +154,16 @@ def test_source_chapter_command_json(tmp_path: Path) -> None:
 
     res = runner.invoke(
         app,
-        ["source", "chapter", str(project_dir), chapter_id, "--format", "json"],
+        [
+            "source",
+            "chapter",
+            str(project_dir),
+            "--profile",
+            "de_src",
+            chapter_id,
+            "--format",
+            "json",
+        ],
     )
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -176,7 +185,9 @@ def test_source_record_command_unknown_record_errors(tmp_path: Path) -> None:
 def test_source_chapter_command_unknown_chapter_errors(tmp_path: Path) -> None:
     project_dir = _make_extracted_project(tmp_path)
     _add_profile(project_dir)
-    res = runner.invoke(app, ["source", "chapter", str(project_dir), "9999"])
+    res = runner.invoke(
+        app, ["source", "chapter", str(project_dir), "--profile", "de_src", "9999"]
+    )
     assert res.exit_code != 0
     assert "unknown chapter id" in res.output
 

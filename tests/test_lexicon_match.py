@@ -242,7 +242,7 @@ def test_preferred_absence_follows_policy():
 
 def test_audit_flags_forbidden_effective_target_only(tmp_path: Path):
     project_dir, record_id = _make_project(tmp_path)
-    project = load_project(project_dir)
+    project = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(project, context_exists=False, context_ready=False)
     matching_view = next(
         view
@@ -286,7 +286,7 @@ def test_audit_does_not_flag_unrelated_mouldy_with_phrase_specific_rule(tmp_path
     assert init.exit_code == 0, init.output
     extract = runner.invoke(app, ["extract", str(project_dir)])
     assert extract.exit_code == 0, extract.output
-    project = load_project(project_dir)
+    project = load_project(project_dir, profile="de_default")
     target = "Der schimmlige Wandteppich hing still da."
     bundle = build_status_snapshot(project, context_exists=False, context_ready=False)
     first_view = next(iter(bundle.index.source_by_id.values()))

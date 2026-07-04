@@ -56,7 +56,17 @@ def _make_project(tmp_path: Path, *, ready: bool = False) -> Path:
         ["init", str(project_dir), "--target", "de", "--source-file", str(src)],
     )
     assert res.exit_code == 0, res.output
-    res = runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     assert res.exit_code == 0, res.output
     if ready:
         _force_ready(project_dir)
@@ -81,10 +91,21 @@ def _force_ready(project_dir: Path) -> None:
     for qid, text in answers:
         res = runner.invoke(
             app,
-            ["context", "answer", str(project_dir), qid, "--text", text],
+            [
+                "context",
+                "answer",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                qid,
+                "--text",
+                text,
+            ],
         )
         assert res.exit_code == 0, res.output
-    res = runner.invoke(app, ["context", "mark-ready", str(project_dir)])
+    res = runner.invoke(
+        app, ["context", "mark-ready", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
 
 
@@ -147,7 +168,7 @@ def test_languages_must_be_nonempty():
 
 def test_export_includes_only_selected_reusable_fields(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=True)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Add a glossary entry and a global rule to verify they are exported.
     res = runner.invoke(
         app,
@@ -155,6 +176,8 @@ def test_export_includes_only_selected_reusable_fields(tmp_path: Path):
             "context",
             "reset-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -177,7 +200,7 @@ def test_export_includes_only_selected_reusable_fields(tmp_path: Path):
 
 def test_export_excludes_source_book_readiness_and_chapter_fields(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=True)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     pack = export_context_pack(proj, series_id="s")
     dumped = pack.model_dump(mode="json", by_alias=True)
     for forbidden in (
@@ -199,7 +222,7 @@ def test_export_excludes_source_book_readiness_and_chapter_fields(tmp_path: Path
 
 def test_export_requires_readiness_unless_overridden(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=False)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     with pytest.raises(ContextPackError) as exc:
         export_context_pack(proj, series_id="s")
     assert exc.value.code == "context_not_ready"
@@ -215,8 +238,18 @@ def test_export_refuses_forced_ready_unless_overridden(tmp_path: Path):
     runner.invoke(
         app, ["init", str(project_dir), "--target", "de", "--source-file", str(src)]
     )
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
-    proj = load_project(project_dir)
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    proj = load_project(project_dir, profile="de_default")
     path = context_path(proj)
     data = json.loads(path.read_text("utf-8"))
     data["ready"] = True
@@ -229,7 +262,7 @@ def test_export_refuses_forced_ready_unless_overridden(tmp_path: Path):
 
 def test_export_refuses_unsafe_markdown_drift(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=True)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     md_path = context_markdown_path(proj)
     md = md_path.read_text("utf-8")
     md = md.replace(
@@ -248,7 +281,7 @@ def test_export_refuses_unsafe_markdown_drift(tmp_path: Path):
 
 def test_export_excludes_agent_and_forced_answers(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=True)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     path = context_path(proj)
     data = json.loads(path.read_text("utf-8"))
     # Reassign answer_source across the five reusable sources, keeping the
@@ -271,7 +304,7 @@ def test_export_excludes_agent_and_forced_answers(tmp_path: Path):
 
 def test_global_rules_are_normalized_and_exported(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=True)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     path = context_path(proj)
     data = json.loads(path.read_text("utf-8"))
     data["global_rules"] = ["Keep   names   intact", "  No Reich  ", "", "   "]
@@ -407,7 +440,7 @@ def test_read_and_write_context_pack_roundtrip(tmp_path: Path):
 
 def test_style_merge_replaces_pristine_default_without_conflict(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=False)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Fresh context: style fields equal defaults -> pristine replaceable.
     pack = SeriesContextPack(
         series_id="s",
@@ -423,7 +456,7 @@ def test_style_merge_replaces_pristine_default_without_conflict(tmp_path: Path):
 
 def test_style_merge_conflicts_on_approved_local_value(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=False)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     from booktx.context import load_context
 
     # Make context ready with an approved (non-default) prose_style.
@@ -533,7 +566,7 @@ def test_semantic_question_match_preserves_local_id():
 
 def test_new_imported_questions_get_snnn_ids(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=False)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     pack = SeriesContextPack(
         series_id="s",
         source_language="en",
@@ -608,7 +641,7 @@ def test_core_answer_style_agreement_accepted():
 
 def test_imported_answer_provenance_satisfies_readiness(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=False)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Build a pack that answers a required core question (Q005 names).
     pack = SeriesContextPack(
         series_id="s",
@@ -640,7 +673,7 @@ def test_imported_answer_provenance_satisfies_readiness(tmp_path: Path):
 
 def test_changed_import_clears_readiness(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=True)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Mutate context.json to be ready with a known prose style.
     path = context_path(proj)
     data = json.loads(path.read_text("utf-8"))
@@ -664,7 +697,7 @@ def test_changed_import_clears_readiness(tmp_path: Path):
 
 def test_noop_import_preserves_readiness(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=True)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Export then plan-import the exact same pack: everything should skip.
     pack = export_context_pack(proj, series_id="s")
     planned, result = plan_context_pack_import(proj, pack)
@@ -679,7 +712,7 @@ def test_noop_import_preserves_readiness(tmp_path: Path):
 
 def test_pure_planning_does_not_mutate_inputs(tmp_path: Path):
     project_dir = _make_project(tmp_path, ready=False)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     pack = SeriesContextPack(
         series_id="s",
         source_language="en",

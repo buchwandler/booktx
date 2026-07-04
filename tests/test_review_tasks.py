@@ -132,7 +132,7 @@ def _pass_cfg():
 
 def test_select_pass1_picks_records_without_review(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     for path in sorted(proj.chunks_dir.glob("*.json")):
         chunk = json.loads(path.read_text("utf-8"))
@@ -140,7 +140,7 @@ def test_select_pass1_picks_records_without_review(tmp_path: Path):
             records[rec["id"]] = _store_record(rec["id"], rec["source"])
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     cfg = _pass_cfg()
     selected = select_review_records(bundle, records, cfg, pass_number=1)
@@ -152,7 +152,7 @@ def test_select_pass1_picks_records_without_review(tmp_path: Path):
 
 def test_select_skips_records_with_current_pass1_review(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     first_id = None
     for path in sorted(proj.chunks_dir.glob("*.json")):
@@ -179,7 +179,7 @@ def test_select_skips_records_with_current_pass1_review(tmp_path: Path):
                 records[rec["id"]] = _store_record(rec["id"], rec["source"])
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     selected = select_review_records(bundle, records, _pass_cfg(), pass_number=1)
     selected_ids = {s.record_id for s in selected}
@@ -190,7 +190,7 @@ def test_select_skips_records_with_current_pass1_review(tmp_path: Path):
 def _pass1_reviewed_records(tmp_path: Path):
     """Build a store where every record has an accepted, active R1.1 review."""
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     for path in sorted(proj.chunks_dir.glob("*.json")):
         chunk = json.loads(path.read_text("utf-8"))
@@ -212,7 +212,7 @@ def _pass1_reviewed_records(tmp_path: Path):
             )
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     return proj, bundle, records
 
@@ -244,7 +244,7 @@ def test_select_missing_default_skips_reviewed_records(tmp_path: Path):
 
 def test_select_reviewed_blocked_when_base_active_review_unavailable(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     for path in sorted(proj.chunks_dir.glob("*.json")):
         chunk = json.loads(path.read_text("utf-8"))
@@ -252,7 +252,7 @@ def test_select_reviewed_blocked_when_base_active_review_unavailable(tmp_path: P
             records[rec["id"]] = _store_record(rec["id"], rec["source"])
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     # No active review exists, so base=active_review blocks every record.
     selected = select_review_records(
@@ -282,7 +282,7 @@ def test_parse_review_base_validates_modes():
 
 def test_select_pass2_blocked_when_pass1_missing(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     for path in sorted(proj.chunks_dir.glob("*.json")):
         chunk = json.loads(path.read_text("utf-8"))
@@ -290,7 +290,7 @@ def test_select_pass2_blocked_when_pass1_missing(tmp_path: Path):
             records[rec["id"]] = _store_record(rec["id"], rec["source"])
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     cfg = QualityReviewConfig(
         enabled=True,
@@ -312,7 +312,7 @@ def test_select_pass2_blocked_when_pass1_missing(tmp_path: Path):
 
 def test_create_review_task_writes_artifacts_prefilled_with_base(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     for path in sorted(proj.chunks_dir.glob("*.json")):
         chunk = json.loads(path.read_text("utf-8"))
@@ -320,7 +320,7 @@ def test_create_review_task_writes_artifacts_prefilled_with_base(tmp_path: Path)
             records[rec["id"]] = _store_record(rec["id"], rec["source"])
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     cfg = _pass_cfg()
     selected = select_review_records(bundle, records, cfg, pass_number=1)
@@ -345,7 +345,7 @@ def test_create_review_task_writes_artifacts_prefilled_with_base(tmp_path: Path)
 
 def test_select_skips_source_drift_records(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     records = {}
     drifted_id = None
     for path in sorted(proj.chunks_dir.glob("*.json")):
@@ -359,7 +359,7 @@ def test_select_skips_source_drift_records(tmp_path: Path):
                 records[rec["id"]] = _store_record(rec["id"], rec["source"])
     write_translation_store(proj, TranslationStoreV2(records=records))
     _write_ledger(proj)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     selected = select_review_records(bundle, records, _pass_cfg(), pass_number=1)
     selected_ids = {s.record_id for s in selected}

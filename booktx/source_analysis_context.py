@@ -323,7 +323,7 @@ def _prefill_one(
         question="Review binding glossary candidates",
         recommendation=(
             "Confirm which terms need a binding glossary decision, then "
-            "promote each approved term with `booktx context promote-candidate`.",
+            "promote each approved term with `booktx context promote-candidate`."
         ),
         recommendation_reason=(
             "Source analysis found likely world-building or terminology "
@@ -339,7 +339,7 @@ def _prefill_one(
         question="Review translation policy for recurring names and titles",
         recommendation=(
             "Decide which names remain unchanged, which need transliteration, "
-            "and which should become glossary-backed policy.",
+            "and which should become glossary-backed policy."
         ),
         recommendation_reason="Source analysis found recurring title/name candidates.",
     )
@@ -352,7 +352,7 @@ def _prefill_one(
         question="Review rare or invented-looking source terms",
         recommendation=(
             "Confirm whether these rare terms need a glossary decision, a "
-            "name-policy note, or an explicit ignore/review decision.",
+            "name-policy note, or an explicit ignore/review decision."
         ),
         recommendation_reason=(
             "Source analysis kept rare singleton or low-frequency candidates "

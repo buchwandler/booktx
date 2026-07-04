@@ -385,7 +385,7 @@ def _epub_output_project(tmp_path: Path) -> Path:
     assert res.exit_code == 0, res.output
     ext = _runner.invoke(app, ["extract", str(project_dir)])
     assert ext.exit_code == 0, ext.output
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     assert proj.output_dir is not None
     proj.output_dir.mkdir(parents=True, exist_ok=True)
     (proj.output_dir / "chapter_1.xhtml").write_text(
@@ -403,7 +403,9 @@ def _epub_output_project(tmp_path: Path) -> Path:
 
 def test_epub_inspect_reads_output_dir(tmp_path: Path):
     project_dir = _epub_output_project(tmp_path)
-    res = _runner.invoke(app, ["epub", "inspect", str(project_dir)])
+    res = _runner.invoke(
+        app, ["epub", "inspect", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "--- chapter_1.xhtml ---" in res.output
     assert "--- chapter_2.xhtml ---" in res.output
@@ -412,7 +414,16 @@ def test_epub_inspect_reads_output_dir(tmp_path: Path):
 def test_epub_inspect_contains_filter(tmp_path: Path):
     project_dir = _epub_output_project(tmp_path)
     res = _runner.invoke(
-        app, ["epub", "inspect", str(project_dir), "--contains", "Bob"]
+        app,
+        [
+            "epub",
+            "inspect",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--contains",
+            "Bob",
+        ],
     )
     assert res.exit_code == 0, res.output
     assert "chapter_2.xhtml" in res.output
@@ -421,7 +432,18 @@ def test_epub_inspect_contains_filter(tmp_path: Path):
 
 def test_epub_inspect_chapter_filter(tmp_path: Path):
     project_dir = _epub_output_project(tmp_path)
-    res = _runner.invoke(app, ["epub", "inspect", str(project_dir), "--chapter", "1"])
+    res = _runner.invoke(
+        app,
+        [
+            "epub",
+            "inspect",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--chapter",
+            "1",
+        ],
+    )
     assert res.exit_code == 0, res.output
     assert "chapter_1.xhtml" in res.output
     assert "chapter_2.xhtml" not in res.output
@@ -429,7 +451,9 @@ def test_epub_inspect_chapter_filter(tmp_path: Path):
 
 def test_epub_grep_finds_pattern(tmp_path: Path):
     project_dir = _epub_output_project(tmp_path)
-    res = _runner.invoke(app, ["epub", "grep", str(project_dir), "Alice"])
+    res = _runner.invoke(
+        app, ["epub", "grep", str(project_dir), "--profile", "de_default", "Alice"]
+    )
     assert res.exit_code == 0, res.output
     assert "chapter_1.xhtml" in res.output
     assert "Alice ran fast" in res.output
@@ -439,7 +463,9 @@ def test_epub_grep_finds_pattern(tmp_path: Path):
 
 def test_epub_extract_text(tmp_path: Path):
     project_dir = _epub_output_project(tmp_path)
-    res = _runner.invoke(app, ["epub", "extract-text", str(project_dir)])
+    res = _runner.invoke(
+        app, ["epub", "extract-text", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "Alice ran fast." in res.output
     assert "Bob walked slowly." in res.output
@@ -455,14 +481,16 @@ def test_epub_inspect_requires_build(tmp_path: Path):
         ["init", str(project_dir), "--target", "de", "--source-file", str(src)],
     )
     _runner.invoke(app, ["extract", str(project_dir)])
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     assert proj.output_dir is not None
     if proj.output_dir.exists():
         # Force the "no output dir" branch: extract created an empty dir.
         import shutil
 
         shutil.rmtree(proj.output_dir)
-    res = _runner.invoke(app, ["epub", "inspect", str(project_dir)])
+    res = _runner.invoke(
+        app, ["epub", "inspect", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code != 0
     assert "no EPUB output directory" in res.output
 
@@ -476,9 +504,11 @@ def test_epub_grep_no_files(tmp_path: Path):
         ["init", str(project_dir), "--target", "de", "--source-file", str(src)],
     )
     _runner.invoke(app, ["extract", str(project_dir)])
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     assert proj.output_dir is not None
     proj.output_dir.mkdir(parents=True, exist_ok=True)
-    res = _runner.invoke(app, ["epub", "grep", str(project_dir), "anything"])
+    res = _runner.invoke(
+        app, ["epub", "grep", str(project_dir), "--profile", "de_default", "anything"]
+    )
     assert res.exit_code != 0
     assert "no XHTML files" in res.output

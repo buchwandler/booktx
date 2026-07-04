@@ -113,7 +113,7 @@ def _valid_translation() -> dict:
 
 def test_valid_translation_passes(tmp_path: Path):
     proj_path = _write_translation(tmp_path, "0001", _valid_translation())
-    proj = load_project(proj_path)
+    proj = load_project(proj_path, profile="de_default")
     report = validate_project(proj)
     assert report.passed, [f.as_dict() for f in report.findings]
     assert report.errors == []
@@ -195,7 +195,7 @@ def test_store_backed_translation_passes(tmp_path: Path):
         ),
     )
 
-    report = validate_project(load_project(proj.root))
+    report = validate_project(load_project(proj.root, profile="de_default"))
 
     assert report.passed, [f.as_dict() for f in report.findings]
     assert report.chunks_passed == 1
@@ -203,7 +203,7 @@ def test_store_backed_translation_passes(tmp_path: Path):
 
 def test_rule_invalid_json(tmp_path: Path):
     proj_path = _write_translation(tmp_path, "0001", "{not valid json")
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     rules = {f.rule for f in report.findings}
     assert "invalid_json_or_commentary" in rules
     assert not report.passed
@@ -213,7 +213,7 @@ def test_rule_record_count_changed(tmp_path: Path):
     payload = _valid_translation()
     payload["records"].append({"id": "0001-000003", "target": "Extra."})
     proj_path = _write_translation(tmp_path, "0001", payload)
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert "record_count_changed" in {f.rule for f in report.findings}
     assert not report.passed
 
@@ -222,7 +222,7 @@ def test_rule_record_id_changed(tmp_path: Path):
     payload = _valid_translation()
     payload["records"][0]["id"] = "0001-999999"
     proj_path = _write_translation(tmp_path, "0001", payload)
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     rules = {f.rule for f in report.findings}
     assert "record_id_removed" in rules or "record_id_added" in rules
     assert not report.passed
@@ -232,7 +232,7 @@ def test_rule_empty_target(tmp_path: Path):
     payload = _valid_translation()
     payload["records"][0]["target"] = "   "
     proj_path = _write_translation(tmp_path, "0001", payload)
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert "empty_target" in {f.rule for f in report.findings}
     assert not report.passed
 
@@ -241,7 +241,7 @@ def test_rule_placeholder_removed(tmp_path: Path):
     payload = _valid_translation()
     payload["records"][1]["target"] = "Führe aus."  # dropped __TAG_001__
     proj_path = _write_translation(tmp_path, "0001", payload)
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert "placeholder_removed_or_changed" in {f.rule for f in report.findings}
     assert not report.passed
 
@@ -250,7 +250,7 @@ def test_rule_placeholder_added(tmp_path: Path):
     payload = _valid_translation()
     payload["records"][0]["target"] = "__NAME_001__ sah __NAME_002__ __TAG_099__ an."
     proj_path = _write_translation(tmp_path, "0001", payload)
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert "placeholder_added" in {f.rule for f in report.findings}
     assert not report.passed
 
@@ -328,7 +328,7 @@ def test_rule_protected_name_translated(tmp_path: Path):
     # Alice placeholder dropped and the name rendered in target language.
     payload["records"][0]["target"] = "Aliza sah __NAME_002__ an."
     proj_path = _write_translation(tmp_path, "0001", payload)
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     rules = {f.rule for f in report.findings}
     assert "protected_name_translated_or_removed" in rules
     assert "placeholder_removed_or_changed" in rules
@@ -338,7 +338,7 @@ def test_rule_protected_name_translated(tmp_path: Path):
 def test_rule_commentary_outside_json(tmp_path: Path):
     raw = json.dumps(_valid_translation())
     proj_path = _write_translation(tmp_path, "0001", raw + "\n\n// hope this helps!")
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert "invalid_json_or_commentary" in {f.rule for f in report.findings}
     assert not report.passed
 
@@ -388,7 +388,7 @@ def test_stale_store_record_is_an_error(tmp_path: Path):
         ),
     )
 
-    report = validate_project(load_project(proj.root))
+    report = validate_project(load_project(proj.root, profile="de_default"))
 
     assert not report.passed
     assert any(f.rule == "stale_store_record" for f in report.findings)
@@ -426,7 +426,7 @@ def test_missing_ledger_version_is_an_error_for_v2_store(tmp_path: Path):
         ),
     )
 
-    report = validate_project(load_project(proj.root))
+    report = validate_project(load_project(proj.root, profile="de_default"))
 
     assert not report.passed
     assert any(f.rule == "missing_ledger_version" for f in report.findings)
@@ -455,7 +455,7 @@ def test_validate_warns_on_config_chunk_size_drift(tmp_path: Path):
     assert runner.invoke(app, ["extract", str(proj.root)]).exit_code == 0
 
     _rewrite_project_chunk_size(proj.root, 25)
-    report = validate_project(load_project(proj.root))
+    report = validate_project(load_project(proj.root, profile="de_default"))
 
     assert report.passed
     assert any(f.rule == "manifest_chunk_size_drift" for f in report.findings)
@@ -472,7 +472,7 @@ def test_validate_errors_on_chunk_manifest_record_id_scheme_mismatch(tmp_path: P
     chunk["record_id_scheme"] = "opaque:v9"
     chunk_path.write_text(json.dumps(chunk), encoding="utf-8")
 
-    report = validate_project(load_project(proj.root))
+    report = validate_project(load_project(proj.root, profile="de_default"))
 
     assert not report.passed
     assert any(
@@ -491,7 +491,7 @@ def test_validate_errors_on_unsupported_chunk_schema_version(tmp_path: Path):
     chunk["schema_version"] = 99
     chunk_path.write_text(json.dumps(chunk), encoding="utf-8")
 
-    report = validate_project(load_project(proj.root))
+    report = validate_project(load_project(proj.root, profile="de_default"))
 
     assert not report.passed
     assert any(f.rule == "unsupported_chunk_schema_version" for f in report.findings)
@@ -499,7 +499,7 @@ def test_validate_errors_on_unsupported_chunk_schema_version(tmp_path: Path):
 
 def test_write_report_creates_json(tmp_path: Path):
     proj_path = _write_translation(tmp_path, "0001", _valid_translation())
-    proj = load_project(proj_path)
+    proj = load_project(proj_path, profile="de_default")
     report = validate_project(proj)
     out = write_report(proj, report)
     assert out.is_file()
@@ -752,7 +752,7 @@ def _store_with_review(
             },
         ),
     )
-    return load_project(proj.root), base_target
+    return load_project(proj.root, profile="de_default"), base_target
 
 
 def _review_candidate(
@@ -1010,7 +1010,7 @@ def _extract_epub_for_preflight(tmp_path: Path):
     find_source_file(proj)
     res = CliRunner().invoke(app, ["extract", str(proj.root)])
     assert res.exit_code == 0, res.output
-    return load_project(proj.root)
+    return load_project(proj.root, profile="de_default")
 
 
 def _simulate_old_project_plain_records(proj) -> None:
@@ -1182,7 +1182,17 @@ def test_check_chapter_reports_exact_inline_location(tmp_path: Path):
     if broken_chapter is None:
         # No chapter map available; skip scoped CLI test.
         return
-    res = runner.invoke(app, ["check", str(proj.root), "--chapter", broken_chapter])
+    res = runner.invoke(
+        app,
+        [
+            "check",
+            str(proj.root),
+            "--profile",
+            "de_default",
+            "--chapter",
+            broken_chapter,
+        ],
+    )
     assert res.exit_code == 1
     output = res.output
     assert "inline_xhtml_preserved" in output
@@ -1289,7 +1299,7 @@ def test_validate_project_scoped_counters(tmp_path: Path):
     from booktx.chapters import ensure_chapter_map
 
     project_dir = _make_project_with_translations(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Get chapter 0001's chunk ids.
     chapter_map = ensure_chapter_map(proj)
     ch0001 = next(c for c in chapter_map.chapters if c.chapter_id == "0001")
@@ -1329,13 +1339,25 @@ def _make_project_with_translations(tmp_path: Path) -> Path:
     assert res.exit_code == 0, res.output
     ext = CliRunner().invoke(app, ["extract", str(project_dir)])
     assert ext.exit_code == 0, ext.output
-    CliRunner().invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    CliRunner().invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     CliRunner().invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test",
@@ -1348,6 +1370,8 @@ def _make_project_with_translations(tmp_path: Path) -> Path:
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             "0001",
             "--unit",
@@ -1376,6 +1400,8 @@ def _make_project_with_translations(tmp_path: Path) -> Path:
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--json-file",

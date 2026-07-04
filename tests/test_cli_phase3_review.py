@@ -59,6 +59,8 @@ def _enable_quality_review_command(project_dir: Path) -> None:
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--pass",
             "1",
@@ -81,7 +83,7 @@ def test_require_quality_review_enabled_raises_when_disabled(tmp_path: Path) -> 
     from booktx.config import load_project
 
     with pytest.raises(BooktxError, match="not enabled"):
-        require_quality_review_enabled(load_project(project_dir))
+        require_quality_review_enabled(load_project(project_dir, profile="de_default"))
 
 
 def test_create_next_review_task_requires_enabled(tmp_path: Path) -> None:
@@ -90,7 +92,7 @@ def test_create_next_review_task_requires_enabled(tmp_path: Path) -> None:
     from booktx.config import load_project
     from booktx.runtime import resolve_runtime
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     runtime = resolve_runtime(project_dir)
     bundle = _project_status_snapshot(proj)
     with pytest.raises(BooktxError, match="not enabled"):
@@ -110,7 +112,7 @@ def test_activate_review_unknown_record_raises(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     from booktx.config import load_project
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     with pytest.raises(BooktxError, match="has no stored translations"):
         activate_review_workflow(proj, record_ref="9999-999999", review_ref="R1.1")
 
@@ -120,7 +122,7 @@ def test_deactivate_review_no_active_raises(tmp_path: Path) -> None:
     from booktx.cli_support import _project_status_snapshot
     from booktx.config import load_project
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = _project_status_snapshot(proj)
     # No store has been written yet, so the record lookup should fail.
     with pytest.raises(BooktxError, match="has no stored translations"):
@@ -138,6 +140,8 @@ def test_review_configure_enable_command(tmp_path: Path) -> None:
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--pass",
             "1",
@@ -152,7 +156,9 @@ def test_review_configure_enable_command(tmp_path: Path) -> None:
 
 def test_review_status_disabled_command(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
-    res = runner.invoke(app, ["review", "status", str(project_dir)])
+    res = runner.invoke(
+        app, ["review", "status", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "quality review: disabled" in res.output
 
@@ -160,7 +166,9 @@ def test_review_status_disabled_command(tmp_path: Path) -> None:
 def test_review_status_json_command(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     _enable_quality_review_command(project_dir)
-    res = runner.invoke(app, ["review", "status", str(project_dir), "--json"])
+    res = runner.invoke(
+        app, ["review", "status", str(project_dir), "--profile", "de_default", "--json"]
+    )
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
     assert payload["enabled"] is True
@@ -169,7 +177,10 @@ def test_review_status_json_command(tmp_path: Path) -> None:
 
 def test_review_configure_show_unconfigured_command(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
-    res = runner.invoke(app, ["review", "configure", str(project_dir), "--show"])
+    res = runner.invoke(
+        app,
+        ["review", "configure", str(project_dir), "--profile", "de_default", "--show"],
+    )
     assert res.exit_code == 0, res.output
     assert "quality review: not configured" in res.output
 
@@ -185,6 +196,8 @@ def test_review_configure_rejects_enable_and_disable(tmp_path: Path) -> None:
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--disable",
         ],
@@ -196,7 +209,10 @@ def test_review_configure_rejects_enable_and_disable(tmp_path: Path) -> None:
 
 def test_review_next_rejects_when_not_enabled(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
-    res = runner.invoke(app, ["review", "next", str(project_dir), "--pass", "1"])
+    res = runner.invoke(
+        app,
+        ["review", "next", str(project_dir), "--profile", "de_default", "--pass", "1"],
+    )
     assert res.exit_code != 0
     assert "error:" in res.output
     assert "quality review is not enabled" in res.output
@@ -205,7 +221,9 @@ def test_review_next_rejects_when_not_enabled(tmp_path: Path) -> None:
 def test_review_todo_status_requires_selector(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     _enable_quality_review_command(project_dir)
-    res = runner.invoke(app, ["review", "todo-status", str(project_dir)])
+    res = runner.invoke(
+        app, ["review", "todo-status", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code != 0
     assert "error:" in res.output
     assert "pass --review-todo-id or --latest" in res.output

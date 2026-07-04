@@ -59,13 +59,25 @@ def _make_project(tmp_path: Path) -> Path:
     )
     assert res.exit_code == 0, res.output
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
@@ -105,7 +117,7 @@ def _make_glossary_project(tmp_path: Path) -> Path:
     )
     assert res.exit_code == 0, res.output
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     ctx = default_context(proj)
     ctx.ready = True
     ctx.ready_forced = True
@@ -122,7 +134,7 @@ def _make_glossary_project(tmp_path: Path) -> Path:
 
 def test_accept_one_record_persists_and_reports_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     rid = _first_record_id(project_dir)
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
@@ -141,7 +153,7 @@ def test_accept_one_record_persists_and_reports_chapter(tmp_path: Path):
 
 def test_batch_and_single_record_share_implementation(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     rid = _first_record_id(project_dir)
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
@@ -157,7 +169,7 @@ def test_same_version_reaccept_updates_existing_candidate_and_preserves_created_
     tmp_path: Path,
 ):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     write_identity(
         proj,
         TranslationIdentity(
@@ -187,7 +199,7 @@ def test_changed_context_creates_next_subversion_without_auto_switching_active(
     tmp_path: Path,
 ):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     write_identity(
         proj,
         TranslationIdentity(
@@ -219,12 +231,21 @@ def test_task_acceptance_uses_task_version_after_live_baseline_changes(tmp_path:
     project_dir = _make_project(tmp_path)
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task_payload = json.loads(next_res.output)
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
@@ -262,12 +283,21 @@ def test_task_validation_uses_task_context_view_before_live_context(tmp_path: Pa
     project_dir = _make_glossary_project(tmp_path)
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task_payload = json.loads(next_res.output)
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
@@ -301,12 +331,21 @@ def test_legacy_task_without_context_view_uses_live_context_fallback(tmp_path: P
     project_dir = _make_glossary_project(tmp_path)
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task_payload = json.loads(next_res.output)
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
@@ -339,7 +378,7 @@ def test_legacy_task_without_context_view_uses_live_context_fallback(tmp_path: P
 
 def test_changed_model_creates_next_major_track(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     write_identity(
         proj,
         TranslationIdentity(
@@ -368,7 +407,7 @@ def test_changed_model_creates_next_major_track(tmp_path: Path):
 
 def test_unknown_record_id_raises_booktx_error(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
     try:
@@ -381,7 +420,7 @@ def test_unknown_record_id_raises_booktx_error(tmp_path: Path):
 
 def test_empty_target_raises_booktx_error(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     rid = _first_record_id(project_dir)
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
@@ -395,7 +434,7 @@ def test_empty_target_raises_booktx_error(tmp_path: Path):
 
 def test_duplicate_id_raises_before_store_write(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     rid = _first_record_id(project_dir)
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 

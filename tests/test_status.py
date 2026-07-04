@@ -77,7 +77,7 @@ def _make_project(tmp_path: Path) -> Path:
 
 
 def _write_versioned_store(project_dir: Path) -> None:
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     chunk = json.loads(sorted((proj.chunks_dir).glob("*.json"))[0].read_text("utf-8"))
     first_record = chunk["records"][0]
     write_translation_store(
@@ -160,7 +160,7 @@ def test_coverage_status_labels():
 
 def test_build_status_snapshot_returns_typed_bundle(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
 
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
 
@@ -178,7 +178,7 @@ def test_build_status_snapshot_returns_typed_bundle(tmp_path: Path):
 
 def test_snapshot_serializes_to_v1_shape_without_private_keys(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
 
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
     dumped = bundle.snapshot.model_dump(mode="json")
@@ -200,7 +200,9 @@ def test_snapshot_serializes_to_v1_shape_without_private_keys(tmp_path: Path):
     assert nxt is not None
     assert set(nxt["record_range"].keys()) == {"start", "end"}
     # The CLI JSON path must agree with this dump.
-    res = runner.invoke(app, ["status", str(project_dir), "--json"])
+    res = runner.invoke(
+        app, ["status", str(project_dir), "--profile", "de_default", "--json"]
+    )
     assert res.exit_code == 0, res.output
     cli_dumped = json.loads(res.output)
     assert cli_dumped["totals"] == dumped["totals"]
@@ -210,7 +212,7 @@ def test_snapshot_serializes_to_v1_shape_without_private_keys(tmp_path: Path):
 def test_status_json_includes_version_and_track_coverage(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     _write_versioned_store(project_dir)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
 
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
@@ -225,7 +227,7 @@ def test_status_json_includes_version_and_track_coverage(tmp_path: Path):
 
 def test_selected_chapter_returns_next_for_none(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
 
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     first = selected_chapter(bundle, None)
@@ -323,7 +325,7 @@ def _make_epub_project(tmp_path: Path, *, toc_count: int, spine_count: int) -> P
 
 def test_epub_status_recomputes_audit_summary(tmp_path):
     project_dir = _make_epub_project(tmp_path, toc_count=26, spine_count=10)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     assert bundle.epub_audit is not None
     assert bundle.epub_audit.warning_count > 0
@@ -341,7 +343,7 @@ def test_status_audit_ignores_stale_persisted_report(tmp_path):
     (reports_dir / "chapter-audit.json").write_text(
         '{"findings": [], "numbered_toc_count": 0}', encoding="utf-8"
     )
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     # The persisted (empty) report is ignored: the recomputed summary still
     # carries the real 26-vs-10 warning findings.
@@ -351,6 +353,6 @@ def test_status_audit_ignores_stale_persisted_report(tmp_path):
 
 def test_non_epub_status_has_no_audit_summary(tmp_path):
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=False, context_ready=False)
     assert bundle.epub_audit is None

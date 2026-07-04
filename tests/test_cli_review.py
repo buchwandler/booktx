@@ -67,12 +67,12 @@ def _enable_quality_review(proj, *, active_passes=(1,), enforce="warn"):
         }
     )
     write_profile_config(proj, cfg)
-    return load_project(proj.root)
+    return load_project(proj.root, profile="de_default")
 
 
 def _setup_store(tmp_path: Path) -> Path:
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Write a v2 identity store with one record.
     chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
     rec = chunk["records"][0]
@@ -129,16 +129,20 @@ def _setup_store(tmp_path: Path) -> Path:
 
 def test_review_status_disabled_when_no_config(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    result = runner.invoke(app, ["review", "status", str(project_dir)])
+    result = runner.invoke(
+        app, ["review", "status", str(project_dir), "--profile", "de_default"]
+    )
     assert result.exit_code == 0
     assert "disabled" in result.output
 
 
 def test_review_status_reports_coverage(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
-    result = runner.invoke(app, ["review", "status", str(project_dir)])
+    result = runner.invoke(
+        app, ["review", "status", str(project_dir), "--profile", "de_default"]
+    )
     assert result.exit_code == 0
     assert "eligible base records: 1" in result.output
     assert "missing review: 1" in result.output
@@ -147,9 +151,11 @@ def test_review_status_reports_coverage(tmp_path: Path):
 
 def test_review_status_json_is_actionable(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
-    result = runner.invoke(app, ["review", "status", str(project_dir), "--json"])
+    result = runner.invoke(
+        app, ["review", "status", str(project_dir), "--profile", "de_default", "--json"]
+    )
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["enabled"] is True
@@ -162,9 +168,12 @@ def test_review_status_json_is_actionable(tmp_path: Path):
 
 def test_review_next_creates_task(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
-    result = runner.invoke(app, ["review", "next", str(project_dir), "--pass", "1"])
+    result = runner.invoke(
+        app,
+        ["review", "next", str(project_dir), "--profile", "de_default", "--pass", "1"],
+    )
     assert result.exit_code == 0
     assert "review task: btr-" in result.output
     assert "insert" in result.output
@@ -172,11 +181,12 @@ def test_review_next_creates_task(tmp_path: Path):
 
 def test_review_insert_accepts_unchanged_target(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
     # Create a review task.
     next_result = runner.invoke(
-        app, ["review", "next", str(project_dir), "--pass", "1"]
+        app,
+        ["review", "next", str(project_dir), "--profile", "de_default", "--pass", "1"],
     )
     assert next_result.exit_code == 0, next_result.output
     # Extract the review_task_id from output.
@@ -187,7 +197,7 @@ def test_review_insert_accepts_unchanged_target(tmp_path: Path):
     ][0]
     review_task_id = task_id_line.split(": ")[1].strip()
     # Build a block submission file with unchanged targets.
-    proj2 = load_project(project_dir)
+    proj2 = load_project(project_dir, profile="de_default")
     from booktx.config import load_translation_review_task
 
     task = load_translation_review_task(proj2, review_task_id)
@@ -207,6 +217,8 @@ def test_review_insert_accepts_unchanged_target(tmp_path: Path):
             "review",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--review-task-id",
             review_task_id,
             "--file",
@@ -219,11 +231,12 @@ def test_review_insert_accepts_unchanged_target(tmp_path: Path):
 
 def test_review_activate_sets_active_review(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
     # Create a review task and insert.
     next_result = runner.invoke(
-        app, ["review", "next", str(project_dir), "--pass", "1"]
+        app,
+        ["review", "next", str(project_dir), "--profile", "de_default", "--pass", "1"],
     )
     task_id_line = [
         line
@@ -231,7 +244,7 @@ def test_review_activate_sets_active_review(tmp_path: Path):
         if line.startswith("review task: btr-")
     ][0]
     review_task_id = task_id_line.split(": ")[1].strip()
-    proj2 = load_project(project_dir)
+    proj2 = load_project(project_dir, profile="de_default")
     from booktx.config import load_translation_review_task
 
     task = load_translation_review_task(proj2, review_task_id)
@@ -251,6 +264,8 @@ def test_review_activate_sets_active_review(tmp_path: Path):
             "review",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--review-task-id",
             review_task_id,
             "--file",
@@ -261,7 +276,7 @@ def test_review_activate_sets_active_review(tmp_path: Path):
     # The candidate was activated by default.
     from booktx.config import load_translation_store
 
-    store = load_translation_store(load_project(project_dir))
+    store = load_translation_store(load_project(project_dir, profile="de_default"))
     for rec in task.records:
         stored = store.records[rec.id]
         assert stored.active_review is not None
@@ -273,7 +288,7 @@ def _setup_store_with_pass1_review(tmp_path: Path) -> Path:
     from booktx.translation_store import sha256_text
 
     project_dir = _make_project(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
     rec = chunk["records"][0]
     source = rec["source"]
@@ -344,7 +359,7 @@ def _setup_store_with_pass1_review(tmp_path: Path) -> Path:
 
 def test_review_next_selection_reviewed_creates_r1_2(tmp_path: Path):
     project_dir = _setup_store_with_pass1_review(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
     result = runner.invoke(
         app,
@@ -352,6 +367,8 @@ def test_review_next_selection_reviewed_creates_r1_2(tmp_path: Path):
             "review",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--pass",
             "1",
             "--selection",
@@ -367,7 +384,7 @@ def test_review_next_selection_reviewed_creates_r1_2(tmp_path: Path):
         line for line in result.output.splitlines() if line.startswith("review task: ")
     ][0]
     review_task_id = task_id_line.split(": ", 1)[1].strip()
-    proj2 = load_project(project_dir)
+    proj2 = load_project(project_dir, profile="de_default")
     task = load_translation_review_task(proj2, review_task_id)
     assert task is not None
     # Rerun assigns R1.2 based on the active R1.1 review.
@@ -378,11 +395,21 @@ def test_review_next_selection_reviewed_creates_r1_2(tmp_path: Path):
 
 def test_review_next_rejects_invalid_selection(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
     result = runner.invoke(
         app,
-        ["review", "next", str(project_dir), "--pass", "1", "--selection", "bogus"],
+        [
+            "review",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--pass",
+            "1",
+            "--selection",
+            "bogus",
+        ],
     )
     assert result.exit_code != 0
     assert "invalid --selection" in result.output
@@ -390,11 +417,21 @@ def test_review_next_rejects_invalid_selection(tmp_path: Path):
 
 def test_review_next_rejects_invalid_base(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
     result = runner.invoke(
         app,
-        ["review", "next", str(project_dir), "--pass", "1", "--base", "translation"],
+        [
+            "review",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--pass",
+            "1",
+            "--base",
+            "translation",
+        ],
     )
     assert result.exit_code != 0
     assert "invalid --base" in result.output
@@ -402,10 +439,11 @@ def test_review_next_rejects_invalid_base(tmp_path: Path):
 
 def test_review_insert_activates_by_default(tmp_path: Path):
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
     next_result = runner.invoke(
-        app, ["review", "next", str(project_dir), "--pass", "1"]
+        app,
+        ["review", "next", str(project_dir), "--profile", "de_default", "--pass", "1"],
     )
     assert next_result.exit_code == 0
     task_id_line = [
@@ -414,7 +452,7 @@ def test_review_insert_activates_by_default(tmp_path: Path):
         if line.startswith("review task: btr-")
     ][0]
     review_task_id = task_id_line.split(": ", 1)[1].strip()
-    proj2 = load_project(project_dir)
+    proj2 = load_project(project_dir, profile="de_default")
     from booktx.config import load_translation_review_task, load_translation_store
 
     task = load_translation_review_task(proj2, review_task_id)
@@ -434,6 +472,8 @@ def test_review_insert_activates_by_default(tmp_path: Path):
             "review",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--review-task-id",
             review_task_id,
             "--file",
@@ -442,7 +482,7 @@ def test_review_insert_activates_by_default(tmp_path: Path):
     )
     assert insert_result.exit_code == 0, insert_result.output
     assert "activated" in insert_result.output
-    store = load_translation_store(load_project(project_dir))
+    store = load_translation_store(load_project(project_dir, profile="de_default"))
     for rec in task.records:
         stored = store.records[rec.id]
         assert stored.active_review is not None
@@ -477,7 +517,7 @@ def test_review_insert_rejects_dropped_inline_tag_for_epub(tmp_path: Path):
     epub.write_epub(str(proj.source_dir / "book.epub"), book, {})
     find_source_file(proj)
     assert runner.invoke(app, ["extract", str(proj.root)]).exit_code == 0
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
     rec = chunk["records"][0]
     rid = rec["id"]
@@ -532,7 +572,7 @@ def test_review_insert_rejects_dropped_inline_tag_for_epub(tmp_path: Path):
             },
         ),
     )
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     _enable_quality_review(proj)
     next_result = runner.invoke(
         app,
@@ -540,6 +580,10 @@ def test_review_insert_rejects_dropped_inline_tag_for_epub(tmp_path: Path):
             "review",
             "next",
             str(proj.root),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--pass",
             "1",
             "--chapter",
@@ -555,7 +599,9 @@ def test_review_insert_rejects_dropped_inline_tag_for_epub(tmp_path: Path):
     review_task_id = task_id_line.split(": ", 1)[1].strip()
     from booktx.config import load_translation_review_task, load_translation_store
 
-    task = load_translation_review_task(load_project(proj.root), review_task_id)
+    task = load_translation_review_task(
+        load_project(proj.root, profile="de_default"), review_task_id
+    )
     assert task is not None
     import tempfile
 
@@ -573,6 +619,8 @@ def test_review_insert_rejects_dropped_inline_tag_for_epub(tmp_path: Path):
             "review",
             "insert",
             str(proj.root),
+            "--profile",
+            "de_default",
             "--review-task-id",
             review_task_id,
             "--file",
@@ -582,7 +630,7 @@ def test_review_insert_rejects_dropped_inline_tag_for_epub(tmp_path: Path):
     # Pre-write enforcement: review insert rejects before writing the store.
     assert insert_result.exit_code != 0
     assert "accepted" not in insert_result.output
-    store2 = load_translation_store(load_project(proj.root))
+    store2 = load_translation_store(load_project(proj.root, profile="de_default"))
     assert all(len(st.reviews) == 0 for st in store2.records.values())
 
 
@@ -601,6 +649,8 @@ def test_review_configure_enable_persists(tmp_path: Path):
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--pass",
             "1",
@@ -615,7 +665,7 @@ def test_review_configure_enable_persists(tmp_path: Path):
     assert res.exit_code == 0, res.output
     assert "quality review: enabled" in res.output
     # Config must be persisted to disk, not just printed.
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     qr = proj.profile_config.quality_review
     assert qr is not None
     assert qr.enabled is True
@@ -631,13 +681,32 @@ def test_review_configure_disable_persists(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     enable = runner.invoke(
         app,
-        ["review", "configure", str(project_dir), "--enable", "--pass", "1"],
+        [
+            "review",
+            "configure",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--enable",
+            "--pass",
+            "1",
+        ],
     )
     assert enable.exit_code == 0, enable.output
-    res = runner.invoke(app, ["review", "configure", str(project_dir), "--disable"])
+    res = runner.invoke(
+        app,
+        [
+            "review",
+            "configure",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--disable",
+        ],
+    )
     assert res.exit_code == 0, res.output
     assert "quality review: disabled" in res.output
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     qr = proj.profile_config.quality_review
     assert qr is not None
     assert qr.enabled is False
@@ -647,9 +716,21 @@ def test_review_configure_show_reports_configured(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     runner.invoke(
         app,
-        ["review", "configure", str(project_dir), "--enable", "--pass", "1"],
+        [
+            "review",
+            "configure",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--enable",
+            "--pass",
+            "1",
+        ],
     )
-    res = runner.invoke(app, ["review", "configure", str(project_dir), "--show"])
+    res = runner.invoke(
+        app,
+        ["review", "configure", str(project_dir), "--profile", "de_default", "--show"],
+    )
     assert res.exit_code == 0, res.output
     assert "quality review: enabled" in res.output
     assert "pass 1" in res.output
@@ -657,7 +738,10 @@ def test_review_configure_show_reports_configured(tmp_path: Path):
 
 def test_review_configure_show_unconfigured(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    res = runner.invoke(app, ["review", "configure", str(project_dir), "--show"])
+    res = runner.invoke(
+        app,
+        ["review", "configure", str(project_dir), "--profile", "de_default", "--show"],
+    )
     assert res.exit_code == 0, res.output
     assert "quality review: not configured" in res.output
 
@@ -670,6 +754,8 @@ def test_review_configure_rejects_enable_and_disable(tmp_path: Path):
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--disable",
         ],
@@ -683,13 +769,15 @@ def test_review_configure_rejects_pass_through_profile(tmp_path: Path):
     from booktx.pass_through import ensure_pass_through_profile
 
     project_dir = _make_project(tmp_path)
-    ensure_pass_through_profile(project_dir, "pt", create=True, select=True)
+    ensure_pass_through_profile(project_dir, "pt", create=True)
     res = runner.invoke(
         app,
         [
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--profile",
             "pt",
             "--enable",
@@ -708,22 +796,35 @@ def _setup_accepted_review(tmp_path: Path):
     """Full setup through review next + insert; returns
     (project_dir, record_id, base_review_ref)."""
     project_dir = _setup_store(tmp_path)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     _enable_quality_review(proj)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test",
         ],
     )
     next_result = runner.invoke(
-        app, ["review", "next", str(project_dir), "--pass", "1"]
+        app,
+        ["review", "next", str(project_dir), "--profile", "de_default", "--pass", "1"],
     )
     assert next_result.exit_code == 0, next_result.output
     review_task_id = [
@@ -731,7 +832,7 @@ def _setup_accepted_review(tmp_path: Path):
         for line in next_result.output.splitlines()
         if line.startswith("review task: btr-")
     ][0]
-    proj2 = load_project(project_dir)
+    proj2 = load_project(project_dir, profile="de_default")
     import tempfile
 
     from booktx.config import load_translation_review_task
@@ -752,6 +853,8 @@ def _setup_accepted_review(tmp_path: Path):
             "review",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--review-task-id",
             review_task_id,
             "--file",
@@ -759,7 +862,7 @@ def _setup_accepted_review(tmp_path: Path):
         ],
     )
     assert insert_result.exit_code == 0, insert_result.output
-    store = load_translation_store(load_project(project_dir))
+    store = load_translation_store(load_project(project_dir, profile="de_default"))
     stored = store.records[record_id]
     base_review = stored.active_review
     assert base_review is not None
@@ -774,6 +877,8 @@ def test_review_revise_record_creates_revision(tmp_path: Path):
             "review",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             record_id,
             "--base-review",
             base_review,
@@ -783,7 +888,7 @@ def test_review_revise_record_creates_revision(tmp_path: Path):
     )
     assert res.exit_code == 0, res.output
     assert "revised:" in res.output
-    store = load_translation_store(load_project(project_dir))
+    store = load_translation_store(load_project(project_dir, profile="de_default"))
     stored = store.records[record_id]
     # A new review candidate with a higher run number was appended.
     assert len(stored.reviews) >= 2
@@ -799,6 +904,8 @@ def test_review_revise_record_rejects_unknown_base(tmp_path: Path):
             "review",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             record_id,
             "--base-review",
             "R9.9",
@@ -817,6 +924,8 @@ def test_review_revise_record_rejects_missing_target_source(tmp_path: Path):
             "review",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             "99@99",
             "--base-review",
             "R1.1",

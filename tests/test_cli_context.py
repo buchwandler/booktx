@@ -39,16 +39,26 @@ def _make_project(tmp_path: Path) -> Path:
 
 
 def _ctx_json(project_dir: Path) -> Path:
-    return context_path(load_project(project_dir))
+    return context_path(load_project(project_dir, profile="de_default"))
 
 
 def _ctx_md(project_dir: Path) -> Path:
-    return context_markdown_path(load_project(project_dir))
+    return context_markdown_path(load_project(project_dir, profile="de_default"))
 
 
 def test_context_init_non_interactive_creates_files(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    res = runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     assert res.exit_code == 0, res.output
     ctx_path = _ctx_json(project_dir)
     md_path = _ctx_md(project_dir)
@@ -64,8 +74,20 @@ def test_context_init_non_interactive_creates_files(tmp_path: Path):
 
 def test_context_status_reports_not_ready_when_required_open(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
-    res = runner.invoke(app, ["context", "status", str(project_dir)])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    res = runner.invoke(
+        app, ["context", "status", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "NOT READY" in res.output
     assert "open_required=7" in res.output
@@ -73,8 +95,21 @@ def test_context_status_reports_not_ready_when_required_open(tmp_path: Path):
 
 def test_context_status_json_payload_is_stable(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
-    res = runner.invoke(app, ["context", "status", str(project_dir), "--json"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    res = runner.invoke(
+        app,
+        ["context", "status", str(project_dir), "--profile", "de_default", "--json"],
+    )
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
     assert set(payload.keys()) == {
@@ -95,13 +130,25 @@ def test_context_status_json_payload_is_stable(tmp_path: Path):
 
 def test_context_add_term_persists_glossary_entry(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "Lowlands",
             "--forbid",
             "Niederlande",
@@ -121,8 +168,20 @@ def test_context_add_term_persists_glossary_entry(tmp_path: Path):
 
 def test_context_mark_ready_fails_until_required_answers_exist(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
-    res = runner.invoke(app, ["context", "mark-ready", str(project_dir)])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    res = runner.invoke(
+        app, ["context", "mark-ready", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 1
     assert "required questions" in res.output
 
@@ -139,10 +198,21 @@ def test_context_mark_ready_fails_until_required_answers_exist(tmp_path: Path):
     for qid in required_ids:
         ans = runner.invoke(
             app,
-            ["context", "answer", str(project_dir), qid, "--text", f"answer {qid}"],
+            [
+                "context",
+                "answer",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                qid,
+                "--text",
+                f"answer {qid}",
+            ],
         )
         assert ans.exit_code == 0, ans.output
-    res2 = runner.invoke(app, ["context", "mark-ready", str(project_dir)])
+    res2 = runner.invoke(
+        app, ["context", "mark-ready", str(project_dir), "--profile", "de_default"]
+    )
     assert res2.exit_code == 0, res2.output
     data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
     assert data["ready"] is True
@@ -151,13 +221,25 @@ def test_context_mark_ready_fails_until_required_answers_exist(tmp_path: Path):
 
 def test_context_mark_ready_force_allows_open_questions(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test override",
@@ -170,17 +252,40 @@ def test_context_mark_ready_force_allows_open_questions(tmp_path: Path):
 
 def test_context_render_regenerates_markdown(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     md_path = _ctx_md(project_dir)
     md_path.write_text("stale", encoding="utf-8")
-    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    res = runner.invoke(
+        app,
+        ["context", "render", str(project_dir), "--profile", "de_default", "--write"],
+    )
     assert res.exit_code == 0, res.output
     assert "booktx translation context" in md_path.read_text("utf-8")
 
 
 def test_context_answers_hydrate_style_profile_in_markdown(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
 
     answers = [
         ("Q001", "de-DE"),
@@ -193,11 +298,23 @@ def test_context_answers_hydrate_style_profile_in_markdown(tmp_path: Path):
     for qid, text in answers:
         res = runner.invoke(
             app,
-            ["context", "answer", str(project_dir), qid, "--text", text],
+            [
+                "context",
+                "answer",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                qid,
+                "--text",
+                text,
+            ],
         )
         assert res.exit_code == 0, res.output
 
-    render = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    render = runner.invoke(
+        app,
+        ["context", "render", str(project_dir), "--profile", "de_default", "--write"],
+    )
     assert render.exit_code == 0, render.output
 
     markdown = _ctx_md(project_dir).read_text("utf-8")
@@ -261,18 +378,43 @@ def test_context_render_help_includes_write_flag():
 
 def test_context_render_dry_run_does_not_overwrite_stale(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _stale_markdown(project_dir)
-    res = runner.invoke(app, ["context", "render", str(project_dir)])
+    res = runner.invoke(
+        app, ["context", "render", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert _ctx_md(project_dir).read_text("utf-8") == "stale content"
 
 
 def test_context_render_stdout_does_not_overwrite(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _stale_markdown(project_dir)
-    res = runner.invoke(app, ["context", "render", str(project_dir), "--stdout"])
+    res = runner.invoke(
+        app,
+        ["context", "render", str(project_dir), "--profile", "de_default", "--stdout"],
+    )
     assert res.exit_code == 0, res.output
     assert "booktx translation context" in res.output
     assert _ctx_md(project_dir).read_text("utf-8") == "stale content"
@@ -280,18 +422,44 @@ def test_context_render_stdout_does_not_overwrite(tmp_path: Path):
 
 def test_context_render_write_updates_when_safe(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _stale_markdown(project_dir)
-    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    res = runner.invoke(
+        app,
+        ["context", "render", str(project_dir), "--profile", "de_default", "--write"],
+    )
     assert res.exit_code == 0, res.output
     assert "booktx translation context" in (_ctx_md(project_dir)).read_text("utf-8")
 
 
 def test_context_render_write_refuses_missing_md_only_note(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
-    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    res = runner.invoke(
+        app,
+        ["context", "render", str(project_dir), "--profile", "de_default", "--write"],
+    )
     assert res.exit_code == 1, res.output
     assert "0099" in res.output
     # Markdown-only note survives the refusal.
@@ -300,17 +468,40 @@ def test_context_render_write_refuses_missing_md_only_note(tmp_path: Path):
 
 def test_context_render_write_refuses_conflicting_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _chapter_note(project_dir, "0006", "json-only")
     _inject_md_only_note(project_dir, "0006", title="TWO", decisions=["md-extra"])
-    res = runner.invoke(app, ["context", "render", str(project_dir), "--write"])
+    res = runner.invoke(
+        app,
+        ["context", "render", str(project_dir), "--profile", "de_default", "--write"],
+    )
     assert res.exit_code == 1, res.output
     assert "0006" in res.output
 
 
 def test_context_render_write_force_discard_overwrites(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
     res = runner.invoke(
         app,
@@ -318,6 +509,8 @@ def test_context_render_write_force_discard_overwrites(tmp_path: Path):
             "context",
             "render",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--write",
             "--force-discard-md-only",
         ],
@@ -335,11 +528,18 @@ def _load_chapters(project_dir: Path) -> list:
 
 
 def _ctx_md(project_dir: Path) -> Path:
-    return context_markdown_path(load_project(project_dir))
+    return context_markdown_path(load_project(project_dir, profile="de_default"))
 
 
 def _chapter_note(project_dir: Path, chapter_id: str, *decisions: str):
-    args = ["context", "chapter-note", str(project_dir), chapter_id]
+    args = [
+        "context",
+        "chapter-note",
+        str(project_dir),
+        "--profile",
+        "de_default",
+        chapter_id,
+    ]
     for dec in decisions:
         args += ["--decision", dec]
     return runner.invoke(app, args)
@@ -347,10 +547,22 @@ def _chapter_note(project_dir: Path, chapter_id: str, *decisions: str):
 
 def test_import_md_dry_run_reports_and_does_not_write(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
     before = _ctx_json(project_dir).read_text("utf-8")
-    res = runner.invoke(app, ["context", "import-md", str(project_dir)])
+    res = runner.invoke(
+        app, ["context", "import-md", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "0099" in res.output
     assert _ctx_json(project_dir).read_text("utf-8") == before
@@ -358,9 +570,29 @@ def test_import_md_dry_run_reports_and_does_not_write(tmp_path: Path):
 
 def test_import_md_write_adds_missing_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _inject_md_only_note(project_dir, "0099", title="Rogue", decisions=["md-only"])
-    res = runner.invoke(app, ["context", "import-md", str(project_dir), "--write"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "import-md",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--write",
+        ],
+    )
     assert res.exit_code == 0, res.output
     chapters = _load_chapters(project_dir)
     note = next(c for c in chapters if c["chapter_id"] == "0099")
@@ -370,7 +602,17 @@ def test_import_md_write_adds_missing_chapter(tmp_path: Path):
 
 def test_import_md_hydrates_from_chapter_map(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _inject_md_only_note(project_dir, "0006", decisions=["d"])
     (project_dir / ".booktx" / "chapter-map.json").write_text(
         '{"version": 1, "source_sha256": "", '
@@ -378,7 +620,17 @@ def test_import_md_hydrates_from_chapter_map(tmp_path: Path):
         '"chunk_ids": ["0006"]}]}',
         encoding="utf-8",
     )
-    res = runner.invoke(app, ["context", "import-md", str(project_dir), "--write"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "import-md",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--write",
+        ],
+    )
     assert res.exit_code == 0, res.output
     note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
     assert note["title"] == "Mapped"
@@ -387,17 +639,17 @@ def test_import_md_hydrates_from_chapter_map(tmp_path: Path):
 
 def test_import_md_refuses_conflicting_default(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
-    _chapter_note(project_dir, "0006", "json-only")
-    _inject_md_only_note(project_dir, "0006", title="TWO", decisions=["md-extra"])
-    res = runner.invoke(app, ["context", "import-md", str(project_dir), "--write"])
-    assert res.exit_code == 1, res.output
-    assert "0006" in res.output
-
-
-def test_import_md_replace_existing_replaces_durable(tmp_path: Path):
-    project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _chapter_note(project_dir, "0006", "json-only")
     _inject_md_only_note(project_dir, "0006", title="TWO", decisions=["md-extra"])
     res = runner.invoke(
@@ -406,6 +658,38 @@ def test_import_md_replace_existing_replaces_durable(tmp_path: Path):
             "context",
             "import-md",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--write",
+        ],
+    )
+    assert res.exit_code == 1, res.output
+    assert "0006" in res.output
+
+
+def test_import_md_replace_existing_replaces_durable(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    _chapter_note(project_dir, "0006", "json-only")
+    _inject_md_only_note(project_dir, "0006", title="TWO", decisions=["md-extra"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "import-md",
+            str(project_dir),
+            "--profile",
+            "de_default",
             "--write",
             "--replace-existing",
         ],
@@ -418,10 +702,29 @@ def test_import_md_replace_existing_replaces_durable(tmp_path: Path):
 
 def test_import_md_append_existing_lists_appends(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--decision", "keep"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--decision",
+            "keep",
+        ],
     )
     _inject_md_only_note(project_dir, "0006", decisions=["keep", "new"])
     res = runner.invoke(
@@ -430,6 +733,8 @@ def test_import_md_append_existing_lists_appends(tmp_path: Path):
             "context",
             "import-md",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--write",
             "--append-existing-lists",
         ],
@@ -441,13 +746,25 @@ def test_import_md_append_existing_lists_appends(tmp_path: Path):
 
 def test_import_md_modes_are_mutually_exclusive(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "import-md",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--replace-existing",
             "--append-existing-lists",
         ],
@@ -461,13 +778,25 @@ def test_import_md_modes_are_mutually_exclusive(tmp_path: Path):
 
 def test_chapter_note_creates_and_renders(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--title",
             "TWO",
@@ -484,13 +813,25 @@ def test_chapter_note_creates_and_renders(tmp_path: Path):
 
 def test_chapter_note_repeated_decisions_append_in_order(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--decision",
             "first",
@@ -505,14 +846,42 @@ def test_chapter_note_repeated_decisions_append_in_order(tmp_path: Path):
 
 def test_chapter_note_duplicate_decisions_not_duplicated(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--decision", "same"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--decision",
+            "same",
+        ],
     )
     res = runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--decision", "same"],
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--decision",
+            "same",
+        ],
     )
     assert res.exit_code == 0, res.output
     note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
@@ -521,14 +890,42 @@ def test_chapter_note_duplicate_decisions_not_duplicated(tmp_path: Path):
 
 def test_chapter_note_preserves_decisions_by_default(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--decision", "first"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--decision",
+            "first",
+        ],
     )
     res = runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--decision", "second"],
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--decision",
+            "second",
+        ],
     )
     assert res.exit_code == 0, res.output
     note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
@@ -537,10 +934,29 @@ def test_chapter_note_preserves_decisions_by_default(tmp_path: Path):
 
 def test_chapter_note_replace_decisions(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--decision", "first"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--decision",
+            "first",
+        ],
     )
     res = runner.invoke(
         app,
@@ -548,6 +964,8 @@ def test_chapter_note_replace_decisions(tmp_path: Path):
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--decision",
             "only",
@@ -561,14 +979,42 @@ def test_chapter_note_replace_decisions(tmp_path: Path):
 
 def test_chapter_note_preserves_open_issues_by_default(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--open-issue", "one"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--open-issue",
+            "one",
+        ],
     )
     res = runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--open-issue", "two"],
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--open-issue",
+            "two",
+        ],
     )
     assert res.exit_code == 0, res.output
     note = next(c for c in _load_chapters(project_dir) if c["chapter_id"] == "0006")
@@ -577,10 +1023,29 @@ def test_chapter_note_preserves_open_issues_by_default(tmp_path: Path):
 
 def test_chapter_note_replace_open_issues(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--open-issue", "one"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--open-issue",
+            "one",
+        ],
     )
     res = runner.invoke(
         app,
@@ -588,6 +1053,8 @@ def test_chapter_note_replace_open_issues(tmp_path: Path):
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--open-issue",
             "only",
@@ -601,11 +1068,30 @@ def test_chapter_note_replace_open_issues(tmp_path: Path):
 
 def test_chapter_note_refuses_unsafe_markdown_drift(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     _inject_md_only_note(project_dir, "0099", decisions=["md-only"])
     res = runner.invoke(
         app,
-        ["context", "chapter-note", str(project_dir), "0006", "--decision", "x"],
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0006",
+            "--decision",
+            "x",
+        ],
     )
     assert res.exit_code == 1, res.output
     assert "0099" in res.output
@@ -615,10 +1101,29 @@ def test_chapter_note_refuses_unsafe_markdown_drift(tmp_path: Path):
 
 def test_context_recommend_does_not_make_question_answered(tmp_path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
-        ["context", "recommend", str(project_dir), "Q002", "--text", "Fluent literary"],
+        [
+            "context",
+            "recommend",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Q002",
+            "--text",
+            "Fluent literary",
+        ],
     )
     assert res.exit_code == 0, res.output
     data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
@@ -630,17 +1135,47 @@ def test_context_recommend_does_not_make_question_answered(tmp_path):
 
 def test_mark_ready_refuses_recommended_but_unapproved_required_question(tmp_path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     for qid in ["Q001", "Q003", "Q004", "Q005", "Q006", "Q012"]:
         runner.invoke(
             app,
-            ["context", "approve", str(project_dir), qid, "--text", f"answer {qid}"],
+            [
+                "context",
+                "approve",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                qid,
+                "--text",
+                f"answer {qid}",
+            ],
         )
     runner.invoke(
         app,
-        ["context", "recommend", str(project_dir), "Q002", "--text", "Fluent literary"],
+        [
+            "context",
+            "recommend",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Q002",
+            "--text",
+            "Fluent literary",
+        ],
     )
-    res = runner.invoke(app, ["context", "mark-ready", str(project_dir)])
+    res = runner.invoke(
+        app, ["context", "mark-ready", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 1
     assert "unapproved" in res.output or "unresolved" in res.output
     assert "Q002" in res.output
@@ -648,10 +1183,29 @@ def test_mark_ready_refuses_recommended_but_unapproved_required_question(tmp_pat
 
 def test_context_approve_use_recommendation_marks_answer_user_approved(tmp_path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "recommend", str(project_dir), "Q002", "--text", "Fluent literary"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "recommend",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Q002",
+            "--text",
+            "Fluent literary",
+        ],
     )
     res = runner.invoke(
         app,
@@ -659,6 +1213,8 @@ def test_context_approve_use_recommendation_marks_answer_user_approved(tmp_path)
             "context",
             "approve",
             str(project_dir),
+            "--profile",
+            "de_default",
             "Q002",
             "--use-recommendation",
             "--approved-by",
@@ -675,13 +1231,25 @@ def test_context_approve_use_recommendation_marks_answer_user_approved(tmp_path)
 
 def test_context_add_question_creates_required_dynamic_question(tmp_path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "add-question",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--topic",
             "poetry",
             "--question",
@@ -708,7 +1276,17 @@ def test_context_add_term_forbid_replaces_existing_list_and_prunes_target(
     tmp_path: Path,
 ):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     # First call: target Reich, forbid Imperium
     res1 = runner.invoke(
         app,
@@ -716,6 +1294,8 @@ def test_context_add_term_forbid_replaces_existing_list_and_prunes_target(
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Reich",
@@ -736,6 +1316,8 @@ def test_context_add_term_forbid_replaces_existing_list_and_prunes_target(
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -754,7 +1336,17 @@ def test_context_add_term_forbid_replaces_existing_list_and_prunes_target(
 
 def test_context_add_term_append_forbid_is_explicit(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     # Initial: forbid A
     runner.invoke(
         app,
@@ -762,6 +1354,8 @@ def test_context_add_term_append_forbid_is_explicit(tmp_path: Path):
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--target",
             "T",
@@ -776,6 +1370,8 @@ def test_context_add_term_append_forbid_is_explicit(tmp_path: Path):
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--append-forbid",
             "B",
@@ -789,13 +1385,25 @@ def test_context_add_term_append_forbid_is_explicit(tmp_path: Path):
 
 def test_context_add_term_clear_forbidden(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--forbid",
             "A",
@@ -809,6 +1417,8 @@ def test_context_add_term_clear_forbidden(tmp_path: Path):
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--clear-forbidden",
         ],
@@ -821,13 +1431,25 @@ def test_context_add_term_clear_forbidden(tmp_path: Path):
 
 def test_context_add_term_forbid_append_conflict(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--forbid",
             "A",
@@ -841,13 +1463,25 @@ def test_context_add_term_forbid_append_conflict(tmp_path: Path):
 
 def test_context_add_term_clear_forbidden_conflict(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--clear-forbidden",
             "--forbid",
@@ -860,13 +1494,25 @@ def test_context_add_term_clear_forbidden_conflict(tmp_path: Path):
 
 def test_context_add_term_update_does_not_clobber_category_or_enforce(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--target",
             "T",
@@ -885,6 +1531,8 @@ def test_context_add_term_update_does_not_clobber_category_or_enforce(tmp_path: 
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--target",
             "T2",
@@ -904,13 +1552,25 @@ def test_context_add_term_update_does_not_clobber_category_or_enforce(tmp_path: 
 
 def test_context_remove_term_deletes_entry_and_renders(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--target",
             "T",
@@ -918,7 +1578,7 @@ def test_context_remove_term_deletes_entry_and_renders(tmp_path: Path):
     )
     res = runner.invoke(
         app,
-        ["context", "remove-term", str(project_dir), "test"],
+        ["context", "remove-term", str(project_dir), "--profile", "de_default", "test"],
     )
     assert res.exit_code == 0, res.output
     data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
@@ -928,15 +1588,40 @@ def test_context_remove_term_deletes_entry_and_renders(tmp_path: Path):
 
 def test_context_remove_term_missing_fails_unless_missing_ok(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
-        ["context", "remove-term", str(project_dir), "nonexistent"],
+        [
+            "context",
+            "remove-term",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "nonexistent",
+        ],
     )
     assert res.exit_code != 0
     res_ok = runner.invoke(
         app,
-        ["context", "remove-term", str(project_dir), "nonexistent", "--missing-ok"],
+        [
+            "context",
+            "remove-term",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "nonexistent",
+            "--missing-ok",
+        ],
     )
     assert res_ok.exit_code == 0, res_ok.output
 
@@ -946,13 +1631,25 @@ def test_context_remove_term_missing_fails_unless_missing_ok(tmp_path: Path):
 
 def test_context_reset_term_replaces_entry(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--target",
             "Old",
@@ -972,6 +1669,8 @@ def test_context_reset_term_replaces_entry(tmp_path: Path):
             "context",
             "reset-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "test",
             "--target",
             "New",
@@ -997,13 +1696,25 @@ def test_context_reset_term_replaces_entry(tmp_path: Path):
 
 def test_context_reset_term_create_flag_required_for_missing(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "reset-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "nonexistent",
             "--target",
             "T",
@@ -1016,6 +1727,8 @@ def test_context_reset_term_create_flag_required_for_missing(tmp_path: Path):
             "context",
             "reset-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "nonexistent",
             "--target",
             "T",
@@ -1030,13 +1743,25 @@ def test_context_reset_term_create_flag_required_for_missing(tmp_path: Path):
 
 def test_context_reset_term_can_clear_require_target(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     create = runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -1053,6 +1778,8 @@ def test_context_reset_term_can_clear_require_target(tmp_path: Path):
             "context",
             "reset-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "empire",
             "--no-require-target",
         ],
@@ -1068,7 +1795,17 @@ def test_context_reset_term_can_clear_require_target(tmp_path: Path):
 
 def test_chapter_note_replace_all_resets_summaries_and_lists(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     # Create initial state.
     runner.invoke(
         app,
@@ -1076,6 +1813,8 @@ def test_chapter_note_replace_all_resets_summaries_and_lists(tmp_path: Path):
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--title",
             "Old",
@@ -1096,6 +1835,8 @@ def test_chapter_note_replace_all_resets_summaries_and_lists(tmp_path: Path):
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--replace-all",
             "--title",
@@ -1121,13 +1862,25 @@ def test_chapter_note_replace_all_resets_summaries_and_lists(tmp_path: Path):
 
 def test_chapter_note_replace_all_rejects_other_replace_flags(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--replace-all",
             "--replace-decisions",
@@ -1141,7 +1894,17 @@ def test_chapter_note_replace_all_rejects_other_replace_flags(tmp_path: Path):
 
 def test_chapter_note_replace_all_preserves_chunk_ids(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     # Create with chapter-map to hydrate chunk_ids.
     (project_dir / ".booktx" / "chapter-map.json").write_text(
         '{"version": 1, "source_sha256": "", '
@@ -1155,6 +1918,8 @@ def test_chapter_note_replace_all_preserves_chunk_ids(tmp_path: Path):
             "context",
             "chapter-note",
             str(project_dir),
+            "--profile",
+            "de_default",
             "0006",
             "--replace-all",
             "--title",
@@ -1220,6 +1985,8 @@ def _ready_profile_context(project_dir: Path, profile: str) -> None:
                 "context",
                 "answer",
                 str(project_dir),
+                "--profile",
+                "de_default",
                 qid,
                 "--profile",
                 profile,
@@ -1241,6 +2008,8 @@ def _reset_term(project_dir: Path, profile: str, source: str, target: str) -> No
             "context",
             "reset-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             source,
             "--profile",
             profile,
@@ -1330,13 +2099,25 @@ def test_context_sync_write_blocks_on_conflict_without_mutation(tmp_path: Path):
 
 def test_context_doctor_json_reports_single_profile_issue(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
         app,
         [
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -1346,7 +2127,10 @@ def test_context_doctor_json_reports_single_profile_issue(tmp_path: Path):
     )
     assert res.exit_code == 0, res.output
 
-    doctor = runner.invoke(app, ["context", "doctor", str(project_dir), "--json"])
+    doctor = runner.invoke(
+        app,
+        ["context", "doctor", str(project_dir), "--profile", "de_default", "--json"],
+    )
 
     assert doctor.exit_code == 0, doctor.output
     payload = json.loads(doctor.output)
@@ -1380,6 +2164,8 @@ def test_context_doctor_compare_profiles_json_reports_divergence(tmp_path: Path)
                 "context",
                 "add-term",
                 str(project_dir),
+                "--profile",
+                "de_default",
                 "mantis",
                 "--profile",
                 profile,
@@ -1460,10 +2246,29 @@ def test_context_doctor_isolated_write_report_rejects_unsafe_paths(
 
 def test_context_doctor_write_report_rejects_tmp_path(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
 
     res = runner.invoke(
-        app, ["context", "doctor", str(project_dir), "--write-report", "/tmp/report.md"]
+        app,
+        [
+            "context",
+            "doctor",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--write-report",
+            "/tmp/report.md",
+        ],
     )
 
     assert res.exit_code == 1
@@ -1472,7 +2277,17 @@ def test_context_doctor_write_report_rejects_tmp_path(tmp_path: Path):
 
 def test_context_doctor_write_report_uses_safe_location(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     report = Path.cwd() / ".context-organization-report-test.md"
     report.unlink(missing_ok=True)
     try:
@@ -1482,6 +2297,8 @@ def test_context_doctor_write_report_uses_safe_location(tmp_path: Path):
                 "context",
                 "doctor",
                 str(project_dir),
+                "--profile",
+                "de_default",
                 "--write-report",
                 str(report),
             ],
@@ -1516,6 +2333,8 @@ def test_context_doctor_compare_profiles_skips_incompatible_targets(tmp_path: Pa
             "context",
             "add-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "empire",
             "--profile",
             "de_source",
@@ -1542,15 +2361,48 @@ def test_context_doctor_compare_profiles_skips_incompatible_targets(tmp_path: Pa
 
 def test_context_render_effective_view_omits_answered_questions(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     res = runner.invoke(
-        app, ["context", "answer", str(project_dir), "Q002", "--text", "balanced"]
+        app,
+        [
+            "context",
+            "answer",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Q002",
+            "--text",
+            "balanced",
+        ],
     )
     assert res.exit_code == 0, res.output
 
-    full = runner.invoke(app, ["context", "render", str(project_dir), "--stdout"])
+    full = runner.invoke(
+        app,
+        ["context", "render", str(project_dir), "--profile", "de_default", "--stdout"],
+    )
     effective = runner.invoke(
-        app, ["context", "render", str(project_dir), "--view", "effective", "--stdout"]
+        app,
+        [
+            "context",
+            "render",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--view",
+            "effective",
+            "--stdout",
+        ],
     )
 
     assert full.exit_code == 0, full.output
@@ -1564,10 +2416,30 @@ def test_context_render_effective_view_omits_answered_questions(tmp_path: Path):
 
 def test_context_render_effective_write_is_rejected(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
 
     res = runner.invoke(
-        app, ["context", "render", str(project_dir), "--view", "effective", "--write"]
+        app,
+        [
+            "context",
+            "render",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--view",
+            "effective",
+            "--write",
+        ],
     )
 
     assert res.exit_code == 1
@@ -1576,10 +2448,30 @@ def test_context_render_effective_write_is_rejected(tmp_path: Path):
 
 def test_context_render_invalid_view_is_rejected(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
 
     res = runner.invoke(
-        app, ["context", "render", str(project_dir), "--view", "compact", "--stdout"]
+        app,
+        [
+            "context",
+            "render",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--view",
+            "compact",
+            "--stdout",
+        ],
     )
 
     assert res.exit_code == 1

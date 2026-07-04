@@ -201,14 +201,32 @@ def _chunk_json_texts(chunks: list[Chunk] | list[TranslatedChunk]) -> dict[str, 
 
 
 def _has_accepted_store_records(proj: Project) -> bool:
-    path = translation_store_path(proj)
-    if not path.is_file():
-        return False
-    store = load_translation_store(proj)
-    return any(
-        any(candidate.status == "accepted" for candidate in record.versions)
-        for record in store.records.values()
-    )
+    """Return True when any profile carries an accepted translation record.
+
+    ``extract`` runs without a selected profile (it operates on source). When no
+    profile is selected, scan every profile so a chunk-size change that would
+    renumber record ids is still caught regardless of which profile holds the
+    accepted translations.
+    """
+    from booktx.config import list_profiles, load_profile_project
+
+    if proj.profile is None:
+        candidates = [
+            load_profile_project(proj.root, name) for name in list_profiles(proj)
+        ]
+    else:
+        candidates = [proj]
+    for candidate in candidates:
+        path = translation_store_path(candidate)
+        if not path.is_file():
+            continue
+        store = load_translation_store(candidate)
+        if any(
+            any(rec.status == "accepted" for rec in record.versions)
+            for record in store.records.values()
+        ):
+            return True
+    return False
 
 
 def _same_extract_settings(

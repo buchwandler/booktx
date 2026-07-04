@@ -30,7 +30,17 @@ def _make_project(tmp_path: Path, name: str = "book") -> Path:
         ["init", str(project_dir), "--target", "de", "--source-file", str(src)],
     )
     assert res.exit_code == 0, res.output
-    res = runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     assert res.exit_code == 0, res.output
     return project_dir
 
@@ -48,7 +58,16 @@ def _answer_core(project_dir: Path) -> None:
     for qid, text in answers:
         res = runner.invoke(
             app,
-            ["context", "answer", str(project_dir), qid, "--text", text],
+            [
+                "context",
+                "answer",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                qid,
+                "--text",
+                text,
+            ],
         )
         assert res.exit_code == 0, res.output
 
@@ -56,7 +75,9 @@ def _answer_core(project_dir: Path) -> None:
 def _ready_project(tmp_path: Path, name: str = "book") -> Path:
     project_dir = _make_project(tmp_path, name=name)
     _answer_core(project_dir)
-    res = runner.invoke(app, ["context", "mark-ready", str(project_dir)])
+    res = runner.invoke(
+        app, ["context", "mark-ready", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     return project_dir
 
@@ -77,6 +98,8 @@ def test_export_writes_json_and_prints_summary(tmp_path: Path):
             "context",
             "export-pack",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--series-id",
             "shadows-of-apt",
             "--title",
@@ -105,6 +128,8 @@ def test_export_json_emits_single_document(tmp_path: Path):
             "context",
             "export-pack",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -128,6 +153,8 @@ def test_export_refuses_overwrite_without_force(tmp_path: Path):
         "context",
         "export-pack",
         str(project_dir),
+        "--profile",
+        "de_default",
         "--series-id",
         "s",
         "--output",
@@ -153,6 +180,8 @@ def test_dry_run_import_writes_nothing(tmp_path: Path):
             "context",
             "reset-term",
             str(book1),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -172,6 +201,8 @@ def test_dry_run_import_writes_nothing(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -179,12 +210,20 @@ def test_dry_run_import_writes_nothing(tmp_path: Path):
         ],
     )
     book2 = _make_project(tmp_path, name="book2")
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     before_json = context_path(proj2).read_text("utf-8")
     before_md = context_markdown_path(proj2).read_text("utf-8")
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(pack_path)],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+        ],
     )
     assert res.exit_code == 0, res.output
     assert "Dry run." in res.output
@@ -205,6 +244,8 @@ def test_write_import_updates_json_and_markdown(tmp_path: Path):
             "context",
             "reset-term",
             str(book1),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -222,6 +263,8 @@ def test_write_import_updates_json_and_markdown(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -229,10 +272,19 @@ def test_write_import_updates_json_and_markdown(tmp_path: Path):
         ],
     )
     book2 = _make_project(tmp_path, name="book2")
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(pack_path), "--write"],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+            "--write",
+        ],
     )
     assert res.exit_code == 0, res.output
     data = json.loads(context_path(proj2).read_text("utf-8"))
@@ -256,6 +308,8 @@ def test_missing_context_errors_unless_init(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -270,7 +324,16 @@ def test_missing_context_errors_unless_init(tmp_path: Path):
         app, ["init", str(book2), "--target", "de", "--source-file", str(src2)]
     )
     res = runner.invoke(
-        app, ["context", "import-pack", str(book2), "--file", str(pack_path)]
+        app,
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+        ],
     )
     assert res.exit_code != 0
     # --init-missing-context creates it.
@@ -280,6 +343,8 @@ def test_missing_context_errors_unless_init(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--init-missing-context",
@@ -300,6 +365,8 @@ def test_source_language_mismatch_errors(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -308,13 +375,22 @@ def test_source_language_mismatch_errors(tmp_path: Path):
     )
     # book2 with a different source language by editing its context.json.
     book2 = _make_project(tmp_path, name="book2")
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     path = context_path(proj2)
     data = json.loads(path.read_text("utf-8"))
     data["source_language"] = "fr"
     path.write_text(json.dumps(data, indent=2) + "\n", "utf-8")
     res = runner.invoke(
-        app, ["context", "import-pack", str(book2), "--file", str(pack_path)]
+        app,
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+        ],
     )
     assert res.exit_code != 0
 
@@ -328,6 +404,8 @@ def test_target_locale_conflict_reports_in_findings(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--conflict",
@@ -343,7 +421,7 @@ def test_target_locale_conflict_reports_in_findings(tmp_path: Path):
 
 def _locale_conflict_setup(tmp_path: Path) -> tuple[Path, Path]:
     book1 = _ready_project(tmp_path, name="book1")
-    proj1 = load_project(book1)
+    proj1 = load_project(book1, profile="de_default")
     path1 = context_path(proj1)
     data1 = json.loads(path1.read_text("utf-8"))
     # Change the locale AND its governing core answer (Q001) together so the
@@ -360,6 +438,8 @@ def _locale_conflict_setup(tmp_path: Path) -> tuple[Path, Path]:
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -368,7 +448,7 @@ def _locale_conflict_setup(tmp_path: Path) -> tuple[Path, Path]:
     )
     assert export_res.exit_code == 0, export_res.output
     book2 = _ready_project(tmp_path, name="book2")
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     path2 = context_path(proj2)
     data2 = json.loads(path2.read_text("utf-8"))
     data2["style"]["target_locale"] = "de-DE"
@@ -383,7 +463,15 @@ def test_conflict_fail_mode_exits_nonzero(tmp_path: Path):
     book2, pack_path = _locale_conflict_setup(tmp_path)
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(pack_path)],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+        ],
     )
     assert res.exit_code != 0
     assert "conflict" in res.output
@@ -397,6 +485,8 @@ def test_conflict_keep_local_skips_and_keeps_local(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--conflict",
@@ -405,7 +495,7 @@ def test_conflict_keep_local_skips_and_keeps_local(tmp_path: Path):
         ],
     )
     assert res.exit_code == 0, res.output
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     data = json.loads(context_path(proj2).read_text("utf-8"))
     assert data["style"]["target_locale"] == "de-DE"
 
@@ -418,6 +508,8 @@ def test_conflict_replace_uses_imported(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--conflict",
@@ -426,7 +518,7 @@ def test_conflict_replace_uses_imported(tmp_path: Path):
         ],
     )
     assert res.exit_code == 0, res.output
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     data = json.loads(context_path(proj2).read_text("utf-8"))
     assert data["style"]["target_locale"] == "de-AT"
 
@@ -436,11 +528,20 @@ def test_conflict_replace_uses_imported(tmp_path: Path):
 
 def test_conflict_failure_writes_nothing(tmp_path: Path):
     book2, pack_path = _locale_conflict_setup(tmp_path)
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     before = context_path(proj2).read_text("utf-8")
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(pack_path), "--write"],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+            "--write",
+        ],
     )
     assert res.exit_code != 0
     assert context_path(proj2).read_text("utf-8") == before
@@ -462,11 +563,20 @@ def test_invalid_pack_writes_nothing(tmp_path: Path):
         ),
         encoding="utf-8",
     )
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     before = context_path(proj2).read_text("utf-8")
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(bad_pack), "--write"],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(bad_pack),
+            "--write",
+        ],
     )
     assert res.exit_code != 0
     assert context_path(proj2).read_text("utf-8") == before
@@ -484,6 +594,8 @@ def test_optimistic_hash_failure_writes_nothing(tmp_path: Path, monkeypatch):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -491,7 +603,7 @@ def test_optimistic_hash_failure_writes_nothing(tmp_path: Path, monkeypatch):
         ],
     )
     book2 = _make_project(tmp_path, name="book2")
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     before = context_path(proj2).read_text("utf-8")
     # Simulate a concurrent change: after import_context_pack's preflight read,
     # mutate context.json so the final live re-read differs from preflight.
@@ -514,7 +626,16 @@ def test_optimistic_hash_failure_writes_nothing(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cp_mod, "load_context", counting_load)
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(pack_path), "--write"],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+            "--write",
+        ],
     )
     assert res.exit_code != 0
     after = context_path(proj2).read_text("utf-8")
@@ -537,6 +658,8 @@ def test_import_json_emits_single_document(tmp_path: Path):
             "context",
             "reset-term",
             str(book1),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -554,6 +677,8 @@ def test_import_json_emits_single_document(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -563,7 +688,16 @@ def test_import_json_emits_single_document(tmp_path: Path):
     book2 = _make_project(tmp_path, name="book2")
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(pack_path), "--json"],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+            "--json",
+        ],
     )
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)
@@ -593,7 +727,15 @@ def _make_profile_root_project(tmp_path: Path) -> Path:
     extract_res = runner.invoke(app, ["extract", str(project_root)])
     assert extract_res.exit_code == 0, extract_res.output
     init_ctx = runner.invoke(
-        app, ["context", "init", str(project_root), "--non-interactive"]
+        app,
+        [
+            "context",
+            "init",
+            str(project_root),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
     )
     assert init_ctx.exit_code == 0, init_ctx.output
     # Answer core questions via the default profile, then force-ready.
@@ -609,12 +751,21 @@ def _make_profile_root_project(tmp_path: Path) -> Path:
     for qid, text in answers:
         ans_res = runner.invoke(
             app,
-            ["context", "answer", str(project_root), qid, "--text", text],
+            [
+                "context",
+                "answer",
+                str(project_root),
+                "--profile",
+                "de_default",
+                qid,
+                "--text",
+                text,
+            ],
         )
         assert ans_res.exit_code == 0, ans_res.output
     ready_res = runner.invoke(
         app,
-        ["context", "mark-ready", str(project_root)],
+        ["context", "mark-ready", str(project_root), "--profile", "de_default"],
     )
     assert ready_res.exit_code == 0, ready_res.output
     return project_root / "translations" / "de_default"
@@ -629,6 +780,8 @@ def test_profile_root_export_output_uses_local_paths(tmp_path: Path):
             "context",
             "export-pack",
             str(profile_root),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -651,6 +804,8 @@ def test_profile_root_export_rejects_absolute_path(tmp_path: Path):
             "context",
             "export-pack",
             str(profile_root),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -669,6 +824,8 @@ def test_profile_root_export_rejects_parent_escape(tmp_path: Path):
             "context",
             "export-pack",
             str(profile_root),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -687,6 +844,8 @@ def test_profile_root_import_rejects_symlink_escape(tmp_path: Path):
             "context",
             "export-pack",
             str(profile_root),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -702,7 +861,15 @@ def test_profile_root_import_rejects_symlink_escape(tmp_path: Path):
         pytest.skip("symlinks not supported on this platform")
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(profile_root), "--file", "escape.pack.json"],
+        [
+            "context",
+            "import-pack",
+            str(profile_root),
+            "--profile",
+            "de_default",
+            "--file",
+            "escape.pack.json",
+        ],
     )
     assert res.exit_code != 0
     assert "escapes" in res.output.lower() or "symlink" in res.output.lower()
@@ -719,6 +886,8 @@ def test_existing_tasks_produce_warning_without_modification(tmp_path: Path):
             "context",
             "reset-term",
             str(book1),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -736,6 +905,8 @@ def test_existing_tasks_produce_warning_without_modification(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -748,10 +919,21 @@ def test_existing_tasks_produce_warning_without_modification(tmp_path: Path):
     # Create a translation task (in-flight work) in book2.
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(book2), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
-    task_dir = load_project(book2).tasks_dir
+    task_dir = load_project(book2, profile="de_default").tasks_dir
     assert task_dir is not None and any(task_dir.glob("*.json"))
     res = runner.invoke(
         app,
@@ -759,6 +941,8 @@ def test_existing_tasks_produce_warning_without_modification(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--conflict",
@@ -780,6 +964,8 @@ def test_markdown_write_failure_leaves_valid_json(tmp_path: Path, monkeypatch):
             "context",
             "reset-term",
             str(book1),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -797,6 +983,8 @@ def test_markdown_write_failure_leaves_valid_json(tmp_path: Path, monkeypatch):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -814,17 +1002,28 @@ def test_markdown_write_failure_leaves_valid_json(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(ctx_mod, "write_context_markdown", boom)
     res = runner.invoke(
         app,
-        ["context", "import-pack", str(book2), "--file", str(pack_path), "--write"],
+        [
+            "context",
+            "import-pack",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--file",
+            str(pack_path),
+            "--write",
+        ],
     )
     # Import still succeeds (context.json is canonical); markdown write is best-effort.
     assert res.exit_code == 0, res.output
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     data = json.loads(context_path(proj2).read_text("utf-8"))
     empire = [g for g in data["glossary"] if g["source"] == "empire"]
     assert empire and empire[0]["forbidden_targets"] == ["Reich"]
     # Recoverable via render --write.
     monkeypatch.undo()
-    render_res = runner.invoke(app, ["context", "render", str(book2), "--write"])
+    render_res = runner.invoke(
+        app, ["context", "render", str(book2), "--profile", "de_default", "--write"]
+    )
     assert render_res.exit_code == 0, render_res.output
     md = context_markdown_path(proj2).read_text("utf-8")
     assert "Reich" in md
@@ -853,6 +1052,8 @@ def test_empire_reich_import_yields_forbidden_term_error(tmp_path: Path):
             "context",
             "reset-term",
             str(book1),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -872,6 +1073,8 @@ def test_empire_reich_import_yields_forbidden_term_error(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -886,6 +1089,8 @@ def test_empire_reich_import_yields_forbidden_term_error(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--write",
@@ -903,6 +1108,8 @@ def test_empire_reich_import_yields_forbidden_term_error(tmp_path: Path):
             "context",
             "mark-ready",
             str(book2),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "post-import approval",
@@ -912,11 +1119,22 @@ def test_empire_reich_import_yields_forbidden_term_error(tmp_path: Path):
     # Create a fresh task covering the paragraph that contains "empire".
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(book2), "--unit", "chapter", "--json"],
+        [
+            "translate",
+            "next",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "chapter",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task_payload = json.loads(next_res.output)
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     bundle = build_status_snapshot(proj2, context_exists=True, context_ready=True)
     # Pick the record whose source actually contains the glossary term.
     empire_record = None
@@ -956,11 +1174,22 @@ def test_pre_import_task_is_stale_after_binding_glossary_import(tmp_path: Path):
     # Create a task BEFORE importing any binding glossary.
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(book2), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     pre_task_payload = json.loads(next_res.output)
-    proj2 = load_project(book2)
+    proj2 = load_project(book2, profile="de_default")
     pre_task = load_translation_task(proj2, pre_task_payload["task_id"])
     assert pre_task is not None
     assert pre_task.mandatory_glossary_sha256 is not None
@@ -973,6 +1202,8 @@ def test_pre_import_task_is_stale_after_binding_glossary_import(tmp_path: Path):
             "context",
             "reset-term",
             str(book1),
+            "--profile",
+            "de_default",
             "empire",
             "--target",
             "Imperium",
@@ -990,6 +1221,8 @@ def test_pre_import_task_is_stale_after_binding_glossary_import(tmp_path: Path):
             "context",
             "export-pack",
             str(book1),
+            "--profile",
+            "de_default",
             "--series-id",
             "s",
             "--output",
@@ -1002,6 +1235,8 @@ def test_pre_import_task_is_stale_after_binding_glossary_import(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--write",
@@ -1021,6 +1256,8 @@ def test_pre_import_task_is_stale_after_binding_glossary_import(tmp_path: Path):
             "context",
             "import-pack",
             str(book2),
+            "--profile",
+            "de_default",
             "--file",
             str(pack_path),
             "--write",
@@ -1039,6 +1276,8 @@ def test_pre_import_task_is_stale_after_binding_glossary_import(tmp_path: Path):
             "context",
             "mark-ready",
             str(book2),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "post-import re-approval",
@@ -1064,7 +1303,18 @@ def test_pre_import_task_is_stale_after_binding_glossary_import(tmp_path: Path):
     # A FRESH post-import task resolves against the new baseline without stale error.
     fresh_res = runner.invoke(
         app,
-        ["translate", "next", str(book2), "--unit", "chapter", "--json"],
+        [
+            "translate",
+            "next",
+            str(book2),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "chapter",
+            "--json",
+        ],
     )
     assert fresh_res.exit_code == 0, fresh_res.output
     fresh_payload = json.loads(fresh_res.output)

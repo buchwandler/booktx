@@ -34,7 +34,7 @@ def _epub_output_project(tmp_path: Path) -> Path:
     assert res.exit_code == 0, res.output
     ext = runner.invoke(app, ["extract", str(project_dir)])
     assert ext.exit_code == 0, ext.output
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     assert proj.output_dir is not None
     proj.output_dir.mkdir(parents=True, exist_ok=True)
     (proj.output_dir / "chapter_1.xhtml").write_text(
@@ -55,14 +55,18 @@ def _epub_output_project(tmp_path: Path) -> Path:
 
 def test_resolve_epub_output_dir_returns_dir(tmp_path: Path) -> None:
     project_dir = _epub_output_project(tmp_path)
-    output_dir = resolve_epub_output_dir(load_project(project_dir))
+    output_dir = resolve_epub_output_dir(
+        load_project(project_dir, profile="de_default")
+    )
     assert output_dir.is_dir()
     assert (output_dir / "chapter_1.xhtml").is_file()
 
 
 def test_select_xhtml_files_lists_all(tmp_path: Path) -> None:
     project_dir = _epub_output_project(tmp_path)
-    output_dir = resolve_epub_output_dir(load_project(project_dir))
+    output_dir = resolve_epub_output_dir(
+        load_project(project_dir, profile="de_default")
+    )
     files = select_xhtml_files(output_dir)
     names = {f.name for f in files}
     assert {"chapter_1.xhtml", "chapter_2.xhtml"} <= names
@@ -70,7 +74,9 @@ def test_select_xhtml_files_lists_all(tmp_path: Path) -> None:
 
 def test_select_xhtml_files_filters_by_chapter(tmp_path: Path) -> None:
     project_dir = _epub_output_project(tmp_path)
-    output_dir = resolve_epub_output_dir(load_project(project_dir))
+    output_dir = resolve_epub_output_dir(
+        load_project(project_dir, profile="de_default")
+    )
     files = select_xhtml_files(output_dir, chapter="1")
     assert len(files) == 1
     assert files[0].name == "chapter_1.xhtml"
@@ -88,7 +94,7 @@ def test_resolve_epub_output_dir_raises_when_missing(tmp_path: Path) -> None:
         app,
         ["init", str(project_dir), "--target", "de", "--source-file", str(src)],
     )
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # output_dir may exist as a path but be absent on disk, or be None.
     if proj.output_dir is not None and proj.output_dir.is_dir():
         # Remove it so the workflow must reject it.
@@ -96,12 +102,14 @@ def test_resolve_epub_output_dir_raises_when_missing(tmp_path: Path) -> None:
             child.unlink() if child.is_file() else None
         proj.output_dir.rmdir()
     with pytest.raises(BooktxError):
-        resolve_epub_output_dir(load_project(project_dir))
+        resolve_epub_output_dir(load_project(project_dir, profile="de_default"))
 
 
 def test_select_xhtml_files_raises_for_unknown_chapter(tmp_path: Path) -> None:
     project_dir = _epub_output_project(tmp_path)
-    output_dir = resolve_epub_output_dir(load_project(project_dir))
+    output_dir = resolve_epub_output_dir(
+        load_project(project_dir, profile="de_default")
+    )
     with pytest.raises(BooktxError, match="unknown chapter|for chapter"):
         select_xhtml_files(output_dir, chapter="999")
 
@@ -111,7 +119,9 @@ def test_select_xhtml_files_raises_for_unknown_chapter(tmp_path: Path) -> None:
 
 def test_epub_extract_text_command(tmp_path: Path) -> None:
     project_dir = _epub_output_project(tmp_path)
-    res = runner.invoke(app, ["epub", "extract-text", str(project_dir)])
+    res = runner.invoke(
+        app, ["epub", "extract-text", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "Alice ran fast." in res.output
     assert "Bob walked slowly." in res.output
@@ -119,7 +129,9 @@ def test_epub_extract_text_command(tmp_path: Path) -> None:
 
 def test_epub_grep_command(tmp_path: Path) -> None:
     project_dir = _epub_output_project(tmp_path)
-    res = runner.invoke(app, ["epub", "grep", str(project_dir), "Bob"])
+    res = runner.invoke(
+        app, ["epub", "grep", str(project_dir), "--profile", "de_default", "Bob"]
+    )
     assert res.exit_code == 0, res.output
     assert "Bob walked slowly." in res.output
 
@@ -132,12 +144,14 @@ def test_epub_inspect_command_errors_without_output(tmp_path: Path) -> None:
         app,
         ["init", str(project_dir), "--target", "de", "--source-file", str(src)],
     )
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     if proj.output_dir is not None and proj.output_dir.is_dir():
         for child in list(proj.output_dir.iterdir()):
             if child.is_file():
                 child.unlink()
         proj.output_dir.rmdir()
-    res = runner.invoke(app, ["epub", "inspect", str(project_dir)])
+    res = runner.invoke(
+        app, ["epub", "inspect", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code != 0
     assert "error:" in res.output

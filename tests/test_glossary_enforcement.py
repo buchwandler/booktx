@@ -142,7 +142,7 @@ def _write_store_and_ledger(
     record: StoredTranslationRecordV2,
     tracked_refs: set[str],
 ) -> None:
-    proj = load_project(proj_path)
+    proj = load_project(proj_path, profile="de_default")
     record_id = next(r.id for r in chunk.records)
     write_translation_store(
         proj,
@@ -190,7 +190,7 @@ def _write_store_and_ledger_multi(
     Each value is either a single ``(active_ref, target)`` tuple or a list of
     ``(ref, target)`` tuples (first is active).
     """
-    proj = load_project(proj_path)
+    proj = load_project(proj_path, profile="de_default")
     records: dict[str, StoredTranslationRecordV2] = {}
     for record_id, spec in versions_by_record.items():
         version_list = spec if isinstance(spec, list) else [spec]
@@ -256,7 +256,7 @@ def test_scenario1_active_only_ignores_inactive_forbidden(tmp_path: Path) -> Non
         tracked_refs={"1.1", "1.2"},
     )
 
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
 
     assert report.passed, [f.as_dict() for f in report.findings]
     assert not any(f.rule == "forbidden_term_used" for f in report.findings), [
@@ -291,7 +291,7 @@ def test_scenario4_structural_missing_ledger_remains_fatal(tmp_path: Path) -> No
         tracked_refs={"1.2"},
     )
 
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
 
     assert not report.passed, [f.as_dict() for f in report.findings]
     assert any(
@@ -329,7 +329,9 @@ def test_scenario2_history_labels_inactive_forbidden(tmp_path: Path) -> None:
         tracked_refs={"1.1", "1.2"},
     )
 
-    report = validate_project(load_project(proj_path), include_inactive_versions=True)
+    report = validate_project(
+        load_project(proj_path, profile="de_default"), include_inactive_versions=True
+    )
 
     inactive_forbidden = [
         f
@@ -375,14 +377,25 @@ def _build_clean_active_dirty_history(tmp_path: Path) -> Path:
 
 def test_scenario3a_default_fail_on_warnings_exits_zero(tmp_path: Path) -> None:
     proj_path = _build_clean_active_dirty_history(tmp_path)
-    res = runner.invoke(app, ["validate", str(proj_path), "--fail-on-warnings"])
+    res = runner.invoke(
+        app,
+        ["validate", str(proj_path), "--profile", "de_default", "--fail-on-warnings"],
+    )
     assert res.exit_code == 0, res.output
 
 
 def test_scenario3b_include_inactive_displays_labeled_history(tmp_path: Path) -> None:
     proj_path = _build_clean_active_dirty_history(tmp_path)
     res = runner.invoke(
-        app, ["validate", str(proj_path), "--include-inactive", "--fail-on-warnings"]
+        app,
+        [
+            "validate",
+            str(proj_path),
+            "--profile",
+            "de_default",
+            "--include-inactive",
+            "--fail-on-warnings",
+        ],
     )
     # History is displayed but does not fail the build.
     assert res.exit_code == 0, res.output
@@ -394,7 +407,13 @@ def test_scenario3c_fail_on_history_warnings_exits_nonzero(tmp_path: Path) -> No
     proj_path = _build_clean_active_dirty_history(tmp_path)
     res = runner.invoke(
         app,
-        ["validate", str(proj_path), "--fail-on-history-warnings"],
+        [
+            "validate",
+            str(proj_path),
+            "--profile",
+            "de_default",
+            "--fail-on-history-warnings",
+        ],
     )
     assert res.exit_code == 1, res.output
 
@@ -431,7 +450,7 @@ def test_scenario5_positive_enforcement_catches_missing_target(tmp_path: Path) -
         tracked_refs={"1.1"},
     )
 
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
 
     rules = {f.rule for f in report.findings}
     assert "forbidden_term_used" in rules, [f.as_dict() for f in report.findings]
@@ -501,7 +520,7 @@ def test_scenario7_positive_enforcement_accepts_inflection(
         tracked_refs={"1.1"},
     )
 
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
 
     assert "glossary_target_missing" not in {f.rule for f in report.findings}
     assert report.passed, [f.as_dict() for f in report.findings]
@@ -537,7 +556,7 @@ def test_scenario9_qa_matches_validation_and_is_effective_only(tmp_path: Path) -
     )
     proj_path = _write_project(tmp_path, chunk=chunk, glossary_entries=[entry])
     # build_status_snapshot requires a source document in source/.
-    _proj0 = load_project(proj_path)
+    _proj0 = load_project(proj_path, profile="de_default")
     (_proj0.source_dir / "source.md").write_text("# source\n", encoding="utf-8")
     versions_by_record = {
         "0001-000001": ("1.2", "Er trat eine Dekade später zurück."),
@@ -552,11 +571,11 @@ def test_scenario9_qa_matches_validation_and_is_effective_only(tmp_path: Path) -
     )
 
     # Validation: clean effective output -> passes.
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert report.passed, [f.as_dict() for f in report.findings]
 
     # QA scan is effective-only and uses the same matcher.
-    proj = load_project(proj_path)
+    proj = load_project(proj_path, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
     result = qa_scan(proj, bundle, forbidden=True, glossary=True)
     record_ids = {f.record_id for f in result.findings}
@@ -578,6 +597,8 @@ def test_scenario8_enforce_off_guard_rejects_mandatory(tmp_path: Path) -> None:
             "context",
             "reset-term",
             str(proj_path),
+            "--profile",
+            "de_default",
             "tenday",
             "--create",
             "--target",
@@ -600,6 +621,8 @@ def test_scenario8_enforce_off_guard_allows_with_flag(tmp_path: Path) -> None:
             "context",
             "reset-term",
             str(proj_path),
+            "--profile",
+            "de_default",
             "tenday",
             "--create",
             "--target",
@@ -633,7 +656,7 @@ def test_scenario8_advisory_target_only_enforce_off_is_warn_free(
         ),
         tracked_refs={"1.1"},
     )
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert report.passed, [f.as_dict() for f in report.findings]
     assert not any(f.rule == "glossary_target_missing" for f in report.findings)
 
@@ -646,6 +669,8 @@ def test_scenario8_mandate_term_records_binding_decision(tmp_path: Path) -> None
             "context",
             "mandate-term",
             str(proj_path),
+            "--profile",
+            "de_default",
             "tenday",
             "--target",
             "Dekade",
@@ -662,7 +687,7 @@ def test_scenario8_mandate_term_records_binding_decision(tmp_path: Path) -> None
     assert res.exit_code == 0, res.output
     from booktx.context import load_context
 
-    ctx = load_context(load_project(proj_path))
+    ctx = load_context(load_project(proj_path, profile="de_default"))
     entry = next(e for e in ctx.glossary if e.source == "tenday")
     assert entry.require_target is True
     assert entry.enforce == "error"
@@ -679,6 +704,8 @@ def test_scenario8_mandate_term_rejects_enforce_off(tmp_path: Path) -> None:
             "context",
             "mandate-term",
             str(proj_path),
+            "--profile",
+            "de_default",
             "tenday",
             "--target",
             "Dekade",
@@ -715,7 +742,7 @@ def test_scenario10_audit_term_generates_safe_blocks(tmp_path: Path) -> None:
         enforce="error",
     )
     proj_path = _write_project(tmp_path, chunk=chunk, glossary_entries=[entry])
-    _proj0 = load_project(proj_path)
+    _proj0 = load_project(proj_path, profile="de_default")
     (_proj0.source_dir / "source.md").write_text("# source\n", encoding="utf-8")
     _write_store_and_ledger_multi(
         proj_path,
@@ -730,7 +757,7 @@ def test_scenario10_audit_term_generates_safe_blocks(tmp_path: Path) -> None:
     )
 
     block_path = (
-        project_storage_root(load_project(proj_path))
+        project_storage_root(load_project(proj_path, profile="de_default"))
         / "ingest"
         / "glossary-tenday-fixes.block.txt"
     )
@@ -740,6 +767,8 @@ def test_scenario10_audit_term_generates_safe_blocks(tmp_path: Path) -> None:
             "context",
             "audit-term",
             str(proj_path),
+            "--profile",
+            "de_default",
             "tenday",
             "--write-block",
             "ingest/glossary-tenday-fixes.block.txt",
@@ -784,6 +813,8 @@ def _mandated_project(tmp_path: Path) -> tuple[Path, str]:
         [
             "init",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--target",
             "de",
             "--source-file",
@@ -794,13 +825,25 @@ def _mandated_project(tmp_path: Path) -> tuple[Path, str]:
     )
     assert res.exit_code == 0, res.output
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "mandate-term",
             str(project_dir),
+            "--profile",
+            "de_default",
             "tenday",
             "--target",
             "Dekade",
@@ -818,6 +861,8 @@ def _mandated_project(tmp_path: Path) -> tuple[Path, str]:
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
@@ -837,11 +882,20 @@ def test_scenario11_stale_task_blocks_submission(tmp_path: Path) -> None:
     project_dir, first_id = _mandated_project(tmp_path)
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task_payload = json.loads(next_res.output)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
     assert task.mandatory_glossary_sha256 is not None
@@ -873,11 +927,20 @@ def test_scenario11_chapter_note_change_does_not_stale(tmp_path: Path) -> None:
     project_dir, first_id = _mandated_project(tmp_path)
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task_payload = json.loads(next_res.output)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
 
@@ -915,11 +978,20 @@ def test_scenario11_legacy_task_remains_loadable_and_warns(tmp_path: Path) -> No
     project_dir, first_id = _mandated_project(tmp_path)
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task_payload = json.loads(next_res.output)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
     # Simulate a legacy task that predates the fingerprint field.
@@ -976,7 +1048,7 @@ def test_glossary_missing_target_explains_source_phrase_context(tmp_path: Path) 
         tracked_refs={"1.1"},
     )
 
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
 
     finding = next(f for f in report.findings if f.rule == "glossary_target_missing")
     assert "Wasp hunter" in finding.message
@@ -1032,7 +1104,7 @@ def test_forbidden_wespe_jaeger_rejects_literal_compound(tmp_path: Path) -> None
         tracked_refs={"1.1"},
     )
 
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     rules = {f.rule for f in report.findings}
     assert "forbidden_term_used" in rules
 
@@ -1064,5 +1136,5 @@ def test_wasp_hunter_apposition_satisfies_required_wasp_target(tmp_path: Path) -
         tracked_refs={"1.1"},
     )
 
-    report = validate_project(load_project(proj_path))
+    report = validate_project(load_project(proj_path, profile="de_default"))
     assert report.passed, [f.as_dict() for f in report.findings]

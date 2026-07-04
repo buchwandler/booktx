@@ -48,13 +48,25 @@ def _make_project(tmp_path: Path) -> Path:
 
 
 def _ready_context(project_dir: Path) -> None:
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
@@ -63,7 +75,7 @@ def _ready_context(project_dir: Path) -> None:
 
 
 def _translated_dir(project_dir: Path) -> Path:
-    path = load_project(project_dir).translated_dir
+    path = load_project(project_dir, profile="de_default").translated_dir
     assert path is not None
     return path
 
@@ -113,7 +125,9 @@ def test_chapters_audit_json_emits_findings(tmp_path: Path):
 
 def test_next_chapter_respects_context_gate(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    res = runner.invoke(app, ["next-chapter", str(project_dir)])
+    res = runner.invoke(
+        app, ["next-chapter", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 1
     assert "context" in res.output.lower()
 
@@ -121,7 +135,9 @@ def test_next_chapter_respects_context_gate(tmp_path: Path):
 def test_next_chapter_prints_first_incomplete_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     _ready_context(project_dir)
-    res = runner.invoke(app, ["next-chapter", str(project_dir)])
+    res = runner.invoke(
+        app, ["next-chapter", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "context:" in res.output
     assert "chapter: 0001" in res.output
@@ -133,7 +149,9 @@ def test_next_chapter_prints_first_incomplete_chapter(tmp_path: Path):
 def test_next_unit_chapter_matches_next_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     _ready_context(project_dir)
-    res = runner.invoke(app, ["next", str(project_dir), "--unit", "chapter"])
+    res = runner.invoke(
+        app, ["next", str(project_dir), "--profile", "de_default", "--unit", "chapter"]
+    )
     assert res.exit_code == 0, res.output
     assert "chapter: 0001" in res.output
     assert "pending chunks:" in res.output
@@ -151,6 +169,8 @@ def test_next_chapter_skips_completed_chapter(tmp_path: Path):
         payload = {"chunk_id": cid, "records": records}
         out_path = translated_dir / f"{cid}.json"
         out_path.write_text(json.dumps(payload), encoding="utf-8")
-    res = runner.invoke(app, ["next-chapter", str(project_dir)])
+    res = runner.invoke(
+        app, ["next-chapter", str(project_dir), "--profile", "de_default"]
+    )
     assert res.exit_code == 0, res.output
     assert "chapter: 0002" in res.output

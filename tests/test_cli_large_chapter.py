@@ -56,16 +56,35 @@ def _make_project(tmp_path: Path) -> Path:
     assert res.exit_code == 0, res.output
     ext = runner.invoke(app, ["extract", str(project_dir)])
     assert ext.exit_code == 0, ext.output
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "mark-ready", str(project_dir), "--force", "--reason", "test"],
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--force",
+            "--reason",
+            "test",
+        ],
     )
     return project_dir
 
 
 def _proj(project_dir: Path):
-    return load_project(project_dir)
+    return load_project(project_dir, profile="de_default")
 
 
 def _store_path(project_dir: Path) -> Path:
@@ -80,6 +99,8 @@ def _accept_chapter(project_dir: Path, chapter_id: str, *, max_words: int = 900)
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             chapter_id,
             "--unit",
@@ -114,6 +135,8 @@ def _accept_chapter(project_dir: Path, chapter_id: str, *, max_words: int = 900)
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--json-file",
@@ -143,6 +166,8 @@ def test_translate_next_chapter_oversized_auto_creates_single_chapter_todo(
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             "0002",
             "--unit",
@@ -173,6 +198,8 @@ def test_translate_next_chapter_small_stays_chapter_task(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             "0002",
             "--unit",
@@ -203,6 +230,8 @@ def test_translate_next_chapter_force_allows_large_task(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             "0002",
             "--unit",
@@ -235,6 +264,8 @@ def test_retries_reuse_existing_single_chapter_todo(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             "0002",
             "--unit",
@@ -254,6 +285,8 @@ def test_retries_reuse_existing_single_chapter_todo(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             "0002",
             "--unit",
@@ -289,6 +322,8 @@ def test_insert_from_todo_prints_todo_resume_next_hint(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--chapter",
             "0002",
             "--unit",
@@ -347,6 +382,8 @@ def test_insert_from_todo_prints_todo_resume_next_hint(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task_id,
             "--json-file",

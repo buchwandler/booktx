@@ -502,7 +502,9 @@ def test_extract_writes_chapter_map_and_audit_report(tmp_path):
     from booktx.status import build_status_snapshot
 
     bundle = build_status_snapshot(
-        load_project(project_dir), context_exists=False, context_ready=False
+        load_project(project_dir, profile="de_default"),
+        context_exists=False,
+        context_ready=False,
     )
     assert bundle.epub_audit is not None
     assert bundle.epub_audit.warning_count > 0

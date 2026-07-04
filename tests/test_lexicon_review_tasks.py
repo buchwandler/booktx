@@ -47,7 +47,15 @@ def _make_project(tmp_path: Path) -> Path:
     extract = runner.invoke(app, ["extract", str(project_dir)])
     assert extract.exit_code == 0, extract.output
     ctx_init = runner.invoke(
-        app, ["context", "init", str(project_dir), "--non-interactive"]
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
     )
     assert ctx_init.exit_code == 0, ctx_init.output
     ctx_ready = runner.invoke(
@@ -56,6 +64,8 @@ def _make_project(tmp_path: Path) -> Path:
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
@@ -109,7 +119,7 @@ def _write_lexicon(
 
 
 def _matching_record(project_dir: Path) -> tuple[str, str]:
-    project = load_project(project_dir)
+    project = load_project(project_dir, profile="de_default")
     chunk = json.loads(next(project.chunks_dir.glob("*.json")).read_text("utf-8"))
     record = next(
         item
@@ -126,6 +136,8 @@ def _task_for_project(project_dir: Path) -> tuple[object, str]:
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -135,7 +147,7 @@ def _task_for_project(project_dir: Path) -> tuple[object, str]:
     )
     assert next_res.exit_code == 0, next_res.output
     payload = json.loads(next_res.output)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, payload["task_id"])
     assert task is not None
     return task, payload["task_id"]
@@ -178,7 +190,8 @@ def test_translation_task_persists_applicable_lexicon(monkeypatch, tmp_path: Pat
     assert matching_record.applicable_lexicon[0].entry_id == "LEX-MOULDY"
 
     source_block = (
-        load_project(project_dir).tasks_dir / f"{task_id}.source.block.txt"
+        load_project(project_dir, profile="de_default").tasks_dir
+        / f"{task_id}.source.block.txt"
     ).read_text("utf-8")
     assert "# applicable lexicon:" in source_block
     assert "# lexicon: LEX-MOULDY" in source_block
@@ -188,7 +201,7 @@ def test_unrelated_lexicon_change_does_not_stale_task(monkeypatch, tmp_path: Pat
     shard = _write_lexicon(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     task, _ = _task_for_project(project_dir)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     rid, _ = _matching_record(project_dir)
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
@@ -229,7 +242,7 @@ def test_applicable_lexicon_change_stales_translation_task(monkeypatch, tmp_path
     shard = _write_lexicon(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     task, _ = _task_for_project(project_dir)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     rid, _ = _matching_record(project_dir)
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
@@ -265,7 +278,7 @@ def test_write_review_persists_applicable_lexicon_and_findings(
     _write_lexicon(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     rid, source = _matching_record(project_dir)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     write_translation_store(
         proj,
         _accepted_store(
@@ -281,6 +294,8 @@ def test_write_review_persists_applicable_lexicon_and_findings(
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--pass",
             "1",
@@ -296,7 +311,15 @@ def test_write_review_persists_applicable_lexicon_and_findings(
 
     res = runner.invoke(
         app,
-        ["lexicon", "write-review", str(project_dir), "--pass", "1"],
+        [
+            "lexicon",
+            "write-review",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--pass",
+            "1",
+        ],
     )
     assert res.exit_code == 0, res.output
     task_id = next(
@@ -324,11 +347,20 @@ def test_promote_context_defaults_to_question_for_ambiguous_entry(
     project_dir = _make_project(tmp_path)
 
     res = runner.invoke(
-        app, ["lexicon", "promote-context", str(project_dir), "--entry", "LEX-MOULDY"]
+        app,
+        [
+            "lexicon",
+            "promote-context",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--entry",
+            "LEX-MOULDY",
+        ],
     )
 
     assert res.exit_code == 0, res.output
-    ctx = load_context(load_project(project_dir))
+    ctx = load_context(load_project(project_dir, profile="de_default"))
     assert ctx is not None
     assert any(question.topic == "lexicon" for question in ctx.questions)
     assert ctx.ready is False
@@ -341,11 +373,20 @@ def test_promote_context_defaults_to_advisory_for_single_preferred(
     project_dir = _make_project(tmp_path)
 
     res = runner.invoke(
-        app, ["lexicon", "promote-context", str(project_dir), "--entry", "LEX-MOULDY"]
+        app,
+        [
+            "lexicon",
+            "promote-context",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--entry",
+            "LEX-MOULDY",
+        ],
     )
 
     assert res.exit_code == 0, res.output
-    ctx = load_context(load_project(project_dir))
+    ctx = load_context(load_project(project_dir, profile="de_default"))
     assert ctx is not None
     glossary = next(
         entry for entry in ctx.glossary if entry.source == "mouldy principles"
@@ -358,7 +399,7 @@ def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path:
     _write_lexicon(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     rid, source = _matching_record(project_dir)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     active_review = TranslationReviewCandidate(
         pass_number=1,
         run_number=1,
@@ -407,6 +448,8 @@ def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path:
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--pass",
             "1",
@@ -422,7 +465,15 @@ def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path:
 
     res = runner.invoke(
         app,
-        ["lexicon", "write-review", str(project_dir), "--pass", "1"],
+        [
+            "lexicon",
+            "write-review",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--pass",
+            "1",
+        ],
     )
 
     assert res.exit_code == 0, res.output
@@ -442,7 +493,7 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
     _write_lexicon(monkeypatch, tmp_path, preferred=["schäbigen Prinzipien"])
     project_dir = _make_project(tmp_path)
     rid, source = _matching_record(project_dir)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     write_translation_store(
         proj,
         _accepted_store(
@@ -458,6 +509,8 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
             "review",
             "configure",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--enable",
             "--pass",
             "1",
@@ -473,7 +526,15 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
 
     create_res = runner.invoke(
         app,
-        ["lexicon", "write-review", str(project_dir), "--pass", "1"],
+        [
+            "lexicon",
+            "write-review",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--pass",
+            "1",
+        ],
     )
     assert create_res.exit_code == 0, create_res.output
     task_id = next(
@@ -493,6 +554,8 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
             "review",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--review-task-id",
             task_id,
             "--file",
@@ -503,6 +566,9 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
     )
     assert insert_res.exit_code == 0, insert_res.output
 
-    audit = runner.invoke(app, ["lexicon", "audit", str(project_dir), "--jsonl"])
+    audit = runner.invoke(
+        app,
+        ["lexicon", "audit", str(project_dir), "--profile", "de_default", "--jsonl"],
+    )
     assert audit.exit_code == 0, audit.output
     assert audit.output.strip() == ""

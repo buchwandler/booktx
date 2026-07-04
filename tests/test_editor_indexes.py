@@ -526,7 +526,7 @@ def test_kind_rejects_invalid_value(project):
 
 def test_14_jsonl_alias_files_are_nonempty(project):
     project_dir, _, _ = project
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     res = _export(project_dir, "--jsonl", "--json")
     assert res.exit_code == 0, res.output
     from booktx.config import (

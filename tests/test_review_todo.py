@@ -205,7 +205,7 @@ def test_select_review_todo_chapters_counts_gaps_without_crashing(tmp_path):
     )
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
     rec = chunk["records"][0]
     store = TranslationStoreV2(
@@ -348,7 +348,7 @@ def test_select_review_todo_chapters_2passes_3chapters_single_computation(tmp_pa
     )
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     # Write one accepted v2 record per chunk.
     records: dict[str, StoredTranslationRecordV2] = {}
     for i, chunk_path in enumerate(sorted(proj.chunks_dir.glob("*.json")), start=1):
@@ -411,7 +411,7 @@ def test_select_review_todo_chapters_2passes_3chapters_single_computation(tmp_pa
         }
     )
     write_profile_config(proj, cfg)
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
 
     with (

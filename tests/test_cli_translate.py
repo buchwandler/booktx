@@ -48,20 +48,32 @@ def _make_project(tmp_path: Path, *, protected_terms: list[str] | None = None) -
     )
     assert res.exit_code == 0, res.output
     if protected_terms:
-        proj = load_project(project_dir)
+        proj = load_project(project_dir, profile="de_default")
         proj.names_path.write_text(
             json.dumps({"protected_terms": protected_terms}),
             encoding="utf-8",
         )
     ext = runner.invoke(app, ["extract", str(project_dir)])
     assert ext.exit_code == 0, ext.output
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
@@ -71,7 +83,7 @@ def _make_project(tmp_path: Path, *, protected_terms: list[str] | None = None) -
 
 
 def _proj(project_dir: Path):
-    return load_project(project_dir)
+    return load_project(project_dir, profile="de_default")
 
 
 def _translated_dir(project_dir: Path) -> Path:
@@ -128,7 +140,18 @@ def _insert_identity_target(
 ):
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
@@ -148,6 +171,8 @@ def _insert_identity_target(
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task_id or task["task_id"],
             "--stdin",
@@ -161,7 +186,9 @@ def _insert_identity_target(
 def test_status_json_reports_totals_before_translation(tmp_path: Path):
     project_dir = _make_project(tmp_path)
 
-    res = runner.invoke(app, ["status", str(project_dir), "--json"])
+    res = runner.invoke(
+        app, ["status", str(project_dir), "--profile", "de_default", "--json"]
+    )
 
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)
@@ -176,7 +203,15 @@ def test_status_and_translate_next_respect_boundary_overlap(tmp_path: Path):
 
     status_res = runner.invoke(
         app,
-        ["status", str(project_dir), "--chapter", "0002", "--json"],
+        [
+            "status",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--chapter",
+            "0002",
+            "--json",
+        ],
     )
 
     assert status_res.exit_code == 0, status_res.output
@@ -194,6 +229,10 @@ def test_status_and_translate_next_respect_boundary_overlap(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--chapter",
             "0002",
             "--unit",
@@ -215,7 +254,18 @@ def test_translate_next_creates_ingest_file_and_insert_updates_store(tmp_path: P
 
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
@@ -252,6 +302,8 @@ def test_translate_next_creates_ingest_file_and_insert_updates_store(tmp_path: P
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--json-file",
@@ -265,7 +317,9 @@ def test_translate_next_creates_ingest_file_and_insert_updates_store(tmp_path: P
     assert _store_path(project_dir).is_file()
     assert not list(_translated_dir(project_dir).glob("*.json"))
 
-    status_res = runner.invoke(app, ["status", str(project_dir), "--json"])
+    status_res = runner.invoke(
+        app, ["status", str(project_dir), "--profile", "de_default", "--json"]
+    )
     status = json.loads(status_res.output)
     assert status["totals"]["records_translated"] >= len(task["records"])
 
@@ -275,7 +329,18 @@ def test_translate_next_block_template_includes_translation_version(tmp_path: Pa
 
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
@@ -298,6 +363,10 @@ def test_translate_insert_tsv_accepts_batch(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -317,6 +386,8 @@ def test_translate_insert_tsv_accepts_batch(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--stdin",
@@ -339,6 +410,10 @@ def test_translate_insert_block_accepts_batch(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -360,6 +435,8 @@ def test_translate_insert_block_accepts_batch(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--stdin",
@@ -385,6 +462,10 @@ def test_translate_insert_block_file_accepts_batch(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -408,6 +489,8 @@ def test_translate_insert_block_file_accepts_batch(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--file",
@@ -426,7 +509,18 @@ def test_translate_insert_accepts_task_after_live_baseline_change(tmp_path: Path
 
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
@@ -435,7 +529,7 @@ def test_translate_insert_accepts_task_after_live_baseline_change(tmp_path: Path
     payload["records"][0]["target"] = task["records"][0]["source"]
     ingest_file.write_text(json.dumps(payload), encoding="utf-8")
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     ctx = load_context(proj)
     assert ctx is not None
     ctx.global_rules.append("Prefer shorter German clauses.")
@@ -447,6 +541,8 @@ def test_translate_insert_accepts_task_after_live_baseline_change(tmp_path: Path
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--json-file",
@@ -471,7 +567,18 @@ def test_translate_insert_legacy_task_without_translation_version_remains_accept
 
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
@@ -491,6 +598,8 @@ def test_translate_insert_legacy_task_without_translation_version_remains_accept
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--json-file",
@@ -506,7 +615,16 @@ def test_translate_insert_block_rejects_missing_header(tmp_path: Path):
 
     insert_res = runner.invoke(
         app,
-        ["translate", "insert", str(project_dir), "--stdin", "--format", "block"],
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--stdin",
+            "--format",
+            "block",
+        ],
         input="German target without an id\n",
     )
 
@@ -519,7 +637,16 @@ def test_translate_insert_block_rejects_duplicate_id(tmp_path: Path):
 
     insert_res = runner.invoke(
         app,
-        ["translate", "insert", str(project_dir), "--stdin", "--format", "block"],
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--stdin",
+            "--format",
+            "block",
+        ],
         input=">>> 0001-000001\none\n\n>>> 0001-000001\ntwo\n",
     )
 
@@ -532,7 +659,18 @@ def test_translate_insert_block_preserves_multiline_target(tmp_path: Path):
 
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     task = json.loads(next_res.output)
     record_id = task["records"][0]["id"]
@@ -543,6 +681,8 @@ def test_translate_insert_block_preserves_multiline_target(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--stdin",
@@ -570,6 +710,10 @@ def test_translate_next_format_block_prints_concise_summary(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -587,6 +731,10 @@ def test_translate_next_format_block_prints_concise_summary(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -622,6 +770,10 @@ def test_translate_next_format_block_show_sources(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -638,6 +790,10 @@ def test_translate_next_format_block_show_sources(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -663,6 +819,10 @@ def test_translate_next_format_block_show_template(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -687,6 +847,10 @@ def test_translate_next_creates_block_ingest_template(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -713,7 +877,18 @@ def test_invalid_insert_is_atomic(tmp_path: Path):
 
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     task = json.loads(next_res.output)
     before = _store_path(project_dir)
@@ -725,7 +900,7 @@ def test_invalid_insert_is_atomic(tmp_path: Path):
     }
     insert_res = runner.invoke(
         app,
-        ["translate", "insert", str(project_dir), "--stdin"],
+        ["translate", "insert", str(project_dir), "--profile", "de_default", "--stdin"],
         input=json.dumps(payload),
     )
 
@@ -740,14 +915,18 @@ def test_translate_import_legacy_and_export_roundtrip(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     _identity_legacy_chunk(project_dir, "0001")
 
-    import_res = runner.invoke(app, ["translate", "import-legacy", str(project_dir)])
+    import_res = runner.invoke(
+        app, ["translate", "import-legacy", str(project_dir), "--profile", "de_default"]
+    )
     assert import_res.exit_code == 0, import_res.output
     store = json.loads(_store_path(project_dir).read_text("utf-8"))
     assert any(record_id.startswith("0001-") for record_id in store["records"])
 
     legacy_file = _translated_dir(project_dir) / "0001.json"
     legacy_file.unlink()
-    export_res = runner.invoke(app, ["translate", "export", str(project_dir)])
+    export_res = runner.invoke(
+        app, ["translate", "export", str(project_dir), "--profile", "de_default"]
+    )
     assert export_res.exit_code == 0, export_res.output
     assert legacy_file.is_file()
 
@@ -756,7 +935,18 @@ def test_translate_migrate_store_dry_run_does_not_rewrite(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     task = json.loads(next_res.output)
     record = task["records"][0]
@@ -777,7 +967,9 @@ def test_translate_migrate_store_dry_run_does_not_rewrite(tmp_path: Path):
         },
     )
 
-    res = runner.invoke(app, ["translate", "migrate-store", str(project_dir)])
+    res = runner.invoke(
+        app, ["translate", "migrate-store", str(project_dir), "--profile", "de_default"]
+    )
 
     assert res.exit_code == 0, res.output
     assert "dry-run: would migrate 1 record(s)" in res.output
@@ -814,6 +1006,8 @@ def test_translate_migrate_store_write_creates_v2_and_ledger(tmp_path: Path):
             "translate",
             "migrate-store",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--write",
             "--actor",
             "user:nahrstaedt",
@@ -864,7 +1058,15 @@ def test_translate_migrate_store_write_fails_on_missing_source(tmp_path: Path):
     )
 
     res = runner.invoke(
-        app, ["translate", "migrate-store", str(project_dir), "--write"]
+        app,
+        [
+            "translate",
+            "migrate-store",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--write",
+        ],
     )
 
     assert res.exit_code == 1
@@ -875,7 +1077,7 @@ def test_translation_get_record_json_and_human_output(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     task, record, _ = _insert_identity_target(project_dir)
 
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     ctx = load_context(proj)
     assert ctx is not None
     ctx.global_rules.append("Prefer shorter German clauses.")
@@ -887,6 +1089,8 @@ def test_translation_get_record_json_and_human_output(tmp_path: Path):
             "translate",
             "set-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--record-id",
@@ -903,6 +1107,8 @@ def test_translation_get_record_json_and_human_output(tmp_path: Path):
             "translation",
             "get-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             "1@1",
             "--before",
             "0",
@@ -922,7 +1128,16 @@ def test_translation_get_record_json_and_human_output(tmp_path: Path):
 
     human_res = runner.invoke(
         app,
-        ["translation", "get-record", str(project_dir), "0001-000001", "--after", "1"],
+        [
+            "translation",
+            "get-record",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "0001-000001",
+            "--after",
+            "1",
+        ],
     )
     assert human_res.exit_code == 0, human_res.output
     assert ">> 0001-000001" in human_res.output
@@ -937,6 +1152,8 @@ def test_translation_list_range_uses_source_order(tmp_path: Path):
             "translation",
             "list",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--range",
             "1@2..2@1",
             "--json",
@@ -955,24 +1172,47 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
     project_dir = _make_project(tmp_path)
     assert (
         runner.invoke(
-            app, ["actor", "set", str(project_dir), "user:nahrstaedt"]
+            app,
+            [
+                "actor",
+                "set",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                "user:nahrstaedt",
+            ],
         ).exit_code
         == 0
     )
-    assert runner.invoke(app, ["harness", "set", str(project_dir), "pi"]).exit_code == 0
     assert (
         runner.invoke(
-            app, ["model", "set", str(project_dir), "codex-openai/gpt-5.5@low"]
+            app, ["harness", "set", str(project_dir), "--profile", "de_default", "pi"]
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app,
+            [
+                "model",
+                "set",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                "codex-openai/gpt-5.5@low",
+            ],
         ).exit_code
         == 0
     )
 
-    whoami = runner.invoke(app, ["actor", "whoami", str(project_dir)])
+    whoami = runner.invoke(
+        app, ["actor", "whoami", str(project_dir), "--profile", "de_default"]
+    )
     assert whoami.exit_code == 0
     assert whoami.output.strip() == "user:nahrstaedt"
 
     task, record, _ = _insert_identity_target(project_dir, target="Erste Fassung.")
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     ctx = load_context(proj)
     assert ctx is not None
     ctx.global_rules.append("Prefer shorter German clauses.")
@@ -984,6 +1224,8 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
             "translate",
             "set-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--record-id",
@@ -1000,6 +1242,8 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
             "translation",
             "compare",
             str(project_dir),
+            "--profile",
+            "de_default",
             "1@1",
             "--versions",
             "1.1,1.2",
@@ -1014,7 +1258,16 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
     ]
 
     activate_res = runner.invoke(
-        app, ["translation", "activate", str(project_dir), "1@1", "1.2"]
+        app,
+        [
+            "translation",
+            "activate",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "1@1",
+            "1.2",
+        ],
     )
     assert activate_res.exit_code == 0, activate_res.output
 
@@ -1024,6 +1277,10 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
             "translation",
             "review",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "1@1",
             "--activate",
             "1.2",
@@ -1034,19 +1291,40 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
     assert review_res.exit_code == 0, review_res.output
 
     get_res = runner.invoke(
-        app, ["translation", "get-record", str(project_dir), "1@1", "--json"]
+        app,
+        [
+            "translation",
+            "get-record",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "1@1",
+            "--json",
+        ],
     )
     payload = json.loads(get_res.output)
     assert payload["active_version"] == "1.2"
     assert payload["available_targets"][1]["review_note"] == "Better in context."
 
-    current_res = runner.invoke(app, ["version", "current", str(project_dir), "--json"])
+    current_res = runner.invoke(
+        app,
+        ["version", "current", str(project_dir), "--profile", "de_default", "--json"],
+    )
     assert current_res.exit_code == 0, current_res.output
     current_payload = json.loads(current_res.output)
     assert current_payload["active_version"] == "1.2"
 
     show_res = runner.invoke(
-        app, ["version", "show", str(project_dir), "1.2", "--json"]
+        app,
+        [
+            "version",
+            "show",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "1.2",
+            "--json",
+        ],
     )
     assert show_res.exit_code == 0, show_res.output
     show_payload = json.loads(show_res.output)
@@ -1054,7 +1332,15 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
 
     fork_res = runner.invoke(
         app,
-        ["version", "fork-context", str(project_dir), "--note", "manual split"],
+        [
+            "version",
+            "fork-context",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--note",
+            "manual split",
+        ],
     )
     assert fork_res.exit_code == 0, fork_res.output
     assert fork_res.output.strip() == "1.3"
@@ -1064,21 +1350,44 @@ def test_whoami_reports_active_version_and_scoped_identity(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     assert (
         runner.invoke(
-            app, ["actor", "set", str(project_dir), "user:nahrstaedt"]
+            app,
+            [
+                "actor",
+                "set",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                "user:nahrstaedt",
+            ],
         ).exit_code
         == 0
     )
-    assert runner.invoke(app, ["harness", "set", str(project_dir), "pi"]).exit_code == 0
     assert (
         runner.invoke(
-            app, ["model", "set", str(project_dir), "codex-openai/gpt-5.5@low"]
+            app, ["harness", "set", str(project_dir), "--profile", "de_default", "pi"]
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app,
+            [
+                "model",
+                "set",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                "codex-openai/gpt-5.5@low",
+            ],
         ).exit_code
         == 0
     )
 
     _insert_identity_target(project_dir, target="Erste Fassung.")
 
-    res = runner.invoke(app, ["whoami", str(project_dir), "--json"])
+    res = runner.invoke(
+        app, ["whoami", str(project_dir), "--profile", "de_default", "--json"]
+    )
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -1092,13 +1401,22 @@ def test_whoami_reports_active_version_and_scoped_identity(tmp_path: Path):
     assert payload["store"]["exists"] is True
     assert payload["store"]["version"] == 2
     assert payload["store"]["record_count"] >= 1
-    assert runner.invoke(app, ["identity", "whoami", str(project_dir)]).exit_code == 0
     assert (
-        runner.invoke(app, ["harness", "whoami", str(project_dir)]).output.strip()
+        runner.invoke(
+            app, ["identity", "whoami", str(project_dir), "--profile", "de_default"]
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
+        ).output.strip()
         == "pi"
     )
     assert (
-        runner.invoke(app, ["model", "whoami", str(project_dir)]).output.strip()
+        runner.invoke(
+            app, ["model", "whoami", str(project_dir), "--profile", "de_default"]
+        ).output.strip()
         == "codex-openai/gpt-5.5@low"
     )
 
@@ -1111,6 +1429,10 @@ def test_translate_export_can_select_exact_version(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1139,6 +1461,8 @@ def test_translate_export_can_select_exact_version(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--stdin",
@@ -1146,7 +1470,7 @@ def test_translate_export_can_select_exact_version(tmp_path: Path):
         input=json.dumps(payload),
     )
     assert insert_res.exit_code == 0, insert_res.output
-    proj = load_project(project_dir)
+    proj = load_project(project_dir, profile="de_default")
     ctx = load_context(proj)
     assert ctx is not None
     ctx.global_rules.append("Prefer shorter German clauses.")
@@ -1158,6 +1482,8 @@ def test_translate_export_can_select_exact_version(tmp_path: Path):
             "translate",
             "set-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--record-id",
@@ -1168,13 +1494,30 @@ def test_translate_export_can_select_exact_version(tmp_path: Path):
     )
     assert second.exit_code == 0, second.output
     activate_res = runner.invoke(
-        app, ["translation", "activate", str(project_dir), "1@1", "1.2"]
+        app,
+        [
+            "translation",
+            "activate",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "1@1",
+            "1.2",
+        ],
     )
     assert activate_res.exit_code == 0, activate_res.output
 
     export_res = runner.invoke(
         app,
-        ["translate", "export", str(project_dir), "--version", "1.1"],
+        [
+            "translate",
+            "export",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--version",
+            "1.1",
+        ],
     )
     assert export_res.exit_code == 0, export_res.output
     exported = json.loads(
@@ -1187,7 +1530,10 @@ def test_translate_export_can_select_exact_version(tmp_path: Path):
 def test_build_cli_require_complete_fails_with_missing_records(tmp_path: Path):
     project_dir = _make_project(tmp_path)
 
-    res = runner.invoke(app, ["build", str(project_dir), "--require-complete"])
+    res = runner.invoke(
+        app,
+        ["build", str(project_dir), "--profile", "de_default", "--require-complete"],
+    )
 
     assert res.exit_code == 1
     assert "build requires complete translations" in res.output
@@ -1202,6 +1548,10 @@ def test_translate_next_writes_source_block_file(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1230,6 +1580,10 @@ def test_translate_insert_missing_file_is_concise(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1245,6 +1599,8 @@ def test_translate_insert_missing_file_is_concise(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--file",
@@ -1268,6 +1624,10 @@ def test_translate_task_status_reports_missing_and_accepted(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1285,6 +1645,8 @@ def test_translate_task_status_reports_missing_and_accepted(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--record-id",
@@ -1301,6 +1663,8 @@ def test_translate_task_status_reports_missing_and_accepted(tmp_path: Path):
             "translate",
             "task-status",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--json",
@@ -1322,6 +1686,10 @@ def test_block_parser_ignores_generated_comments(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1345,6 +1713,8 @@ def test_block_parser_ignores_generated_comments(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--file",
@@ -1372,6 +1742,10 @@ def test_record_stdin_commit(tmp_path: Path):
             "translate",
             "next",
             str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1388,6 +1762,8 @@ def test_record_stdin_commit(tmp_path: Path):
             "translate",
             "set-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--record-id",
@@ -1455,8 +1831,18 @@ def test_translate_next_refuses_ready_context_with_unapproved_required_answers(
     tmp_path: Path,
 ):
     project_dir = _make_project(tmp_path)
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
-    ctx = load_context(load_project(project_dir))
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    ctx = load_context(load_project(project_dir, profile="de_default"))
     assert ctx is not None
     for q in ctx.questions:
         if q.required:
@@ -1465,9 +1851,20 @@ def test_translate_next_refuses_ready_context_with_unapproved_required_answers(
             q.answer_source = "agent"
     ctx.ready = True
     ctx.ready_forced = False
-    write_context(load_project(project_dir), ctx)
+    write_context(load_project(project_dir, profile="de_default"), ctx)
     res = runner.invoke(
-        app, ["translate", "next", str(project_dir), "--format", "block"]
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--format",
+            "block",
+        ],
     )
     assert res.exit_code == 1
     assert "unapproved" in res.output
@@ -1504,7 +1901,7 @@ def test_translate_insert_rejects_missing_inline_tag_for_epub_record(
     find_source_file(proj)
     res = runner.invoke(app, ["extract", str(proj.root)])
     assert res.exit_code == 0, res.output
-    proj = load_project(proj.root)
+    proj = load_project(proj.root, profile="de_default")
     # Simulate old project: strip source_markup from chunk records.
     for path in proj.chunks():
         chunk = json.loads(path.read_text("utf-8"))
@@ -1512,15 +1909,45 @@ def test_translate_insert_rejects_missing_inline_tag_for_epub_record(
             r.pop("source_markup", None)
         path.write_text(json.dumps(chunk, ensure_ascii=False), encoding="utf-8")
     # Initialize context so translate next works.
-    runner.invoke(app, ["context", "init", str(proj.root), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "mark-ready", str(proj.root), "--force", "--reason", "test"],
+        [
+            "context",
+            "init",
+            str(proj.root),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(proj.root),
+            "--profile",
+            "de_default",
+            "--force",
+            "--reason",
+            "test",
+        ],
     )
     # Request the next task.
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(proj.root), "--unit", "chapter", "--json"],
+        [
+            "translate",
+            "next",
+            str(proj.root),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "chapter",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
@@ -1551,6 +1978,8 @@ def test_translate_insert_rejects_missing_inline_tag_for_epub_record(
             "translate",
             "insert",
             str(proj.root),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--json-file",
@@ -1564,7 +1993,7 @@ def test_translate_insert_rejects_missing_inline_tag_for_epub_record(
     assert "accepted:" not in insert_res.output
     from booktx.config import load_translation_store
 
-    store = load_translation_store(load_project(proj.root))
+    store = load_translation_store(load_project(proj.root, profile="de_default"))
     assert all(
         candidate.target != "Hallo Welt."
         for stored in store.records.values()
@@ -1605,10 +2034,29 @@ def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
 
     find_source_file(proj)
     assert runner.invoke(app, ["extract", str(proj.root)]).exit_code == 0
-    runner.invoke(app, ["context", "init", str(proj.root), "--non-interactive"])
     runner.invoke(
         app,
-        ["context", "mark-ready", str(proj.root), "--force", "--reason", "test"],
+        [
+            "context",
+            "init",
+            str(proj.root),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(proj.root),
+            "--profile",
+            "de_default",
+            "--force",
+            "--reason",
+            "test",
+        ],
     )
 
     # The EPUB fixture deterministically produces >=2 records in one chunk.
@@ -1618,6 +2066,10 @@ def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
             "translate",
             "next",
             str(proj.root),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1652,6 +2104,8 @@ def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
             "translate",
             "insert",
             str(proj.root),
+            "--profile",
+            "de_default",
             "--task-id",
             first_task["task_id"],
             "--json-file",
@@ -1668,6 +2122,10 @@ def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
             "translate",
             "next",
             str(proj.root),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
             "--unit",
             "batch",
             "--max-words",
@@ -1702,6 +2160,8 @@ def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
             "translate",
             "insert",
             str(proj.root),
+            "--profile",
+            "de_default",
             "--task-id",
             later["task_id"],
             "--json-file",
@@ -1728,6 +2188,8 @@ def test_translate_revise_record_succeeds(tmp_path: Path):
             "translate",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             record_id,
             "--target",
             "Revised translation for " + record_id,
@@ -1750,6 +2212,8 @@ def test_translate_revise_record_rejects_unknown_record(tmp_path: Path):
             "translate",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             "9999-999999",
             "--target",
             "some text",
@@ -1772,6 +2236,8 @@ def test_translate_revise_record_rejects_empty_target(tmp_path: Path):
             "translate",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             record_id,
             "--target",
             "",
@@ -1794,6 +2260,8 @@ def test_translate_revise_record_store_stays_valid(tmp_path: Path):
             "translate",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             record_id,
             "--target",
             "Revised " + record_id,
@@ -1843,13 +2311,25 @@ def _make_quoted_project(tmp_path: Path) -> Path:
     )
     assert res.exit_code == 0, res.output
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
-    runner.invoke(app, ["context", "init", str(project_dir), "--non-interactive"])
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
     runner.invoke(
         app,
         [
             "context",
             "mark-ready",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--force",
             "--reason",
             "test setup",
@@ -1861,7 +2341,18 @@ def _make_quoted_project(tmp_path: Path) -> Path:
 def _first_task_record(project_dir: Path):
     next_res = runner.invoke(
         app,
-        ["translate", "next", str(project_dir), "--unit", "paragraph", "--json"],
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
@@ -1883,6 +2374,8 @@ def test_translate_insert_rejects_missing_final_quote(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--stdin",
@@ -1917,6 +2410,8 @@ def test_translate_revise_record_rejects_missing_final_quote(tmp_path: Path):
             "translate",
             "insert",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--task-id",
             task["task_id"],
             "--stdin",
@@ -1940,6 +2435,8 @@ def test_translate_revise_record_rejects_missing_final_quote(tmp_path: Path):
             "translate",
             "revise-record",
             str(project_dir),
+            "--profile",
+            "de_default",
             record_id,
             "--stdin",
         ],
@@ -2049,7 +2546,16 @@ def test_translate_search_record_human_mode(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     record_id = _write_one_record_v2_store(project_dir)
     res = runner.invoke(
-        app, ["translate", "search", str(project_dir), "--record", record_id]
+        app,
+        [
+            "translate",
+            "search",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--record",
+            record_id,
+        ],
     )
     assert res.exit_code == 0, res.output
     # No crash; chapter is printed from record_to_chapter, not source_view.
@@ -2069,6 +2575,8 @@ def test_translate_search_record_jsonl(tmp_path: Path):
             "translate",
             "search",
             str(project_dir),
+            "--profile",
+            "de_default",
             "--record",
             record_id,
             "--jsonl",
@@ -2086,7 +2594,15 @@ def test_translate_search_target_match(tmp_path: Path):
     _write_one_record_v2_store(project_dir)
     res = runner.invoke(
         app,
-        ["translate", "search", str(project_dir), "--target", "[de]"],
+        [
+            "translate",
+            "search",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--target",
+            "[de]",
+        ],
     )
     assert res.exit_code == 0, res.output
     assert "found" in res.output
@@ -2098,7 +2614,15 @@ def test_translate_search_source_match(tmp_path: Path):
     _write_one_record_v2_store(project_dir)
     res = runner.invoke(
         app,
-        ["translate", "search", str(project_dir), "--source", "First"],
+        [
+            "translate",
+            "search",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--source",
+            "First",
+        ],
     )
     assert res.exit_code == 0, res.output
     assert "found" in res.output
@@ -2109,7 +2633,15 @@ def test_translate_search_no_match(tmp_path: Path):
     _write_one_record_v2_store(project_dir)
     res = runner.invoke(
         app,
-        ["translate", "search", str(project_dir), "--target", "zzz-nope"],
+        [
+            "translate",
+            "search",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--target",
+            "zzz-nope",
+        ],
     )
     assert res.exit_code == 0, res.output
     assert "found 0 matches" in res.output
@@ -2119,7 +2651,15 @@ def test_translate_search_record_rejects_unknown(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     res = runner.invoke(
         app,
-        ["translate", "search", str(project_dir), "--record", "9999-999999"],
+        [
+            "translate",
+            "search",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--record",
+            "9999-999999",
+        ],
     )
     assert res.exit_code != 0
     assert "not found" in res.output
