@@ -823,10 +823,14 @@ booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file
 
 Rules:
 
-- Prefer exact candidate copy when one source profile already has a good target.
-- Do not copy candidate targets into `TARGET` for `copy` decisions.
-- Leave `TARGET` empty for `copy` decisions.
-- Use `decision_kind: edited` only when the candidate needs a real correction.
+Decision modes (fill `judge-ingest/TASK.decisions.txt`):
+
+- `copy`: `selected` is a candidate label (A/B/C); `decision_kind: copy`; leave `TARGET` empty. Prefer this when one source profile already has a good target.
+- edited from candidate: `selected` is a candidate label (A/B/C); `decision_kind: edited`; `TARGET` is the corrected full target. Use when a candidate is best but needs glossary/quote/style correction.
+- new judge target: `selected: edited`; `decision_kind: edited`; `TARGET` is the full new target. Use when no candidate fits.
+
+Never paste a copy candidate into `TARGET`. Use `TARGET` only for edited/new targets.
+
 - Do not chain `judge insert` and `judge next` in one shell command.
 - Prefer `judge accept-identical` before asking the LLM to compare trivial identical records.
 - Treat `translation-selection-ledger.json` as provenance; never hand-edit it.

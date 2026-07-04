@@ -726,6 +726,27 @@ def judge_show(
             for candidate in record.candidates
         )
         console.print(f"validation: {summary}")
+    console.print("DECISION MODES:", soft_wrap=True, markup=False)
+    console.print(
+        "- copy: selected must be a candidate label; leave TARGET empty.",
+        soft_wrap=True,
+        markup=False,
+    )
+    console.print(
+        "- edited from candidate: selected is a candidate label; decision_kind is edited; TARGET is the corrected full target.",
+        soft_wrap=True,
+        markup=False,
+    )
+    console.print(
+        "- new judge target: selected is edited; decision_kind is edited; TARGET is the full new target.",
+        soft_wrap=True,
+        markup=False,
+    )
+    console.print(
+        "Never paste a copy candidate into TARGET. Use TARGET only for edited/new targets.",
+        soft_wrap=True,
+        markup=False,
+    )
 
 
 def _accept_identical_next_message(
@@ -830,6 +851,22 @@ def judge_accept_identical(
             write=write,
         )
     except BooktxError as exc:
+        if chapter and exc.code == "judge_next":
+            # A scoped --chapter with no missing records is a normal
+            # completion, not a command failure. Mirror sweep-identical.
+            status_payload = build_judge_status_workflow(
+                proj,
+                runtime,
+                bundle=_project_status_snapshot(proj),
+                sources_csv=sources_csv,
+            )
+            for line in _accept_identical_next_message(
+                status_payload=status_payload,
+                runtime=runtime,
+                requested_chapter=chapter,
+            ):
+                console.print(line, soft_wrap=True, markup=False)
+            return
         _handle_booktx_error(exc)
         return
     console.print(f"judge task: {payload['judge_task_id']}")
@@ -1031,6 +1068,26 @@ def judge_insert(
     console.print(f"accepted: {payload['accepted_records']} record(s)")
     if payload["version_refs"]:
         console.print("versions: " + ", ".join(payload["version_refs"]))
+    chapter_id = payload.get("chapter_id") or ""
+    status_payload = build_judge_status_workflow(
+        proj,
+        runtime,
+        bundle=_project_status_snapshot(proj),
+        sources_csv=None,
+    )
+    if chapter_id:
+        for line in _accept_identical_next_message(
+            status_payload=status_payload,
+            runtime=runtime,
+            requested_chapter=chapter_id,
+        ):
+            console.print(line, soft_wrap=True, markup=False)
+    elif status_payload.get("next_command"):
+        console.print(
+            f"next command: {status_payload['next_command']}",
+            soft_wrap=True,
+            markup=False,
+        )
 
 
 @judge_app.command(name="reset-ingest")

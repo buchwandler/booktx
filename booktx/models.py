@@ -665,6 +665,29 @@ class ApplicableTermbaseFindingSnapshot(BaseModel):
     fallback: bool = False
 
 
+class ApplicableGlossaryEntrySnapshot(BaseModel):
+    """One applicable binding glossary entry snapshot persisted on a judge task record.
+
+    Parallel to :class:`ApplicableTermbaseEntrySnapshot` but for the profile
+    glossary. Only binding entries (enforce != off with a required target or a
+    forbidden target) are snapshotted, so the judge task can show the exact
+    approved/forbidden policy next to the source record.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    source_variants: list[str] = Field(default_factory=list)
+    matched_source_cue: str
+    target: str | None = None
+    target_variants: list[str] = Field(default_factory=list)
+    require_target: bool = False
+    forbidden_targets: list[str] = Field(default_factory=list)
+    enforce: Literal["off", "warn", "error"] = "warn"
+    case_sensitive: bool = False
+    notes: str = ""
+
+
 class TranslationTaskRecord(BaseModel):
     """A record assigned to a CLI-created translation task."""
 
@@ -1199,6 +1222,9 @@ class JudgeTaskRecord(BaseModel):
     source: str
     source_sha256: str
     applicable_termbase: list[ApplicableTermbaseEntrySnapshot] = Field(
+        default_factory=list
+    )
+    applicable_glossary: list[ApplicableGlossaryEntrySnapshot] = Field(
         default_factory=list
     )
     candidates: list[JudgeTaskCandidate] = Field(default_factory=list)

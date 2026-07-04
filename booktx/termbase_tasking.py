@@ -13,15 +13,18 @@ from booktx.models import (
 from booktx.termbase import (
     EffectiveTranslationTermbase,
     TermbaseEntry,
+    TermbaseUsageRule,
     effective_approved_entries,
     resolve_effective_termbase,
 )
-from booktx.termbase_match import termbase_source_matches
+from booktx.termbase_match import evaluate_entry_policy, termbase_source_matches
+from booktx.validate import Finding
 from booktx.versioning import canonical_json_sha256
 
 __all__ = [
     "applicable_termbase_sha256_for_record_sources",
     "collect_applicable_termbase_for_record_sources",
+    "validate_termbase_record_pair",
 ]
 
 
@@ -220,3 +223,95 @@ def applicable_termbase_sha256_for_record_sources(
     record_sources: Mapping[str, str],
 ) -> str:
     return collect_applicable_termbase_for_record_sources(project, record_sources)[1]
+
+
+def _termbase_entry_from_snapshot(
+    snapshot: ApplicableTermbaseEntrySnapshot,
+) -> TermbaseEntry:
+    """Reconstruct an evaluable TermbaseEntry from an applicable-termbase snapshot.
+
+    The snapshot already carries canonical, validated fields, so reconstruction
+    is safe and lets the shared ``evaluate_entry_policy`` machinery classify the
+    target without duplicating the forbidden/preferred logic.
+    """
+    return TermbaseEntry(
+        id=snapshot.entry_id,
+        kind=snapshot.kind,
+        source=snapshot.source,
+        source_variants=list(snapshot.source_variants),
+        source_regex=snapshot.source_regex,
+        source_language=snapshot.source_language,
+        case_sensitive=snapshot.case_sensitive,
+        target_preferred=list(snapshot.target_preferred),
+        target_allowed=list(snapshot.target_allowed),
+        target_forbidden=list(snapshot.target_forbidden),
+        target_regex_forbidden=list(snapshot.target_regex_forbidden),
+        preferred_policy=snapshot.preferred_policy,
+        target_language="de",
+        severity=snapshot.severity,
+        sense=snapshot.sense,
+        rationale=snapshot.rationale,
+        usage_rules=[
+            TermbaseUsageRule(
+                id=rule.rule_id,
+                context_id=rule.context_id,
+                source_cue=rule.source_cue,
+                source_regex=rule.source_regex,
+                required_target_literals=list(rule.required_target_literals),
+                required_target_regexes=list(rule.required_target_regexes),
+                allowed_target_literals=list(rule.allowed_target_literals),
+                allowed_target_regexes=list(rule.allowed_target_regexes),
+                forbidden_target_literals=list(rule.forbidden_target_literals),
+                forbidden_target_regexes=list(rule.forbidden_target_regexes),
+                severity=rule.severity,
+                prompt=rule.prompt,
+                fallback=rule.fallback,
+            )
+            for rule in snapshot.usage_rules
+        ],
+    )
+
+
+def validate_termbase_record_pair(
+    *,
+    source_text: str,
+    target_text: str,
+    snapshots: list[ApplicableTermbaseEntrySnapshot],
+    chunk_id: str,
+    record_id: str,
+) -> list[Finding]:
+    """Evaluate applicable termbase snapshots against one target text.
+
+    Returns one Finding per non-clean evaluation. Findings use the rules
+    ``termbase.forbidden_target`` and ``termbase.preferred_missing`` at the
+    snapshot/rule severity. Error-severity findings block judge copy/edited
+    output; advisory (warn/info) findings render as guidance only.
+    """
+    findings: list[Finding] = []
+    for snapshot in snapshots:
+        entry = _termbase_entry_from_snapshot(snapshot)
+        evaluations = evaluate_entry_policy(
+            target_text,
+            entry,
+            source_match=snapshot.matched_source_cue,
+            source_span=snapshot.matched_source_span,
+            occurrence_index=0,
+        )
+        for evaluation in evaluations:
+            if evaluation.status == "clean":
+                continue
+            rule = (
+                "termbase.forbidden_target"
+                if evaluation.status == "forbidden_target"
+                else "termbase.preferred_missing"
+            )
+            findings.append(
+                Finding(
+                    chunk_id=chunk_id,
+                    severity=evaluation.severity,
+                    rule=rule,
+                    message=evaluation.reason,
+                    record_id=record_id,
+                )
+            )
+    return findings

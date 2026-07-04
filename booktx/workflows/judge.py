@@ -624,6 +624,8 @@ def accept_judge_submission_workflow(
     return {
         "accepted_records": result.accepted_records,
         "version_refs": result.version_refs,
+        "chapter_id": task.chapter_id,
+        "judge_task_id": task.judge_task_id,
     }
 
 

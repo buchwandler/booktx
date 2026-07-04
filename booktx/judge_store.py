@@ -15,11 +15,13 @@ from typing import TYPE_CHECKING
 from booktx.config import Project, _err, load_translation_store
 from booktx.context import TranslationContext
 from booktx.models import (
+    ApplicableTermbaseEntrySnapshot,
     JudgeTaskCandidate,
     JudgeTaskFinding,
     Record,
     TranslatedRecord,
 )
+from booktx.termbase_tasking import validate_termbase_record_pair
 from booktx.translation_store import (
     EffectiveCandidateError,
     effective_candidate_selection,
@@ -147,6 +149,7 @@ def collect_source_candidates(
     source_views: dict[str, JudgeSourceProfileView],
     source_record: Record,
     chunk_id: str,
+    termbase_snapshots: list[ApplicableTermbaseEntrySnapshot] | None = None,
 ) -> tuple[list[JudgeTaskCandidate], list[str]]:
     """Build labeled judge candidates for one source record from each source view.
 
@@ -181,6 +184,14 @@ def collect_source_candidates(
                 ),
                 chunk_id,
                 selection_context,
+            )
+        if termbase_snapshots:
+            findings = findings + validate_termbase_record_pair(
+                source_text=source_record.source,
+                target_text=selection.candidate.target,
+                snapshots=termbase_snapshots,
+                chunk_id=chunk_id,
+                record_id=source_record.id,
             )
         candidates.append(
             JudgeTaskCandidate(

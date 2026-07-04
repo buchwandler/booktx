@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 from booktx.cli import app
 from booktx.config import (
     create_profile,
+    judge_ingest_block_path,
     judge_ingest_decisions_path,
     judge_ingest_json_path,
     judge_source_profile_dir,
@@ -2415,3 +2416,541 @@ def test_judge_sync_requires_configured_source_order(tmp_path: Path):
         raise AssertionError("should reject unknown")
     except Exception:
         pass
+
+
+def test_judge_decisions_template_documents_new_judge_target(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(
+        project_dir, "de_a", record_ids[0], "Imperium marschiert vor."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    text = ingest.read_text("utf-8")
+    assert "# Decision modes:" in text
+    assert "# - copy: selected must be A/B/C; TARGET must be empty." in text
+    assert "# - new judge target: selected is edited" in text
+    assert "Never paste a copy candidate into TARGET" in text
+
+
+def test_judge_insert_edited_accepts_selected_edited_without_candidate(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(
+        project_dir, "de_a", record_ids[0], "Imperium marschiert vor."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    _fill_decisions_ingest(
+        ingest,
+        task_id,
+        [
+            (
+                record_ids[0],
+                "edited",
+                "edited",
+                "None of the candidates fits; new judge target.",
+                "Das Imperium zieht endlich in den Krieg.",
+            )
+        ],
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "decisions",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    store = load_translation_store(load_profile_project(project_dir, "de_judge"))
+    assert "zieht endlich" in store.records[record_ids[0]].versions[0].target
+
+
+def test_judge_insert_selected_edited_has_no_selected_profile(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(
+        project_dir, "de_a", record_ids[0], "Imperium marschiert vor."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    _fill_decisions_ingest(
+        ingest,
+        task_id,
+        [
+            (
+                record_ids[0],
+                "edited",
+                "edited",
+                "new judge target",
+                "Das Imperium zieht endlich in den Krieg.",
+            )
+        ],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "decisions",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    ledger = load_translation_selection_ledger(
+        load_profile_project(project_dir, "de_judge")
+    )
+    decision = ledger.records[record_ids[0]]
+    assert decision.decision_kind == "edited"
+    assert decision.selected_profile is None
+    # candidate_evidence is still preserved for auditability
+    assert decision.candidate_evidence
+    assert any(ev.profile == "de_a" for ev in decision.candidate_evidence)
+
+
+def test_judge_insert_prints_scoped_next_for_incomplete_chapter(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Imperium vor.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "Imperium vor.")
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--unit",
+            "chapter",
+            "--chapter",
+            "0001",
+            "--max-records",
+            "1",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    _fill_decisions_ingest(
+        ingest,
+        task_id,
+        [(record_ids[0], "A", "copy", "identical", "")],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "decisions",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    # record_ids[1] still missing in chapter 0001 -> scoped next stays in chapter
+    assert "next command for chapter 0001:" in res.output
+    assert "--chapter 0001" in res.output
+
+
+def test_judge_insert_prints_chapter_complete_then_global_next(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    chapter_records = chapters["0001"]
+    for rid in chapter_records:
+        _write_source_candidate(project_dir, "de_a", rid, "Erster Satz.")
+        _write_source_candidate(project_dir, "de_b", rid, "Erster Satz.")
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    _fill_decisions_ingest(
+        ingest,
+        task_id,
+        [(rid, "A", "copy", "identical", "") for rid in chapter_records],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "decisions",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert "chapter 0001 complete" in res.output
+    assert "next global command:" in res.output
+    # The next missing chapter is 0002.
+    assert "--chapter 0002" in res.output
+
+
+def test_judge_insert_profile_root_next_command_is_local(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Imperium vor.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "Imperium vor.")
+    _sync_sources(project_dir, write=True)
+    res = _profile_root_judge_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = res.output.split("judge task: ")[1].splitlines()[0].strip()
+    proj = load_profile_project(project_dir, "de_judge")
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.json"
+    task = load_judge_task(proj, task_id)
+    _fill_json_ingest(
+        ingest, task_id, record_ids[0], "A", task.records[0].candidates[0].target
+    )
+    res2 = _profile_root_judge_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.json", input_format="json"
+    )
+    assert res2.exit_code == 0, res2.output
+    # The scoped next command after insert must be profile-root safe.
+    assert "--profile" not in res2.output
+    assert "../" not in res2.output
+    assert "--chapter" in res2.output
+
+
+def test_judge_accept_identical_complete_chapter_is_not_error(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    for record_id in chapters["0001"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Gemeinsam.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Gemeinsam.")
+    # First call completes chapter 0001.
+    first = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+            "--write",
+        ],
+    )
+    assert first.exit_code == 0, first.output
+    # Second call: chapter 0001 is already complete -> must NOT be an error.
+    second = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+            "--write",
+        ],
+    )
+    assert second.exit_code == 0, second.output
+    assert "no missing records remain" not in second.output
+
+
+def test_judge_accept_identical_complete_chapter_prints_global_next(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    for record_id in chapters["0001"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Gemeinsam.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Gemeinsam.")
+    runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+            "--write",
+        ],
+    )
+    # Chapter 0001 already complete -> re-run prints completion + global next.
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+            "--write",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert "chapter 0001 complete" in res.output
+    assert "next global command:" in res.output
+    assert "--chapter 0002" in res.output
+
+
+def test_judge_task_renders_binding_glossary_details(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    mandate = runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "Lowlands",
+            "--profile",
+            "de_judge",
+            "--target",
+            "Tieflande",
+            "--forbid",
+            "Niederlande",
+        ],
+    )
+    assert mandate.exit_code == 0, mandate.output
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Tieflande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    block = judge_ingest_block_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    ).read_text("utf-8")
+    assert "GLOSSARY:" in block
+    assert "source: Lowlands" in block
+    assert "required: Tieflande" in block
+    assert "forbidden: Niederlande" in block
+    assert "enforce: error" in block
+
+
+def test_judge_task_renders_full_validation_messages(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    mandate = runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "Lowlands",
+            "--profile",
+            "de_judge",
+            "--target",
+            "Tieflande",
+            "--forbid",
+            "Niederlande",
+        ],
+    )
+    assert mandate.exit_code == 0, mandate.output
+    # Candidate uses the forbidden target -> carries a forbidden_term_used finding.
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Niederlande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    block = judge_ingest_block_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    ).read_text("utf-8")
+    # Full message is rendered, not just the compact severity:rule code.
+    assert "validation:" in block
+    assert "- error forbidden_term_used:" in block
+    assert "must not be translated as Niederlande" in block
+
+
+def test_judge_task_render_does_not_truncate_inside_record_policy_block(tmp_path: Path):
+    project_dir, _ = _judge_project(tmp_path)
+    # Mandate a term so each matching record carries a binding glossary block.
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "Empire",
+            "--profile",
+            "de_judge",
+            "--target",
+            "Imperium",
+        ],
+    )
+    record_ids = _record_ids(project_dir)
+    for rid in record_ids:
+        _write_source_candidate(project_dir, "de_a", rid, "Imperium.")
+        _write_source_candidate(project_dir, "de_b", rid, "Imperium.")
+    full_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+        ],
+    )
+    assert full_res.exit_code == 0, full_res.output
+    full_task_id = _judge_task_id(project_dir)
+    full_block = judge_ingest_block_path(
+        load_profile_project(project_dir, "de_judge"), full_task_id
+    ).read_text("utf-8")
+    full_records = full_block.count("## ")
+    # Force trimming with a low line budget; never cut inside a record.
+    trim_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+            "--max-rendered-lines",
+            "12",
+        ],
+    )
+    assert trim_res.exit_code == 0, trim_res.output
+    trim_task_id = _judge_task_id(project_dir)
+    trim_block = judge_ingest_block_path(
+        load_profile_project(project_dir, "de_judge"), trim_task_id
+    ).read_text("utf-8")
+    # Every kept record header has a matching DECISION block: no mid-record cut.
+    assert trim_block.count("## ") == trim_block.count("DECISION:")
+    # Trimming removed whole records, not partial ones.
+    assert 1 <= trim_block.count("## ") <= full_records
