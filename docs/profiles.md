@@ -202,13 +202,16 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target de \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
+  --context-from de_gpt5_5 \
   --model gpt-5.5 \
 
 ```
 
-Before judging, initialize the selection profile context, sync policy from a
-compatible source profile (or otherwise configure the same policy), and mark it
-ready:
+`--context-from` copies approved style, global rules, glossary, and reusable
+approved answers from a ready source profile into the new selection profile and
+marks the judge context ready when that imported policy satisfies all required
+questions. Without it, initialize the selection profile context explicitly and
+sync policy from a compatible source profile before judging.
 
 ```bash
 booktx context init ./book --profile de_judge_gpt5_5 --non-interactive
@@ -222,13 +225,20 @@ booktx context sync ./book \
 booktx context mark-ready ./book --profile de_judge_gpt5_5
 ```
 
-Judge workflows are cross-profile and therefore project-root only:
+Judge profile creation and snapshot preparation are project-root workflows.
+After snapshot preparation, a selection profile may run `judge status`,
+`judge next`, `judge insert`, `judge show`, `judge continue`, and
+`judge accept-identical` from its own profile root:
 
 ```bash
 booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
-booktx judge next ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001
-booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file translations/de_judge_gpt5_5/judge-ingest/TASK.block.txt --format block
+booktx judge accept-identical ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file translations/de_judge_gpt5_5/judge-ingest/TASK.decisions.txt --format decisions
 ```
+
+Judge task record ids are chunk-based, so a task for a logical chapter can
+still contain ids prefixed with another chunk such as `0001-...`.
 
 ## What stays a version?
 

@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 from booktx.cli import app
 from booktx.config import (
     create_profile,
+    judge_ingest_decisions_path,
     judge_ingest_json_path,
     judge_source_profile_dir,
     judge_sources_manifest_path,
@@ -25,6 +26,7 @@ from booktx.config import (
     write_profile_config,
     write_translation_store,
 )
+from booktx.context import load_context
 from booktx.judge_sources import (
     judge_sources_manifest_sha256,
     load_snapshot_judge_source_views,
@@ -248,6 +250,35 @@ def test_judge_create_profile_creates_selection_kind(tmp_path: Path):
     assert cfg.selection.sources == ["de_a", "de_b"]
 
 
+def test_judge_create_profile_context_from_ready_source(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    _create_translation_profile(project_dir, "de_a")
+    _create_translation_profile(project_dir, "de_b")
+    _ready_context(project_dir, "de_a")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            str(project_dir),
+            "de_judge",
+            "--target",
+            "de",
+            "--sources",
+            "de_a,de_b",
+            "--context-from",
+            "de_a",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    proj = load_profile_project(project_dir, "de_judge")
+    ctx = load_context(proj)
+    assert ctx is not None
+    assert ctx.ready is True
+
+
 def test_judge_next_includes_source_and_effective_candidates(tmp_path: Path):
     project_dir, record_ids = _judge_project(tmp_path)
     _write_source_candidate(
@@ -427,6 +458,66 @@ def test_judge_next_honors_config_require_all_sources(tmp_path: Path):
     assert "missing effective candidates" in res.output
 
 
+def test_judge_next_honors_max_records(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    for profile, base in (("de_a", "A"), ("de_b", "B")):
+        for record_id in record_ids:
+            _write_source_candidate(
+                project_dir, profile, record_id, f"{base} {record_id}"
+            )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--max-records",
+            "1",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    task = load_judge_task(
+        load_profile_project(project_dir, "de_judge"), _judge_task_id(project_dir)
+    )
+    assert len(task.records) == 1
+
+
+def test_judge_next_honors_max_rendered_lines(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    for profile, base in (("de_a", "A"), ("de_b", "B")):
+        for record_id in record_ids:
+            _write_source_candidate(
+                project_dir, profile, record_id, f"{base} {record_id}"
+            )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--max-rendered-lines",
+            "20",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    task = load_judge_task(
+        load_profile_project(project_dir, "de_judge"), _judge_task_id(project_dir)
+    )
+    assert len(task.records) == 1
+
+
 def test_judge_record_prints_submit_command(tmp_path: Path):
     project_dir, record_ids = _judge_project(tmp_path)
     _write_source_candidate(
@@ -518,6 +609,99 @@ def test_judge_insert_copy_accepts_exact_selected_candidate(tmp_path: Path):
     assert store.records[record_ids[0]].versions[0].target == "Imperium marschiert vor."
 
 
+def test_judge_next_writes_decision_ingest_file(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(
+        project_dir, "de_a", record_ids[0], "Imperium marschiert vor."
+    )
+    _write_source_candidate(
+        project_dir, "de_b", record_ids[0], "Das Imperium rückt vor."
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert ".decisions.txt" in res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    assert ingest.is_file()
+    text = ingest.read_text("utf-8")
+    assert "# booktx judge decisions" in text
+    assert "decision_kind: copy" in text
+
+
+def test_judge_insert_copy_with_empty_target_autofills_selected_candidate(
+    tmp_path: Path,
+):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(
+        project_dir, "de_a", record_ids[0], "Imperium marschiert vor."
+    )
+    _write_source_candidate(
+        project_dir, "de_b", record_ids[0], "Das Imperium rückt vor."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    _fill_decisions_ingest(
+        ingest,
+        task_id,
+        [(record_ids[0], "A", "copy", "Best option.", "")],
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "decisions",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    store = load_translation_store(load_profile_project(project_dir, "de_judge"))
+    assert store.records[record_ids[0]].versions[0].target == "Imperium marschiert vor."
+
+
 def test_judge_insert_copy_rejects_modified_target(tmp_path: Path):
     project_dir, record_ids = _judge_project(tmp_path)
     _write_source_candidate(
@@ -576,6 +760,57 @@ def test_judge_insert_copy_rejects_modified_target(tmp_path: Path):
 
     assert res.exit_code != 0
     assert "copy target must exactly match selected candidate" in res.output
+
+
+def test_judge_insert_edited_requires_target(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(
+        project_dir, "de_a", record_ids[0], "Imperium marschiert vor."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    _fill_decisions_ingest(
+        ingest,
+        task_id,
+        [(record_ids[0], "A", "edited", "Need a real rewrite.", "")],
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "decisions",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "edited target must not be empty" in res.output
 
 
 def test_judge_insert_edited_accepts_valid_rewrite(tmp_path: Path):
@@ -926,6 +1161,123 @@ def test_judge_insert_writes_selection_ledger_and_status_counts(tmp_path: Path):
     assert "records selected: 1/" in status.output
 
 
+def test_judge_insert_boundary_corruption_reports_reset_hint(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    for profile, target in (
+        ("de_a", "Imperium marschiert vor."),
+        ("de_b", "Das Imperium rückt vor."),
+    ):
+        _write_source_candidate(project_dir, profile, record_ids[0], target)
+        if len(record_ids) > 1:
+            _write_source_candidate(project_dir, profile, record_ids[1], target)
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    second_record = record_ids[1] if len(record_ids) > 1 else "0001-000999"
+    _fill_decisions_ingest(
+        ingest,
+        task_id,
+        [
+            (
+                record_ids[0],
+                "A",
+                "copy",
+                "broken",
+                f"EINS## {second_record}",
+            ),
+            (second_record, "A", "copy", "later", ""),
+        ],
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "decisions",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "reset-ingest" in res.output
+    assert "--format decisions --write" in res.output
+
+
+def test_judge_reset_ingest_rewrites_decision_file_from_task(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(
+        project_dir, "de_a", record_ids[0], "Imperium marschiert vor."
+    )
+    _write_source_candidate(
+        project_dir, "de_b", record_ids[0], "Das Imperium rückt vor."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--format",
+            "decisions",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    ingest.write_text("corrupted\n", encoding="utf-8")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "reset-ingest",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--format",
+            "decisions",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    rewritten = ingest.read_text("utf-8")
+    assert rewritten.startswith("# booktx judge decisions")
+    assert "selected: " in rewritten
+
+
 def test_judge_profile_build_uses_selected_store_output(tmp_path: Path):
     project_dir, record_ids = _judge_project(tmp_path)
     _write_source_candidate(
@@ -1234,6 +1586,32 @@ def _fill_json_ingest(
     )
 
 
+def _fill_decisions_ingest(
+    ingest_path: Path,
+    task_id: str,
+    records: list[tuple[str, str, str, str, str]],
+):
+    lines = [
+        "# booktx judge decisions",
+        f"judge_task_id: {task_id}",
+        "",
+    ]
+    for record_id, selected, decision_kind, reason, target in records:
+        lines.extend(
+            [
+                f"## {record_id}",
+                f"selected: {selected}",
+                f"decision_kind: {decision_kind}",
+                f"reason: {reason}",
+                "TARGET:",
+            ]
+        )
+        if target:
+            lines.extend(target.splitlines())
+        lines.append("")
+    ingest_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def _snapshot_id(project_dir: Path) -> str:
     proj = load_profile_project(project_dir, "de_judge")
     return validate_judge_sources_snapshot(proj).snapshot_id
@@ -1295,6 +1673,55 @@ def test_judge_next_snapshot_blocks_missing_snapshot(tmp_path: Path):
         or "prepare-isolation" in res.output.lower()
         or "project root" in res.output.lower()
     )
+
+
+def test_judge_status_next_command_uses_safe_isolated_defaults(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B target.")
+    _sync_sources(project_dir, write=True)
+
+    profile_root = project_dir / "translations" / "de_judge"
+    with _chdir(profile_root):
+        res = runner.invoke(app, ["judge", "status", "."])
+
+    assert res.exit_code == 0, res.output
+    assert "--max-records 8" in res.output
+    assert "--format decisions" in res.output
+    assert "--format block" not in res.output
+
+
+def test_judge_continue_creates_next_task_from_profile_root(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B target.")
+    _sync_sources(project_dir, write=True)
+
+    profile_root = project_dir / "translations" / "de_judge"
+    with _chdir(profile_root):
+        res = runner.invoke(app, ["judge", "continue", ".", "--max-records", "1"])
+
+    assert res.exit_code == 0, res.output
+    assert "judge task:" in res.output
+    assert ".decisions.txt" in res.output
+
+
+def test_judge_status_json_contains_blocked_by(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    _create_translation_profile(project_dir, "de_a")
+    _create_translation_profile(project_dir, "de_b")
+    _create_selection_profile(project_dir, "de_judge", ["de_a", "de_b"])
+
+    res = runner.invoke(
+        app,
+        ["judge", "status", str(project_dir), "--profile", "de_judge", "--json"],
+    )
+
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert "context" in data
+    assert "blocked_by" in data
+    assert "context_missing" in data["blocked_by"]
 
 
 # --- Test 4: insert snapshot does not read sibling profile ---
@@ -1493,6 +1920,37 @@ def test_judge_prepare_isolation_end_to_end(tmp_path: Path):
     assert "isolated judge profile instructions" in agents.read_text("utf-8")
 
 
+def test_judge_prepare_isolation_context_from_source_writes_ready_context(
+    tmp_path: Path,
+):
+    project_dir = _make_project(tmp_path)
+    _create_translation_profile(project_dir, "de_a")
+    _create_translation_profile(project_dir, "de_b")
+    _ready_context(project_dir, "de_a")
+    _create_selection_profile(project_dir, "de_judge", ["de_a", "de_b"])
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "prepare-isolation",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--context-from",
+            "de_a",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    proj = load_profile_project(project_dir, "de_judge")
+    ctx = load_context(proj)
+    assert ctx is not None
+    assert ctx.ready is True
+    assert (proj.profile_dir / "judge-sources").exists()
+
+
 # --- Test 13: profile-root insert rejects live task ---
 
 
@@ -1592,6 +2050,97 @@ def test_judge_insert_snapshot_rejects_candidate_payload_corruption(tmp_path: Pa
         or "hash" in res2.output.lower()
         or "mismatch" in res2.output.lower()
     )
+
+
+def test_judge_show_prints_record_candidates(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "B target.")
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "show",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--record",
+            record_ids[0],
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "SOURCE:" in res.output
+    assert "A: A target." in res.output
+    assert "B: B target." in res.output
+    assert "validation:" in res.output
+
+
+def test_judge_accept_identical_copies_only_identical_valid_candidates(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Shared target.")
+    _write_source_candidate(project_dir, "de_b", record_ids[0], "Shared target.")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--max-records",
+            "1",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "accepted: 1 record(s)" in res.output
+    store = load_translation_store(load_profile_project(project_dir, "de_judge"))
+    assert store.records[record_ids[0]].versions[0].target == "Shared target."
+
+
+def test_judge_accept_identical_respects_require_all_sources(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Shared target.")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--require-all-sources",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "missing effective candidates" in res.output
 
 
 # --- Test 16: sync requires configured source order ---

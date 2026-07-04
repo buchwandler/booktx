@@ -20,6 +20,7 @@ from booktx.cli_support import (
     _require_ready_context,
     console,
 )
+from booktx.config import load_judge_task
 from booktx.errors import BooktxError
 from booktx.judge_sources import (
     configured_selection_sources,
@@ -29,14 +30,17 @@ from booktx.judge_store import parse_sources_csv
 from booktx.runtime import RuntimeContext
 from booktx.workflows.judge import (
     _source_access_from_runtime,
+    accept_identical_judge_records_workflow,
     accept_judge_submission_workflow,
     build_judge_status_workflow,
     create_judge_profile_workflow,
     create_next_judge_task_workflow,
     create_record_judge_task_workflow,
     judge_task_block_paths,
+    judge_task_decisions_path,
     judge_task_json_path,
     prepare_judge_isolation_workflow,
+    reset_judge_ingest_workflow,
 )
 
 judge_app = typer.Typer(help="Judge and selection-profile workflows.")
@@ -75,6 +79,19 @@ def _render_judge_path(path: Path, runtime: RuntimeContext) -> str:
 def _profile_root_die(message: str) -> None:
     """Die with a message that never includes parent/sibling/absolute paths."""
     _die(message)
+
+
+def _resolve_judge_format(
+    runtime: RuntimeContext,
+    value: str | None,
+    *,
+    project_root_default: str = "block",
+) -> str:
+    if value is not None:
+        if value not in {"block", "decisions", "json"}:
+            _die("--format must be block, decisions, or json")
+        return value
+    return "decisions" if runtime.mode.kind == "profile-root" else project_root_default
 
 
 def resolve_judge_submission_path(runtime: RuntimeContext, value: Path) -> Path:
@@ -163,6 +180,11 @@ def judge_create_profile(
         ..., "--sources", help="Comma-separated source profiles."
     ),
     model: str | None = typer.Option(None, "--model", help="Judge model label."),
+    context_from: str | None = typer.Option(
+        None,
+        "--context-from",
+        help="Copy approved judge policy from this source profile.",
+    ),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     _reject_if_isolated(runtime)
@@ -174,6 +196,7 @@ def judge_create_profile(
             target_locale=target_locale,
             sources_csv=sources,
             model=model,
+            context_from=context_from,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
@@ -264,6 +287,11 @@ def judge_sync_sources(
 def judge_prepare_isolation(
     project_dir: Path = typer.Argument(..., help="Project directory."),
     profile: str = typer.Option(..., "--profile", help="Selection profile name."),
+    context_from: str | None = typer.Option(
+        None,
+        "--context-from",
+        help="Copy approved judge policy from this source profile first.",
+    ),
     write: bool = typer.Option(
         False,
         "--write",
@@ -280,6 +308,7 @@ def judge_prepare_isolation(
         payload = prepare_judge_isolation_workflow(
             runtime.project.root,
             profile=runtime.project.profile or profile,
+            context_from=context_from,
             write=write,
             replace_unmanaged=replace_unmanaged,
         )
@@ -334,20 +363,7 @@ def judge_status(
     if as_json:
         console.print_json(json.dumps(payload, ensure_ascii=False))
         return
-    console.print(f"selection profile: {payload['profile']}")
-    console.print("source profiles: " + ", ".join(payload["source_profiles"]))
-    console.print(
-        f"records selected: {payload['records_selected']}/{payload['records_total']}"
-    )
-    console.print(f"records missing: {payload['records_missing']}")
-    console.print(
-        f"records with candidate gaps: {payload['records_with_candidate_gaps']}"
-    )
-    _render_snapshot_status(payload)
-    if payload["next_command"]:
-        console.print(
-            f"next command: {payload['next_command']}", soft_wrap=True, markup=False
-        )
+    _print_judge_status_payload(payload)
 
 
 def _render_snapshot_status(payload: dict[str, object]) -> None:
@@ -384,6 +400,63 @@ def _render_snapshot_status(payload: dict[str, object]) -> None:
         )
 
 
+def _render_status_blockers(payload: dict[str, object]) -> None:
+    blocked_by = payload.get("blocked_by")
+    if not isinstance(blocked_by, list) or not blocked_by:
+        return
+    mode = payload.get("mode")
+    profile = payload.get("profile") or "PROFILE"
+    messages = {
+        "context_missing": "initialize and approve context before judging",
+        "context_not_ready": "approve or sync context before judging",
+        "snapshot_missing": (
+            "return to the project root and run `booktx judge prepare-isolation` for this profile"
+            if mode == "profile-root"
+            else f"run from project root: booktx judge prepare-isolation . --profile {profile} --write"
+        ),
+        "snapshot_invalid": (
+            "refresh the judge snapshot from the project root for this profile"
+            if mode == "profile-root"
+            else f"run from project root: booktx judge prepare-isolation . --profile {profile} --write"
+        ),
+    }
+    rendered = [messages.get(code, str(code).replace("_", " ")) for code in blocked_by]
+    console.print("blocked: " + "; ".join(rendered), soft_wrap=True, markup=False)
+
+
+def _print_judge_status_payload(payload: dict[str, object]) -> None:
+    console.print(f"selection profile: {payload['profile']}")
+    console.print(f"mode: {payload['mode']}")
+    console.print("source profiles: " + ", ".join(payload["source_profiles"]))
+    context = payload["context"]
+    console.print(f"context: {'READY' if context['ready'] else 'NOT READY'}")
+    console.print(
+        f"records selected: {payload['records_selected']}/{payload['records_total']}"
+    )
+    console.print(f"records missing: {payload['records_missing']}")
+    console.print(
+        f"records with candidate gaps: {payload['records_with_candidate_gaps']}"
+    )
+    _render_snapshot_status(payload)
+    _render_status_blockers(payload)
+    if payload["next_command"]:
+        console.print(
+            f"next command: {payload['next_command']}", soft_wrap=True, markup=False
+        )
+
+
+def _first_missing_chapter(payload: dict[str, object]) -> str | None:
+    chapters = payload.get("chapters")
+    if not isinstance(chapters, list):
+        return None
+    for entry in chapters:
+        if isinstance(entry, dict) and int(entry.get("missing_records", 0)) > 0:
+            chapter_id = entry.get("chapter_id")
+            if isinstance(chapter_id, str):
+                return chapter_id
+    return None
+
+
 # --------------------------------------------------------------------------
 # next / record (allowed in profile-root for selection profiles)
 # --------------------------------------------------------------------------
@@ -401,7 +474,17 @@ def judge_next(
     unit: str = typer.Option("chapter", "--unit", help="Task unit; currently chapter."),
     chapter: str | None = typer.Option(None, "--chapter", help="Optional chapter id."),
     max_words: int = typer.Option(900, "--max-words", help="Maximum source words."),
-    output_format: str = typer.Option("block", "--format", help="block|json."),
+    max_records: int | None = typer.Option(
+        None, "--max-records", help="Optional maximum number of records."
+    ),
+    max_rendered_lines: int | None = typer.Option(
+        None,
+        "--max-rendered-lines",
+        help="Optional maximum rendered source-block lines before trimming trailing records.",
+    ),
+    output_format: str | None = typer.Option(
+        None, "--format", help="block|decisions|json."
+    ),
     require_all_sources: bool = typer.Option(
         False,
         "--require-all-sources",
@@ -418,6 +501,7 @@ def judge_next(
     _require_ready_context(proj)
     if unit != "chapter":
         _die("--unit must be chapter")
+    resolved_format = _resolve_judge_format(runtime, output_format)
     source_access = _source_access_from_runtime(runtime)
     sources_csv = None if runtime.mode.kind == "profile-root" else sources
     try:
@@ -427,13 +511,91 @@ def judge_next(
             sources_csv=sources_csv,
             chapter=chapter,
             max_words=max_words,
+            max_records=max_records,
+            max_rendered_lines=max_rendered_lines,
             require_all_sources=require_all_sources,
             source_access=source_access,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
-    _print_judge_task(task, proj, runtime, output_format)
+    _print_judge_task(task, proj, runtime, resolved_format)
+
+
+@judge_app.command(name="continue")
+def judge_continue(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Selection profile name."
+    ),
+    sources: str | None = typer.Option(
+        None, "--sources", help="Comma-separated source profiles."
+    ),
+    unit: str = typer.Option("chapter", "--unit", help="Task unit; currently chapter."),
+    chapter: str | None = typer.Option(None, "--chapter", help="Optional chapter id."),
+    max_words: int = typer.Option(900, "--max-words", help="Maximum source words."),
+    max_records: int | None = typer.Option(
+        None, "--max-records", help="Optional maximum number of records."
+    ),
+    max_rendered_lines: int | None = typer.Option(
+        None,
+        "--max-rendered-lines",
+        help="Optional maximum rendered source-block lines before trimming trailing records.",
+    ),
+    output_format: str | None = typer.Option(
+        None, "--format", help="block|decisions|json."
+    ),
+    require_all_sources: bool = typer.Option(
+        False,
+        "--require-all-sources",
+        help=(
+            "Fail if any selected record is missing a candidate from a source profile."
+        ),
+    ),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_no_source_drift(proj)
+    if unit != "chapter":
+        _die("--unit must be chapter")
+    sources_csv = None if runtime.mode.kind == "profile-root" else sources
+    try:
+        status_payload = build_judge_status_workflow(
+            proj,
+            runtime,
+            bundle=_project_status_snapshot(proj),
+            sources_csv=sources_csv,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    _print_judge_status_payload(status_payload)
+    if status_payload["blocked_by"]:
+        _die("judge work is blocked; resolve the blockers shown above")
+    next_chapter = chapter or _first_missing_chapter(status_payload)
+    if next_chapter is None:
+        console.print("no missing records remain")
+        return
+    resolved_format = _resolve_judge_format(runtime, output_format)
+    source_access = _source_access_from_runtime(runtime)
+    try:
+        task = create_next_judge_task_workflow(
+            proj,
+            bundle=_project_status_snapshot(proj),
+            sources_csv=sources_csv,
+            chapter=next_chapter,
+            max_words=max_words,
+            max_records=max_records,
+            max_rendered_lines=max_rendered_lines,
+            require_all_sources=require_all_sources,
+            source_access=source_access,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    _print_judge_task(task, proj, runtime, resolved_format)
 
 
 @judge_app.command(name="record")
@@ -445,6 +607,9 @@ def judge_record(
     ),
     sources: str | None = typer.Option(
         None, "--sources", help="Comma-separated source profiles."
+    ),
+    output_format: str | None = typer.Option(
+        None, "--format", help="block|decisions|json."
     ),
     require_all_sources: bool = typer.Option(
         False,
@@ -458,6 +623,7 @@ def judge_record(
     _require_chunks(proj)
     _require_no_source_drift(proj)
     _require_ready_context(proj)
+    resolved_format = _resolve_judge_format(runtime, output_format)
     source_access = _source_access_from_runtime(runtime)
     sources_csv = None if runtime.mode.kind == "profile-root" else sources
     try:
@@ -472,16 +638,22 @@ def judge_record(
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
-    _print_judge_task(task, proj, runtime, output_format="block")
+    _print_judge_task(task, proj, runtime, output_format=resolved_format)
 
 
 def _print_judge_task(task, proj, runtime: RuntimeContext, output_format: str) -> None:
     src_path, ingest_block = judge_task_block_paths(proj, task)
-    edit_path = (
-        ingest_block if output_format == "block" else judge_task_json_path(proj, task)
-    )
+    decisions_path = judge_task_decisions_path(proj, task)
+    if output_format == "block":
+        edit_path = ingest_block
+    elif output_format == "decisions":
+        edit_path = decisions_path
+    else:
+        edit_path = judge_task_json_path(proj, task)
+    rendered_lines = len(Path(src_path).read_text("utf-8").splitlines())
     console.print(f"judge task: {task.judge_task_id}")
     console.print(f"records: {len(task.records)}")
+    console.print(f"rendered_lines: {rendered_lines}")
     console.print(
         f"read:   {_render_judge_path(Path(src_path), runtime)}",
         soft_wrap=True,
@@ -506,6 +678,145 @@ def _print_judge_task(task, proj, runtime: RuntimeContext, output_format: str) -
             f"--format {output_format}"
         )
     console.print(f"submit: {submit}", soft_wrap=True, markup=False)
+    if runtime.mode.kind == "profile-root" and output_format == "block":
+        console.print(
+            "hint: copy decisions can leave TARGET empty; booktx will copy the selected candidate exactly",
+            soft_wrap=True,
+            markup=False,
+        )
+
+
+@judge_app.command(name="show")
+def judge_show(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    judge_task_id: str = typer.Option(..., "--judge-task-id", help="Judge task id."),
+    record_id: str = typer.Option(
+        ..., "--record", help="Record id inside the judge task."
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Selection profile name."
+    ),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    task = load_judge_task(runtime.project, judge_task_id)
+    if task is None:
+        _die(f"judge task not found: {judge_task_id}")
+    record = next((item for item in task.records if item.id == record_id), None)
+    if record is None:
+        _die(f"record {record_id} is not part of judge task {judge_task_id}")
+    console.print(record.id)
+    console.print(f"SOURCE: {record.source}")
+    for candidate in record.candidates:
+        console.print(f"{candidate.label}: {candidate.target}")
+    if record.candidates:
+        summary = ", ".join(
+            f"{candidate.label} "
+            + (
+                "ok"
+                if not candidate.validation_findings
+                else "; ".join(
+                    f"{finding.severity}:{finding.rule}"
+                    for finding in candidate.validation_findings
+                )
+            )
+            for candidate in record.candidates
+        )
+        console.print(f"validation: {summary}")
+
+
+@judge_app.command(name="accept-identical")
+def judge_accept_identical(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Selection profile name."
+    ),
+    sources: str | None = typer.Option(
+        None, "--sources", help="Comma-separated source profiles."
+    ),
+    unit: str = typer.Option("chapter", "--unit", help="Task unit; currently chapter."),
+    chapter: str | None = typer.Option(None, "--chapter", help="Optional chapter id."),
+    max_words: int = typer.Option(900, "--max-words", help="Maximum source words."),
+    max_records: int | None = typer.Option(
+        None, "--max-records", help="Optional maximum number of records."
+    ),
+    max_rendered_lines: int | None = typer.Option(
+        None,
+        "--max-rendered-lines",
+        help="Optional maximum rendered source-block lines before trimming trailing records.",
+    ),
+    require_all_sources: bool = typer.Option(
+        False,
+        "--require-all-sources",
+        help=(
+            "Fail if any selected record is missing a candidate from a source profile."
+        ),
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Accept identical valid candidates into the store."
+    ),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_no_source_drift(proj)
+    _require_ready_context(proj)
+    if unit != "chapter":
+        _die("--unit must be chapter")
+    source_access = _source_access_from_runtime(runtime)
+    sources_csv = None if runtime.mode.kind == "profile-root" else sources
+    try:
+        payload = accept_identical_judge_records_workflow(
+            proj,
+            bundle=_project_status_snapshot(proj),
+            sources_csv=sources_csv,
+            chapter=chapter,
+            max_words=max_words,
+            max_records=max_records,
+            max_rendered_lines=max_rendered_lines,
+            require_all_sources=require_all_sources,
+            source_access=source_access,
+            write=write,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(f"judge task: {payload['judge_task_id']}")
+    if write:
+        console.print(f"accepted: {payload['accepted_records']} record(s)")
+        if payload["version_refs"]:
+            console.print("versions: " + ", ".join(payload["version_refs"]))
+        status_payload = build_judge_status_workflow(
+            proj,
+            runtime,
+            bundle=_project_status_snapshot(proj),
+            sources_csv=sources_csv,
+        )
+        if status_payload["next_command"]:
+            console.print(
+                f"next command: {status_payload['next_command']}",
+                soft_wrap=True,
+                markup=False,
+            )
+    else:
+        console.print(f"matched identical records: {payload['matched_records']}")
+        console.print(
+            "next: "
+            "booktx judge accept-identical . --unit chapter"
+            + (f" --chapter {chapter}" if chapter else "")
+            + (f" --max-words {max_words}" if max_words != 900 else "")
+            + (f" --max-records {max_records}" if max_records is not None else "")
+            + (
+                f" --max-rendered-lines {max_rendered_lines}"
+                if max_rendered_lines is not None
+                else ""
+            )
+            + (" --require-all-sources" if require_all_sources else "")
+            + " --write",
+            soft_wrap=True,
+            markup=False,
+        )
 
 
 # --------------------------------------------------------------------------
@@ -521,7 +832,9 @@ def judge_insert(
     profile: str | None = typer.Option(
         None, "--profile", help="Selection profile name."
     ),
-    input_format: str = typer.Option("block", "--format", help="block|json."),
+    input_format: str | None = typer.Option(
+        None, "--format", help="block|decisions|json."
+    ),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     _require_selection_runtime(runtime)
@@ -530,13 +843,14 @@ def judge_insert(
     _require_no_source_drift(proj)
     _require_ready_context(proj)
     file_path = resolve_judge_submission_path(runtime, file)
+    resolved_format = _resolve_judge_format(runtime, input_format)
     try:
         payload = accept_judge_submission_workflow(
             proj,
             bundle=_project_status_snapshot(proj),
             judge_task_id=judge_task_id,
             file=file_path,
-            input_format=input_format,
+            input_format=resolved_format,
             runtime=runtime,
         )
     except BooktxError as exc:
@@ -545,3 +859,45 @@ def judge_insert(
     console.print(f"accepted: {payload['accepted_records']} record(s)")
     if payload["version_refs"]:
         console.print("versions: " + ", ".join(payload["version_refs"]))
+
+
+@judge_app.command(name="reset-ingest")
+def judge_reset_ingest(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    judge_task_id: str = typer.Option(..., "--judge-task-id", help="Judge task id."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Selection profile name."
+    ),
+    output_format: str | None = typer.Option(
+        None, "--format", help="block|decisions|json."
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Rewrite the editable ingest file for the task."
+    ),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    resolved_format = _resolve_judge_format(
+        runtime, output_format, project_root_default="decisions"
+    )
+    try:
+        payload = reset_judge_ingest_workflow(
+            runtime.project,
+            judge_task_id=judge_task_id,
+            output_format=resolved_format,
+            write=write,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    rendered_path = _render_judge_path(Path(payload["path"]), runtime)
+    console.print(f"judge task: {payload['judge_task_id']}")
+    if write:
+        console.print(f"rewrote: {rendered_path}", soft_wrap=True, markup=False)
+    else:
+        console.print(f"edit:   {rendered_path}", soft_wrap=True, markup=False)
+        console.print(
+            f"next: booktx judge reset-ingest . --judge-task-id {judge_task_id} --format {resolved_format} --write",
+            soft_wrap=True,
+            markup=False,
+        )

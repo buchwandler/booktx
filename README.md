@@ -395,19 +395,12 @@ booktx judge create-profile ./demo de_judge_gpt5_5 \
   --target de \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
+  --context-from de_gpt5_5 \
   --model gpt-5.5 \
 
-booktx context init ./demo --profile de_judge_gpt5_5 --non-interactive
-booktx context sync ./demo \
-  --from de_gpt5_5 \
-  --to de_judge_gpt5_5 \
-  --section glossary \
-  --section style \
-  --section global-rules \
-  --write
-booktx context mark-ready ./demo --profile de_judge_gpt5_5
-booktx judge status ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
-booktx judge next ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --format block
+booktx judge status ./demo --profile de_judge_gpt5_5
+booktx judge accept-identical ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 8 --format decisions
 ```
 
 For isolated judge work, prepare the snapshot from the project root then cd into the profile root:
@@ -416,10 +409,17 @@ For isolated judge work, prepare the snapshot from the project root then cd into
 booktx judge prepare-isolation ./demo --profile de_judge_gpt5_5 --write
 cd translations/de_judge_gpt5_5
 booktx judge status .
-booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
-booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
-booktx validate . --fail-on-warnings
+booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
+booktx judge reset-ingest . --judge-task-id TASK --format decisions --write
+booktx judge continue . --max-records 8
 ```
+
+For `decision_kind: copy`, leave `TARGET` empty and let booktx copy the selected
+candidate exactly. Use `decision_kind: edited` only when the final target differs
+from every candidate. Judge record ids are chunk-based, so a task for chapter
+`0005` can still contain records whose ids start with `0001-`.
 
 `booktx translate next` also snapshots the exact effective task context under
 `translations/<profile>/context-history/views/<sha>/`. New tasks carry both the

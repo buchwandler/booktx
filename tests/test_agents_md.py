@@ -23,6 +23,13 @@ ISO_KWARGS = {
     "source_id": "sha256:0123456789abcdef",
     "target_locale": "de-DE",
 }
+ISO_SELECTION_KWARGS = {
+    "mode": "isolated",
+    "profile": "de_judge_gpt5_5",
+    "source_id": "sha256:fedcba9876543210",
+    "target_locale": "de-DE",
+    "profile_kind": "selection",
+}
 COLLAB_KWARGS = {
     "mode": "collaborative",
     "profile": None,
@@ -75,6 +82,28 @@ def test_isolated_render_has_no_forbidden_tokens():
         stripped = line.lstrip()
         assert not stripped.startswith("booktx /"), line
         assert not stripped.startswith("booktx ../"), line
+
+
+def test_agents_md_isolated_judge_mentions_decision_only_ingest():
+    text = render_agents_md(**ISO_SELECTION_KWARGS)
+    assert "judge-ingest/TASK.decisions.txt" in text
+    assert "--format decisions" in text
+    assert "leave `TARGET` empty" in text
+
+
+def test_agents_md_isolated_judge_forbids_regex_scripts():
+    text = render_agents_md(**ISO_SELECTION_KWARGS)
+    assert "Do not use Python, sed, perl, awk, regex scripts" in text
+    assert "Do not chain insert and next" in text
+
+
+def test_agents_md_isolated_judge_says_copy_target_empty():
+    text = render_agents_md(**ISO_SELECTION_KWARGS)
+    assert (
+        "For `decision_kind: copy`, set `selected` and `reason`; leave `TARGET` empty."
+        in text
+    )
+    assert "Do not paste candidate text into `TARGET` for copy decisions." in text
 
 
 # --- case 3: collaborative render ----------------------------------------

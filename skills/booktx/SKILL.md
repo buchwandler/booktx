@@ -43,8 +43,10 @@ and use only profile-local booktx commands with project argument `"."`.
 
 Never use parent paths, absolute paths, shell globs, interpreter snippets, or
 sibling profile commands. Never inspect sibling profiles. If a command suggests
-a parent path or prints a sibling profile, stop and report a booktx isolation
-bug.
+a parent path, absolute path, `../`, or a sibling profile filesystem path,
+stop and report a booktx isolation bug. In isolated selection profiles, source
+profile names printed by `booktx judge status`, `judge next`, or judge task
+files are inert snapshot labels; do not inspect those profiles manually.
 
 Use:
 
@@ -64,7 +66,7 @@ booktx validate .
 booktx build .
 ```
 
-`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile create`, `profile migrate-current`, `context sync`, and `judge create-profile`/`judge sync-sources`/`judge prepare-isolation`) remain blocked in isolated mode. For selection profiles, `judge status/next/record/insert` are allowed in profile-root mode after snapshot preparation.
+`profile list` in profile-root mode shows only the current profile to avoid dead-ending the user; it never prints sibling profile names, absolute paths, or `../`. Cross-profile commands (`profile compare`, `profile create`, `profile migrate-current`, `context sync`, and `judge create-profile`/`judge sync-sources`/`judge prepare-isolation`) remain blocked in isolated mode. For selection profiles, `judge status/next/record/insert/show/continue/accept-identical/reset-ingest` are allowed in profile-root mode after snapshot preparation.
 
 The todo commands (`todo-next`, `todo-status`, `todo-resume`) are runtime-aware: in
 profile-root mode they omit `--profile`, use profile-local paths (`todos/`,
@@ -790,6 +792,7 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target de \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
+  --context-from de_gpt5_5 \
   --model gpt-5.5 \
 
 ```
@@ -813,14 +816,19 @@ Run judging with:
 
 ```bash
 booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
-booktx judge next ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --format block
-booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file translations/de_judge_gpt5_5/judge-ingest/TASK.block.txt --format block
+booktx judge accept-identical ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file translations/de_judge_gpt5_5/judge-ingest/TASK.decisions.txt --format decisions
 ```
 
 Rules:
 
 - Prefer exact candidate copy when one source profile already has a good target.
+- Do not copy candidate targets into `TARGET` for `copy` decisions.
+- Leave `TARGET` empty for `copy` decisions.
 - Use `decision_kind: edited` only when the candidate needs a real correction.
+- Do not chain `judge insert` and `judge next` in one shell command.
+- Prefer `judge accept-identical` before asking the LLM to compare trivial identical records.
 - Treat `translation-selection-ledger.json` as provenance; never hand-edit it.
 - Judge tasks compare sibling profiles and write accepted output into the
   selection profile's normal `translation-store.json`, so normal
@@ -841,9 +849,11 @@ cd translations/de_judge_gpt5_5
 
 # profile root
 booktx judge status .
-booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
-booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
-booktx validate . --fail-on-warnings
+booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
+booktx judge reset-ingest . --judge-task-id TASK --format decisions --write
+booktx judge continue . --max-records 8
 ```
 
 The isolated workflow uses copied candidate data (no sibling reads) and

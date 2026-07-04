@@ -180,6 +180,7 @@ __all__ = [
     "judge_task_source_block_path",
     "judge_ingest_dir",
     "judge_ingest_block_path",
+    "judge_ingest_decisions_path",
     "judge_ingest_json_path",
     "load_judge_task",
     "write_judge_task",
@@ -1543,6 +1544,11 @@ def judge_ingest_dir(project: Project) -> Path:
 def judge_ingest_block_path(project: Project, judge_task_id: str) -> Path:
     safe = safe_artifact_id(judge_task_id, kind="judge_task")
     return judge_ingest_dir(project) / f"{safe}.block.txt"
+
+
+def judge_ingest_decisions_path(project: Project, judge_task_id: str) -> Path:
+    safe = safe_artifact_id(judge_task_id, kind="judge_task")
+    return judge_ingest_dir(project) / f"{safe}.decisions.txt"
 
 
 def judge_ingest_json_path(project: Project, judge_task_id: str) -> Path:

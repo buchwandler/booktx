@@ -11,6 +11,7 @@ from booktx.config import (
     JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL,
     current_source_sha256,
     judge_ingest_block_path,
+    judge_ingest_decisions_path,
     judge_ingest_json_path,
     judge_task_source_block_path,
     write_judge_task,
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
 __all__ = [
     "make_judge_task_id",
     "create_judge_task",
+    "render_judge_ingest",
+    "render_judge_decision_block",
     "render_judge_task_block",
     "render_judge_ingest_json",
 ]
@@ -65,6 +68,7 @@ def _record_ids_for_task(
     chapter_id: str | None,
     record_id: str | None,
     max_words: int,
+    max_records: int | None,
 ) -> tuple[str, list[str]]:
     if record_id is not None:
         canonical = parse_record_ref(record_id).canonical_id
@@ -81,10 +85,10 @@ def _record_ids_for_task(
         for rid in bundle.index.record_ids_by_chapter.get(chapter_obj.chapter_id, [])
         if rid not in selected_record_ids(project)
     ]
-    return (
-        chapter_obj.chapter_id,
-        limit_records_by_words(selected_ids, bundle.index.source_by_id, max_words),
-    )
+    limited = limit_records_by_words(selected_ids, bundle.index.source_by_id, max_words)
+    if max_records is not None and max_records > 0:
+        limited = limited[:max_records]
+    return chapter_obj.chapter_id, limited
 
 
 def render_judge_task_block(task: JudgeTask) -> str:
@@ -150,6 +154,29 @@ def render_judge_task_block(task: JudgeTask) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_judge_decision_block(task: JudgeTask) -> str:
+    lines = [
+        "# booktx judge decisions",
+        f"judge_task_id: {task.judge_task_id}",
+        "# Edit only selected, decision_kind, reason, and TARGET for edited decisions.",
+        "# For decision_kind: copy, leave TARGET empty;",
+        "# booktx copies the selected candidate.",
+        "",
+    ]
+    for record in task.records:
+        lines.extend(
+            [
+                f"## {record.id}",
+                "selected: ",
+                "decision_kind: copy",
+                "reason: ",
+                "TARGET:",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_judge_ingest_json(task: JudgeTask) -> str:
     payload = {
         "judge_task_id": task.judge_task_id,
@@ -167,6 +194,67 @@ def render_judge_ingest_json(task: JudgeTask) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
+def render_judge_ingest(task: JudgeTask, output_format: str) -> str:
+    if output_format == "block":
+        return render_judge_task_block(task)
+    if output_format == "decisions":
+        return render_judge_decision_block(task)
+    if output_format == "json":
+        return render_judge_ingest_json(task)
+    raise ValueError(f"unsupported judge ingest format: {output_format}")
+
+
+def _line_count(text: str) -> int:
+    return len(text.splitlines())
+
+
+def _build_judge_task_model(
+    *,
+    project: Project,
+    bundle: StatusBundle,
+    task_chapter_id: str,
+    resolution,
+    context_view,
+    source_profiles: list[str],
+    source_access: Literal["live", "snapshot"],
+    source_snapshot_sha256: str | None,
+    source_snapshot_path: str | None,
+    applicable_termbase_sha256: str | None,
+    records: list[JudgeTaskRecord],
+) -> JudgeTask:
+    chapter = bundle.index.chapters_by_id[task_chapter_id]
+    return JudgeTask(
+        judge_task_id=make_judge_task_id(
+            task_chapter_id, records[0].id, [record.id for record in records]
+        ),
+        profile=project.profile or "",
+        source_profiles=list(source_profiles),
+        source_language=project.config.source_language,
+        target_language=project.config.target_language,
+        target_locale=project.config.target_locale or project.config.target_language,
+        chapter_id=task_chapter_id,
+        chapter_title=chapter.title,
+        created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        source_sha256=current_source_sha256(project),
+        profile_config_sha256=(
+            canonical_json_sha256(project.profile_config.model_dump(mode="json"))
+            if project.profile_config is not None
+            else None
+        ),
+        source_config_sha256=canonical_json_sha256(
+            project.source_config.model_dump(mode="json")
+        ),
+        context_view_sha256=context_view.context_view_sha256,
+        context_view_path=context_view.context_path,
+        applicable_termbase_sha256=applicable_termbase_sha256,
+        source_access=source_access,
+        source_snapshot_sha256=source_snapshot_sha256,
+        source_snapshot_path=source_snapshot_path,
+        source_candidates_sha256=judge_task_candidates_sha256(records),
+        records=records,
+    )
+
+
 def create_judge_task(
     project: Project,
     bundle: StatusBundle,
@@ -175,6 +263,8 @@ def create_judge_task(
     chapter_id: str | None,
     record_id: str | None,
     max_words: int,
+    max_records: int | None = None,
+    max_rendered_lines: int | None = None,
     require_all_sources: bool,
     source_access: Literal["live", "snapshot"] = "live",
 ) -> JudgeTask:
@@ -189,6 +279,7 @@ def create_judge_task(
         chapter_id=chapter_id,
         record_id=record_id,
         max_words=max_words,
+        max_records=max_records,
     )
     if not selected_ids:
         raise ValueError("no missing records remain for the requested chapter")
@@ -264,35 +355,38 @@ def create_judge_task(
     if not records:
         raise ValueError("no judgeable records found for the requested scope")
 
-    chapter = bundle.index.chapters_by_id[task_chapter_id]
-    task = JudgeTask(
-        judge_task_id=make_judge_task_id(
-            task_chapter_id, records[0].id, [r.id for r in records]
-        ),
-        profile=project.profile or "",
-        source_profiles=list(source_profiles),
-        source_language=project.config.source_language,
-        target_language=project.config.target_language,
-        target_locale=project.config.target_locale or project.config.target_language,
-        chapter_id=task_chapter_id,
-        chapter_title=chapter.title,
-        created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        source_sha256=current_source_sha256(project),
-        profile_config_sha256=(
-            canonical_json_sha256(project.profile_config.model_dump(mode="json"))
-            if project.profile_config is not None
-            else None
-        ),
-        source_config_sha256=canonical_json_sha256(
-            project.source_config.model_dump(mode="json")
-        ),
-        context_view_sha256=context_view.context_view_sha256,
-        context_view_path=context_view.context_path,
-        applicable_termbase_sha256=applicable_termbase_sha256,
+    if max_rendered_lines is not None and max_rendered_lines > 0:
+        trimmed = list(records)
+        while len(trimmed) > 1:
+            preview = _build_judge_task_model(
+                project=project,
+                bundle=bundle,
+                task_chapter_id=task_chapter_id,
+                resolution=resolution,
+                context_view=context_view,
+                source_profiles=source_profiles,
+                source_access=source_access,
+                source_snapshot_sha256=source_snapshot_sha256,
+                source_snapshot_path=source_snapshot_path,
+                applicable_termbase_sha256=applicable_termbase_sha256,
+                records=trimmed,
+            )
+            if _line_count(render_judge_task_block(preview)) <= max_rendered_lines:
+                break
+            trimmed.pop()
+        records = trimmed
+
+    task = _build_judge_task_model(
+        project=project,
+        bundle=bundle,
+        task_chapter_id=task_chapter_id,
+        resolution=resolution,
+        context_view=context_view,
+        source_profiles=source_profiles,
         source_access=source_access,
         source_snapshot_sha256=source_snapshot_sha256,
         source_snapshot_path=source_snapshot_path,
-        source_candidates_sha256=judge_task_candidates_sha256(records),
+        applicable_termbase_sha256=applicable_termbase_sha256,
         records=records,
     )
     write_judge_task(project, task)
@@ -303,6 +397,10 @@ def create_judge_task(
     write_text_atomic(
         judge_ingest_block_path(project, task.judge_task_id),
         render_judge_task_block(task),
+    )
+    write_text_atomic(
+        judge_ingest_decisions_path(project, task.judge_task_id),
+        render_judge_decision_block(task),
     )
     write_text_atomic(
         judge_ingest_json_path(project, task.judge_task_id),

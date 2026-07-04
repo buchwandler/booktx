@@ -55,6 +55,8 @@ from booktx.validate import Severity, load_validation_context, validate_record_p
 from booktx.versioning import canonical_json_sha256, lookup_version, resolve_identity
 
 if TYPE_CHECKING:
+    from booktx.models import Chunk
+    from booktx.progress import SourceRecordView
     from booktx.status import StatusBundle
     from booktx.validate import Finding
 
@@ -62,11 +64,13 @@ __all__ = [
     "SubmittedJudgeRecord",
     "JudgeInsertResult",
     "parse_judge_block_submission",
+    "parse_judge_decisions_submission",
     "parse_judge_json_submission",
     "accept_judge_submission",
 ]
 
 _BLOCK_HEADER_RE = re.compile(r"^##\s+(?P<id>\S+)\s*$")
+_BOUNDARY_CORRUPTION_RE = re.compile(r"(?<!\n)##\s+\d{4}-\d{6}")
 
 
 @dataclass(slots=True)
@@ -175,6 +179,62 @@ def parse_judge_block_submission(
         raise _err(
             "judge_submission_block",
             "judge block submission did not contain any records",
+        )
+    return task_id, records
+
+
+def parse_judge_decisions_submission(
+    text: str,
+) -> tuple[str | None, list[SubmittedJudgeRecord]]:
+    task_id: str | None = None
+    records: list[SubmittedJudgeRecord] = []
+    current_id: str | None = None
+    decision: dict[str, str] = {}
+    target_lines: list[str] = []
+    in_target = False
+
+    def flush() -> None:
+        nonlocal current_id, decision, target_lines, in_target
+        if current_id is None:
+            return
+        records.append(
+            SubmittedJudgeRecord(
+                id=current_id,
+                selected=decision.get("selected", ""),
+                decision_kind=decision.get("decision_kind", ""),
+                target="\n".join(target_lines).strip("\n"),
+                reason=decision.get("reason", ""),
+            )
+        )
+        current_id = None
+        decision = {}
+        target_lines = []
+        in_target = False
+
+    for raw in text.splitlines():
+        header = _BLOCK_HEADER_RE.match(raw)
+        if header:
+            flush()
+            current_id = header.group("id")
+            continue
+        if current_id is None:
+            if raw.startswith("judge_task_id:"):
+                task_id = raw.split(":", 1)[1].strip() or None
+            continue
+        if raw.strip() == "TARGET:":
+            in_target = True
+            continue
+        if in_target:
+            target_lines.append(raw)
+            continue
+        if ":" in raw:
+            key, value = raw.split(":", 1)
+            decision[key.strip().lower()] = value.strip()
+    flush()
+    if not records:
+        raise _err(
+            "judge_submission_decisions",
+            "judge decisions submission did not contain any records",
         )
     return task_id, records
 
@@ -454,6 +514,135 @@ def _validate_live_candidate_has_not_drifted(
         )
 
 
+def _validate_and_resolve_target(
+    item: SubmittedJudgeRecord,
+    project: Project,
+    task: JudgeTask,
+    task_records: dict[str, JudgeTaskRecord],
+    seen_ids: set[str],
+    source_by_id: dict[str, SourceRecordView],
+    source_chunks: dict[str, Chunk],
+    validation_context: TranslationContext,
+    input_format: str,
+) -> tuple[str, list[Finding]]:
+    """Validate one judge decision and resolve the target text."""
+    if item.id in seen_ids:
+        raise _err("duplicate_record_id", f"duplicate judge record id: {item.id}")
+    seen_ids.add(item.id)
+    task_record = task_records.get(item.id)
+    if task_record is None:
+        raise _err(
+            "record_not_in_task",
+            f"record {item.id} is not part of judge task {task.judge_task_id}",
+        )
+    if item.decision_kind not in {"copy", "edited"}:
+        raise _err(
+            "judge_decision_kind",
+            f"record {item.id} decision_kind must be copy or edited",
+        )
+    _validate_edited_targets_allowed(project, item)
+    selected_candidate: JudgeTaskCandidate | None = None
+    if item.selected and item.selected != "edited":
+        selected_candidate = _candidate_for_label(task_record, item.selected)
+        if selected_candidate is None:
+            raise _err(
+                "judge_selected_label",
+                f"record {item.id} selected label {item.selected!r} ",
+                f"is not present in judge task {task.judge_task_id}",
+            )
+    elif item.decision_kind == "copy":
+        raise _err(
+            "judge_selected_label",
+            f"record {item.id} copy decisions require a candidate label",
+        )
+    if _BOUNDARY_CORRUPTION_RE.search(item.target):
+        raise _err(
+            "judge_block_boundary_corrupt",
+            f"record {item.id} TARGET appears to contain the next record header; ",
+            "reset the ingest file with ",
+            f"`booktx judge reset-ingest . --judge-task-id {task.judge_task_id} ",
+            f"--format {input_format} --write`",
+        )
+    raw_target = item.target.strip("\n")
+
+    if selected_candidate is not None:
+        if item.decision_kind == "copy" and any(
+            finding.rule in {"glossary_target_missing", "forbidden_term_used"}
+            for finding in selected_candidate.validation_findings
+        ):
+            raise _err(
+                "judge_candidate_validation",
+                f"record {item.id} selected candidate {selected_candidate.label} ",
+                "violates the selection profile glossary ",
+                "and cannot be copied unchanged",
+            )
+        # Self-check: the candidate target hash must match its own payload.
+        # This detects a corrupted/edited task artifact for any access mode.
+        if sha256_text(selected_candidate.target) != selected_candidate.target_sha256:
+            raise _err(
+                "judge_task_candidate_corrupt",
+                f"record {item.id} candidate {selected_candidate.label} hash ",
+                "does not match the task payload",
+            )
+        # Live tasks re-check the sibling source profile for drift. Snapshot
+        # tasks trust their immutable, hash-verified payload and never read
+        # sibling profiles.
+        if task.source_access == "live":
+            _validate_live_candidate_has_not_drifted(
+                project, task, item, selected_candidate
+            )
+    if item.decision_kind == "copy":
+        if selected_candidate is None:
+            raise _err(
+                "judge_selected_label",
+                f"record {item.id} copy decisions require a candidate label",
+            )
+        if not raw_target.strip():
+            target_text = selected_candidate.target
+        else:
+            target_text = raw_target
+            if _normalize_newlines(target_text) != _normalize_newlines(
+                selected_candidate.target
+            ):
+                raise _err(
+                    "judge_copy_target_mismatch",
+                    f"record {item.id} copy target must exactly match ",
+                    f"selected candidate {selected_candidate.label}",
+                )
+    else:
+        target_text = raw_target
+        if not target_text.strip():
+            raise _err(
+                "judge_empty_target",
+                f"record {item.id} edited target must not be empty",
+            )
+
+    if item.id not in source_by_id:
+        raise _err("unknown_record_id", f"unknown source record id: {item.id}")
+    source_view = source_by_id[item.id]
+    source_chunk = source_chunks[source_view.chunk_id]
+    source_record = next(
+        record for record in source_chunk.records if record.id == item.id
+    )
+    findings: list[Finding] = list(
+        validate_record_pair(
+            source_record,
+            TranslatedRecord(id=item.id, target=target_text),
+            source_chunk.chunk_id,
+            validation_context,
+        )
+    )
+    findings.extend(
+        _binding_glossary_findings(
+            source_record,
+            target_text=target_text,
+            chunk_id=source_chunk.chunk_id,
+            context=validation_context,
+        )
+    )
+    return target_text, findings
+
+
 def accept_judge_submission(
     project: Project,
     task: JudgeTask,
@@ -461,6 +650,7 @@ def accept_judge_submission(
     *,
     bundle: StatusBundle,
     enforce_snapshot: bool = False,
+    input_format: str = "block",
 ) -> JudgeInsertResult:
     if not submitted:
         raise _err("empty_submission", "no judge decisions to accept")
@@ -489,104 +679,22 @@ def accept_judge_submission(
     timestamp = utc_timestamp()
     accepted_versions: list[str] = []
     seen_ids: set[str] = set()
+    resolved_target_by_id: dict[str, str] = {}
 
     for item in submitted:
-        if item.id in seen_ids:
-            raise _err("duplicate_record_id", f"duplicate judge record id: {item.id}")
-        seen_ids.add(item.id)
-        task_record = task_records.get(item.id)
-        if task_record is None:
-            raise _err(
-                "record_not_in_task",
-                f"record {item.id} is not part of judge task {task.judge_task_id}",
-            )
-        if item.decision_kind not in {"copy", "edited"}:
-            raise _err(
-                "judge_decision_kind",
-                f"record {item.id} decision_kind must be copy or edited",
-            )
-        _validate_edited_targets_allowed(project, item)
-        selected_candidate: JudgeTaskCandidate | None = None
-        if item.selected and item.selected != "edited":
-            selected_candidate = _candidate_for_label(task_record, item.selected)
-            if selected_candidate is None:
-                raise _err(
-                    "judge_selected_label",
-                    f"record {item.id} selected label {item.selected!r} "
-                    f"is not present in judge task {task.judge_task_id}",
-                )
-        elif item.decision_kind == "copy":
-            raise _err(
-                "judge_selected_label",
-                f"record {item.id} copy decisions require a candidate label",
-            )
-        target_text = item.target.strip("\n")
-        if not target_text.strip():
-            raise _err(
-                "judge_empty_target", f"record {item.id} target must not be empty"
-            )
-
-        if selected_candidate is not None:
-            if item.decision_kind == "copy" and any(
-                finding.rule in {"glossary_target_missing", "forbidden_term_used"}
-                for finding in selected_candidate.validation_findings
-            ):
-                raise _err(
-                    "judge_candidate_validation",
-                    f"record {item.id} selected candidate {selected_candidate.label} "
-                    "violates the selection profile glossary "
-                    "and cannot be copied unchanged",
-                )
-            # Self-check: the candidate target hash must match its own payload.
-            # This detects a corrupted/edited task artifact for any access mode.
-            if (
-                sha256_text(selected_candidate.target)
-                != selected_candidate.target_sha256
-            ):
-                raise _err(
-                    "judge_task_candidate_corrupt",
-                    f"record {item.id} candidate {selected_candidate.label} hash "
-                    "does not match the task payload",
-                )
-            if item.decision_kind == "copy" and _normalize_newlines(
-                target_text
-            ) != _normalize_newlines(selected_candidate.target):
-                raise _err(
-                    "judge_copy_target_mismatch",
-                    f"record {item.id} copy target must exactly match "
-                    f"selected candidate {selected_candidate.label}",
-                )
-            # Live tasks re-check the sibling source profile for drift. Snapshot
-            # tasks trust their immutable, hash-verified payload and never read
-            # sibling profiles.
-            if task.source_access == "live":
-                _validate_live_candidate_has_not_drifted(
-                    project, task, item, selected_candidate
-                )
-
-        if item.id not in source_by_id:
-            raise _err("unknown_record_id", f"unknown source record id: {item.id}")
-        source_view = source_by_id[item.id]
-        source_chunk = source_chunks[source_view.chunk_id]
-        source_record = next(
-            record for record in source_chunk.records if record.id == item.id
+        target_text, item_findings = _validate_and_resolve_target(
+            item=item,
+            project=project,
+            task=task,
+            task_records=task_records,
+            seen_ids=seen_ids,
+            source_by_id=source_by_id,
+            source_chunks=source_chunks,
+            validation_context=validation_context,
+            input_format=input_format,
         )
-        findings.extend(
-            validate_record_pair(
-                source_record,
-                TranslatedRecord(id=item.id, target=target_text),
-                source_chunk.chunk_id,
-                validation_context,
-            )
-        )
-        findings.extend(
-            _binding_glossary_findings(
-                source_record,
-                target_text=target_text,
-                chunk_id=source_chunk.chunk_id,
-                context=validation_context,
-            )
-        )
+        resolved_target_by_id[item.id] = target_text
+        findings.extend(item_findings)
 
     errors = _error_findings(findings)
     if errors:
@@ -595,6 +703,7 @@ def accept_judge_submission(
     for item in submitted:
         task_record = task_records[item.id]
         source_view = source_by_id[item.id]
+        target_text = resolved_target_by_id[item.id]
         ensure_store_record(
             store,
             item.id,
@@ -607,7 +716,7 @@ def accept_judge_submission(
         upsert_translation_version(
             store.records[item.id],
             task_record.output_version_ref,
-            item.target.strip("\n"),
+            target_text,
             updated_at=timestamp,
             activate=True,
             baseline_ref=task_record.output_version_ref,

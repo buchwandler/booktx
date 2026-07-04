@@ -261,6 +261,19 @@ without rebuilding, run:
 booktx check ./book --profile de_default --epub-output --json
 ```
 
+## Corrupted judge ingest file
+
+If a judge ingest file glues a `TARGET` line to the next `## RECORD` header,
+`booktx judge insert` now reports a boundary-corruption error and suggests a
+reset command. Re-render the editable decision file from the stored task:
+
+```bash
+booktx judge reset-ingest ./book --profile PROFILE --judge-task-id TASK --format decisions --write
+```
+
+For `decision_kind: copy`, leave `TARGET` empty after the reset. booktx copies
+the selected candidate exactly during insert.
+
 ## glossary_alignment_ambiguous
 
 This warning means a source record contains both a longer glossary occurrence and a shorter standalone occurrence, and a target form could belong to either. Review the companion source block from `translation search --write-block` or `context audit-term --write-block`, then revise deliberately. Use `--fail-on-warnings` to block final validation until the ambiguity has been reviewed.

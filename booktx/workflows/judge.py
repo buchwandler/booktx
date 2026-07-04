@@ -10,16 +10,26 @@ from booktx.acceptance import SubmissionValidationError
 from booktx.agents_md import AGENTS_FILENAME, inspect_agents_md
 from booktx.config import (
     _err,
+    judge_ingest_decisions_path,
     load_judge_task,
     load_profile_config,
+    load_profile_project,
     profile_dir,
     write_profile_config,
 )
-from booktx.context import load_context
+from booktx.context import (
+    load_context,
+    unapproved_required_questions,
+    unresolved_required_questions,
+)
+from booktx.context_sync import apply_context_sync, plan_context_sync
 from booktx.errors import BooktxError
+from booktx.io_utils import write_text_atomic
 from booktx.judge_acceptance import (
+    SubmittedJudgeRecord,
     accept_judge_submission,
     parse_judge_block_submission,
+    parse_judge_decisions_submission,
     parse_judge_json_submission,
 )
 from booktx.judge_sources import (
@@ -35,9 +45,10 @@ from booktx.judge_store import (
     resolve_selection_sources,
     selected_record_ids,
 )
-from booktx.judge_tasks import create_judge_task
+from booktx.judge_tasks import create_judge_task, render_judge_ingest
 from booktx.models import JudgeTask, SelectionConfig
 from booktx.termbase import publish_termbase_snapshot
+from booktx.workflows.context import mark_ready_workflow
 from booktx.workflows.profile import create_profile_workflow
 
 if TYPE_CHECKING:
@@ -50,9 +61,13 @@ __all__ = [
     "create_judge_profile_workflow",
     "create_next_judge_task_workflow",
     "create_record_judge_task_workflow",
+    "judge_task_edit_path",
     "judge_task_block_paths",
+    "judge_task_decisions_path",
     "judge_task_json_path",
     "accept_judge_submission_workflow",
+    "accept_identical_judge_records_workflow",
+    "reset_judge_ingest_workflow",
     "prepare_judge_isolation_workflow",
 ]
 
@@ -65,6 +80,7 @@ def create_judge_profile_workflow(
     target_locale: str | None,
     sources_csv: str | None,
     model: str | None,
+    context_from: str | None,
 ) -> Project:
     project = create_profile_workflow(
         project_dir,
@@ -77,13 +93,57 @@ def create_judge_profile_workflow(
     cfg = load_profile_config(project.root, profile_name)
     cfg.selection = SelectionConfig(sources=resolve_sources_csv(sources_csv))
     write_profile_config(project.root, cfg)
+    if context_from:
+        _sync_judge_context_from_source(project.root, context_from, profile_name)
     return project
+
+
+def _sync_judge_context_from_source(
+    root: Path, source_profile: str, target_profile: str
+) -> dict[str, Any]:
+    plan = plan_context_sync(
+        root,
+        source_profile=source_profile,
+        target_profiles=[target_profile],
+        all_compatible=False,
+        sections={"glossary", "style", "global-rules", "questions"},
+        terms=[],
+        question_ids=[],
+        conflict="replace",
+        same_locale=True,
+        include_pass_through=False,
+        include_selection=True,
+        allow_not_ready=False,
+        init_missing_context=True,
+    )
+    if plan.blocked:
+        raise _err(
+            "judge_context_from_blocked",
+            f"context import from {source_profile} to {target_profile} is blocked",
+        )
+    applied = apply_context_sync(plan, root)
+    target = load_profile_project(root, target_profile)
+    ctx = load_context(target)
+    ready = False
+    if ctx is not None:
+        if not unresolved_required_questions(ctx) and not unapproved_required_questions(
+            ctx
+        ):
+            mark_ready_workflow(target, ctx, force=False, reason="")
+            ready = True
+    return {
+        "source_profile": source_profile,
+        "target_profile": target_profile,
+        "targets": [item.profile for item in applied.targets],
+        "ready": ready,
+    }
 
 
 def prepare_judge_isolation_workflow(
     project_dir: Path,
     *,
     profile: str,
+    context_from: str | None,
     write: bool,
     replace_unmanaged: bool,
 ) -> dict[str, Any]:
@@ -111,11 +171,20 @@ def prepare_judge_isolation_workflow(
     if cfg is None or cfg.kind != "selection":
         raise _err("judge_profile_kind", "judge isolation requires a selection profile")
     ctx = load_context(project)
+    if context_from and (ctx is None or not ctx.ready):
+        _sync_judge_context_from_source(project.root, context_from, profile)
+        project = load_profile_project(project.root, profile)
+        ctx = load_context(project)
     if ctx is None or not ctx.ready:
+        suggested_source = context_from or configured_selection_sources(project)[0]
         raise _err(
             "judge_isolation_context_not_ready",
             "selection profile context is missing or not ready; "
-            "approve answers and run `booktx context mark-ready` first",
+            "sync approved policy first, for example: "
+            f"`booktx context sync . --from {suggested_source} --to {profile} "
+            "--section glossary --section style --section global-rules "
+            "--section questions --write`, then `booktx context mark-ready "
+            f". --profile {profile}`",
         )
     configured = configured_selection_sources(project)
     # Preflight before any mutation: plan the snapshot and inspect AGENTS.md.
@@ -238,21 +307,46 @@ def _build_status_next_command(
     next_chapter: str | None,
     source_access: Literal["live", "snapshot"],
     snapshot_usable: bool,
+    context_ready: bool,
 ) -> str:
     if next_chapter is None:
+        return ""
+    if not context_ready:
         return ""
     if source_access == "snapshot":
         if not snapshot_usable:
             return ""
         return (
             f"booktx judge next . --unit chapter --chapter {next_chapter} "
-            f"--max-words 900 --format block"
+            "--max-records 8 --format decisions"
         )
     sources_arg = ",".join(source_profiles)
     return (
         f"booktx judge next . --profile {proj.profile} --sources {sources_arg} "
-        f"--unit chapter --chapter {next_chapter} --max-words 900 --format block"
+        f"--unit chapter --chapter {next_chapter} --max-records 8 --format block"
     )
+
+
+def _judge_context_status(proj: Project) -> dict[str, Any]:
+    ctx = load_context(proj)
+    if ctx is None:
+        return {
+            "exists": False,
+            "ready": False,
+            "open_required_questions": [],
+            "unapproved_required_questions": [],
+        }
+    open_required = [question.id for question in unresolved_required_questions(ctx)]
+    unapproved_required = [
+        question.id for question in unapproved_required_questions(ctx)
+    ]
+    ready = ctx.ready and not open_required and not unapproved_required
+    return {
+        "exists": True,
+        "ready": ready,
+        "open_required_questions": open_required,
+        "unapproved_required_questions": unapproved_required,
+    }
 
 
 def build_judge_status_workflow(
@@ -264,6 +358,12 @@ def build_judge_status_workflow(
 ) -> dict[str, Any]:
     source_access = _source_access_from_runtime(runtime)
     selected_ids = selected_record_ids(proj)
+    context_info = _judge_context_status(proj)
+    blocked_by: list[str] = []
+    if not context_info["exists"]:
+        blocked_by.append("context_missing")
+    elif not context_info["ready"]:
+        blocked_by.append("context_not_ready")
     snapshot_info: dict[str, Any] | None = None
     source_views: dict[str, object] = {}
     source_profiles: list[str]
@@ -305,8 +405,20 @@ def build_judge_status_workflow(
             }
         )
     next_command = _build_status_next_command(
-        runtime, proj, source_profiles, next_chapter, source_access, snapshot_usable
+        runtime,
+        proj,
+        source_profiles,
+        next_chapter,
+        source_access,
+        snapshot_usable,
+        bool(context_info["ready"]),
     )
+    if source_access == "snapshot" and snapshot_info is not None:
+        snapshot_state = snapshot_info.get("state")
+        if snapshot_state == "missing":
+            blocked_by.append("snapshot_missing")
+        elif snapshot_state == "invalid":
+            blocked_by.append("snapshot_invalid")
     return {
         "profile": proj.profile or "",
         "source_profiles": source_profiles,
@@ -318,6 +430,8 @@ def build_judge_status_workflow(
         "next_command": next_command,
         "mode": runtime.mode.kind,
         "source_access": source_access,
+        "context": context_info,
+        "blocked_by": blocked_by,
         "snapshot": snapshot_info,
     }
 
@@ -329,6 +443,8 @@ def create_next_judge_task_workflow(
     sources_csv: str | None,
     chapter: str | None,
     max_words: int,
+    max_records: int | None,
+    max_rendered_lines: int | None,
     require_all_sources: bool,
     source_access: Literal["live", "snapshot"] = "live",
 ) -> JudgeTask:
@@ -351,6 +467,8 @@ def create_next_judge_task_workflow(
             chapter_id=chapter,
             record_id=None,
             max_words=max_words,
+            max_records=max_records,
+            max_rendered_lines=max_rendered_lines,
             require_all_sources=effective_require_all_sources,
             source_access=source_access,
         )
@@ -409,6 +527,20 @@ def judge_task_block_paths(proj: Project, task: JudgeTask) -> tuple[str, str]:
     )
 
 
+def judge_task_edit_path(proj: Project, task: JudgeTask, output_format: str) -> str:
+    if output_format == "block":
+        return judge_task_block_paths(proj, task)[1]
+    if output_format == "decisions":
+        return judge_task_decisions_path(proj, task)
+    if output_format == "json":
+        return judge_task_json_path(proj, task)
+    raise _err("judge_format", "--format must be block, decisions, or json")
+
+
+def judge_task_decisions_path(proj: Project, task: JudgeTask) -> str:
+    return str(judge_ingest_decisions_path(proj, task.judge_task_id))
+
+
 def judge_task_json_path(proj: Project, task: JudgeTask) -> str:
     from booktx.config import judge_ingest_json_path
 
@@ -430,10 +562,12 @@ def accept_judge_submission_workflow(
     text = file.read_text("utf-8")
     if input_format == "json":
         payload_task_id, submitted = parse_judge_json_submission(text)
+    elif input_format == "decisions":
+        payload_task_id, submitted = parse_judge_decisions_submission(text)
     elif input_format == "block":
         payload_task_id, submitted = parse_judge_block_submission(text)
     else:
-        raise _err("judge_format", "--format must be block or json")
+        raise _err("judge_format", "--format must be block, decisions, or json")
     if payload_task_id and payload_task_id != judge_task_id:
         raise _err(
             "judge_task_id_mismatch",
@@ -448,6 +582,7 @@ def accept_judge_submission_workflow(
             submitted,
             bundle=bundle,
             enforce_snapshot=enforce_snapshot,
+            input_format=input_format,
         )
     except SubmissionValidationError as exc:
         raise BooktxError(
@@ -458,4 +593,89 @@ def accept_judge_submission_workflow(
     return {
         "accepted_records": result.accepted_records,
         "version_refs": result.version_refs,
+    }
+
+
+def reset_judge_ingest_workflow(
+    proj: Project,
+    *,
+    judge_task_id: str,
+    output_format: str,
+    write: bool,
+) -> dict[str, Any]:
+    task = load_judge_task(proj, judge_task_id)
+    if task is None:
+        raise _err("judge_task_not_found", f"judge task not found: {judge_task_id}")
+    edit_path = Path(judge_task_edit_path(proj, task, output_format))
+    if write:
+        write_text_atomic(edit_path, render_judge_ingest(task, output_format))
+    return {
+        "judge_task_id": judge_task_id,
+        "format": output_format,
+        "path": edit_path,
+        "write": write,
+    }
+
+
+def accept_identical_judge_records_workflow(
+    proj: Project,
+    *,
+    bundle: StatusBundle,
+    sources_csv: str | None,
+    chapter: str | None,
+    max_words: int,
+    max_records: int | None,
+    max_rendered_lines: int | None,
+    require_all_sources: bool,
+    source_access: Literal["live", "snapshot"],
+    write: bool,
+) -> dict[str, Any]:
+    task = create_next_judge_task_workflow(
+        proj,
+        bundle=bundle,
+        sources_csv=sources_csv,
+        chapter=chapter,
+        max_words=max_words,
+        max_records=max_records,
+        max_rendered_lines=max_rendered_lines,
+        require_all_sources=require_all_sources,
+        source_access=source_access,
+    )
+    submitted: list[SubmittedJudgeRecord] = []
+    for record in task.records:
+        if not record.candidates:
+            continue
+        if any(candidate.validation_findings for candidate in record.candidates):
+            continue
+        if len({candidate.target_sha256 for candidate in record.candidates}) != 1:
+            continue
+        submitted.append(
+            SubmittedJudgeRecord(
+                id=record.id,
+                selected=record.candidates[0].label,
+                decision_kind="copy",
+                target="",
+                reason="All available candidates are identical and pass validation.",
+            )
+        )
+    accepted = 0
+    version_refs: list[str] = []
+    if write and submitted:
+        result = accept_judge_submission(
+            proj,
+            task,
+            submitted,
+            bundle=bundle,
+            enforce_snapshot=source_access == "snapshot",
+            input_format="decisions",
+        )
+        accepted = result.accepted_records
+        version_refs = result.version_refs
+    return {
+        "judge_task_id": task.judge_task_id,
+        "task": task,
+        "matched_records": len(submitted),
+        "accepted_records": accepted,
+        "version_refs": version_refs,
+        "write": write,
     }

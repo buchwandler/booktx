@@ -369,39 +369,44 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target de \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
+  --context-from de_gpt5_5 \
   --model gpt-5.5 \
 
-
-booktx context init ./book --profile de_judge_gpt5_5 --non-interactive
-booktx context sync ./book \
-  --from de_gpt5_5 \
-  --to de_judge_gpt5_5 \
-  --section glossary \
-  --section style \
-  --section global-rules \
-  --write
-booktx context mark-ready ./book --profile de_judge_gpt5_5
-
 booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
+
+booktx judge accept-identical ./book \
+  --profile de_judge_gpt5_5 \
+  --sources de_gpt5_5,de_glm_5_2 \
+  --unit chapter \
+  --chapter 0001 \
+  --max-records 100 \
+  --write
 
 booktx judge next ./book \
   --profile de_judge_gpt5_5 \
   --sources de_gpt5_5,de_glm_5_2 \
   --unit chapter \
   --chapter 0001 \
-  --max-words 900 \
-  --format block
+  --max-records 8 \
+  --format decisions
 
 booktx judge record ./book \
   --profile de_judge_gpt5_5 \
   --sources de_gpt5_5,de_glm_5_2 \
-  --record 0001-000001
+  --record 0001-000001 \
+  --format decisions
 
 booktx judge insert ./book \
   --profile de_judge_gpt5_5 \
   --judge-task-id TASK \
-  --file translations/de_judge_gpt5_5/judge-ingest/TASK.block.txt \
-  --format block
+  --file translations/de_judge_gpt5_5/judge-ingest/TASK.decisions.txt \
+  --format decisions
+
+booktx judge reset-ingest ./book \
+  --profile de_judge_gpt5_5 \
+  --judge-task-id TASK \
+  --format decisions \
+  --write
 ```
 
 ### Prepare isolation (project-root)
@@ -418,10 +423,15 @@ booktx judge prepare-isolation ./book --profile de_judge_gpt5_5 --write
 ```bash
 cd translations/de_judge_gpt5_5
 booktx judge status .
-booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
-booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
-booktx validate . --fail-on-warnings
+booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
+booktx judge reset-ingest . --judge-task-id TASK --format decisions --write
+booktx judge continue . --max-records 8
 ```
+
+For `decision_kind: copy`, leave `TARGET` empty; booktx copies the selected
+candidate exactly. Only `edited` decisions require a non-empty `TARGET`.
 
 ## Glossary repair and chapter note reset
 

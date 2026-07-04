@@ -203,32 +203,32 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --target de \
   --target-locale de-DE \
   --sources de_gpt5_5,de_glm_5_2 \
+  --context-from de_gpt5_5 \
   --model gpt-5.5 \
 
-
-booktx context init ./book --profile de_judge_gpt5_5 --non-interactive
-booktx context sync ./book \
-  --from de_gpt5_5 \
-  --to de_judge_gpt5_5 \
-  --section glossary \
-  --section style \
-  --section global-rules \
+booktx judge accept-identical ./book \
+  --profile de_judge_gpt5_5 \
+  --sources de_gpt5_5,de_glm_5_2 \
+  --unit chapter \
+  --chapter 0001 \
+  --max-records 100 \
   --write
-booktx context mark-ready ./book --profile de_judge_gpt5_5
 
 booktx judge next ./book \
   --profile de_judge_gpt5_5 \
   --sources de_gpt5_5,de_glm_5_2 \
   --unit chapter \
   --chapter 0001 \
-  --max-words 900 \
-  --format block
+  --max-records 8 \
+  --format decisions
 ```
 
 Judge tasks expose the original source plus each source profile's effective
 candidate. Prefer exact candidate copy when one option is already correct.
-Choose `decision_kind: edited` only when every available candidate needs a
-repair. Submit the completed judge ingest file with `booktx judge insert ...`;
+For `decision_kind: copy`, set `selected` and `reason` and leave `TARGET`
+empty so booktx copies the selected candidate exactly. Choose
+`decision_kind: edited` only when every available candidate needs a repair.
+Submit the completed judge ingest file with `booktx judge insert ...`;
 booktx writes the chosen target into the selection profile's normal translation
 store and records provenance in `translation-selection-ledger.json`.
 
@@ -251,12 +251,15 @@ cd translations/de_judge_gpt5_5
 
 # profile root
 booktx judge status .
-booktx judge next . --unit chapter --chapter 0001 --max-words 900 --format block
-booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.block.txt --format block
-booktx validate . --fail-on-warnings
+booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
+booktx judge reset-ingest . --judge-task-id TASK --format decisions --write
+booktx judge continue . --max-records 8
 ```
 
 The isolated judge workflow uses copied candidate data and never reads sibling
 profiles. Output is sanitized: no `--profile` flag, no parent paths, and no
 `translations/<profile>` references. Submission paths are confined to regular
-files inside the current profile.
+files inside the current profile. Do not chain `judge insert` and `judge next`
+in one shell command; continue only after a successful insert.
