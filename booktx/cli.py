@@ -11,13 +11,14 @@ from booktx.cli_support import _project_status_snapshot, console
 from booktx.commands.agents import agents_app
 from booktx.commands.context import context_app
 from booktx.commands.epub import epub_app
+from booktx.commands.glossary import glossary_app
 from booktx.commands.identity import actor_app, harness_app, identity_app, model_app
 from booktx.commands.judge import judge_app
-from booktx.commands.lexicon import lexicon_app
 from booktx.commands.profile import profile_app
 from booktx.commands.review import review_app
 from booktx.commands.root import doctor_app, root_app
 from booktx.commands.source import source_app
+from booktx.commands.termbase import termbase_app
 from booktx.commands.translate import translate_app
 from booktx.commands.version import version_app
 
@@ -44,7 +45,8 @@ app.add_typer(judge_app, name="judge")
 app.add_typer(version_app, name="version")
 app.add_typer(profile_app, name="profile")
 app.add_typer(epub_app, name="epub")
-app.add_typer(lexicon_app, name="lexicon")
+app.add_typer(glossary_app, name="glossary")
+app.add_typer(termbase_app, name="termbase")
 app.add_typer(actor_app, name="actor")
 app.add_typer(harness_app, name="harness")
 app.add_typer(model_app, name="model")

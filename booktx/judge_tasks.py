@@ -16,7 +16,6 @@ from booktx.config import (
     write_judge_task,
 )
 from booktx.context import ensure_context_view_snapshot, load_context
-from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import write_text_atomic
 from booktx.judge_sources import (
     judge_sources_manifest_sha256,
@@ -35,6 +34,7 @@ from booktx.progress import count_words
 from booktx.record_refs import parse_record_ref
 from booktx.status import selected_chapter
 from booktx.tasks import limit_records_by_words
+from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
 from booktx.validate import load_validation_context
 from booktx.versioning import canonical_json_sha256, resolve_current_version
 
@@ -100,6 +100,7 @@ def render_judge_task_block(task: JudgeTask) -> str:
             "source_snapshot: "
             + (task.source_snapshot_path or JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL)
         )
+    lines.append(f"applicable_termbase_sha256: {task.applicable_termbase_sha256 or ''}")
     lines.append("")
     for record in task.records:
         lines.extend(
@@ -113,6 +114,11 @@ def render_judge_task_block(task: JudgeTask) -> str:
                 "",
             ]
         )
+        for snapshot in record.applicable_termbase:
+            note = snapshot.sense or snapshot.rationale
+            lines.append(f"TERMBASE: {snapshot.entry_id} — {note}".rstrip(" —"))
+        if record.applicable_termbase:
+            lines.append("")
         for candidate in record.candidates:
             lines.append(
                 f"[{candidate.label}] profile={candidate.profile} "
@@ -209,6 +215,13 @@ def create_judge_task(
         project,
         context_view_path=context_view.context_path,
     )
+    record_sources = {
+        record_ref: bundle.index.source_by_id[record_ref].source
+        for record_ref in selected_ids
+    }
+    applicable_termbase, applicable_termbase_sha256 = (
+        collect_applicable_termbase_for_record_sources(project, record_sources)
+    )
 
     records: list[JudgeTaskRecord] = []
     total_words = 0
@@ -242,6 +255,7 @@ def create_judge_task(
                 chunk_id=source_view.chunk_id,
                 source=source_record.source,
                 source_sha256=source_view.source_sha256,
+                applicable_termbase=applicable_termbase.get(record_ref, []),
                 candidates=candidates,
                 missing_profiles=missing_profiles,
                 output_version_ref=resolution.version_ref,
@@ -274,7 +288,7 @@ def create_judge_task(
         ),
         context_view_sha256=context_view.context_view_sha256,
         context_view_path=context_view.context_path,
-        mandatory_glossary_sha256=live_mandatory_glossary_sha256(project),
+        applicable_termbase_sha256=applicable_termbase_sha256,
         source_access=source_access,
         source_snapshot_sha256=source_snapshot_sha256,
         source_snapshot_path=source_snapshot_path,

@@ -8,17 +8,17 @@ from typer.testing import CliRunner
 from booktx.cli import app
 from booktx.config import (
     load_project,
-    profile_lexicon_path,
-    project_lexicon_path,
+    profile_termbase_path,
+    project_termbase_path,
     write_translation_store,
 )
-from booktx.lexicon import TranslationLexicon, write_lexicon_shard
 from booktx.models import (
     StoredTranslationRecordV2,
     TranslationCandidate,
     TranslationStoreV2,
 )
 from booktx.progress import source_record_sha256
+from booktx.termbase import TranslationTermbase, write_termbase_shard
 
 runner = CliRunner()
 
@@ -84,17 +84,17 @@ def _store_record(project_dir: Path, target: str, profile: str = "de_default") -
 
 
 def _global_shard(monkeypatch, tmp_path: Path) -> Path:
-    root = tmp_path / "global-lexicon"
-    monkeypatch.setenv("BOOKTX_LEXICON_DIR", str(root))
+    root = tmp_path / "global-termbase"
+    monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(root))
     return root / "de.json"
 
 
-def test_lexicon_add_global_writes_shard_and_status(monkeypatch, tmp_path: Path):
+def test_termbase_add_global_writes_shard_and_status(monkeypatch, tmp_path: Path):
     shard_path = _global_shard(monkeypatch, tmp_path)
     res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "add",
             "--scope",
             "global",
@@ -118,30 +118,30 @@ def test_lexicon_add_global_writes_shard_and_status(monkeypatch, tmp_path: Path)
 
     status = runner.invoke(
         app,
-        ["lexicon", "status", "--scope", "global", "--language", "de", "--json"],
+        ["termbase", "status", "--scope", "global", "--language", "de", "--json"],
     )
     assert status.exit_code == 0, status.output
     payload = json.loads(status.output)
     assert payload["active_entries"] == 1
-    assert payload["layers"][0]["path"] == "$BOOKTX_LEXICON_DIR/de.json"
+    assert payload["layers"][0]["path"] == "$BOOKTX_TERMBASE_DIR/de.json"
 
 
-def test_lexicon_export_and_import_global(monkeypatch, tmp_path: Path):
+def test_termbase_export_and_import_global(monkeypatch, tmp_path: Path):
     shard_path = _global_shard(monkeypatch, tmp_path)
-    write_lexicon_shard(
+    write_termbase_shard(
         shard_path,
-        TranslationLexicon(
+        TranslationTermbase(
             language_key="de",
             source_language="en",
             target_language="de",
             entries=[],
         ),
     )
-    export_path = tmp_path / "lexicon-de.json"
+    export_path = tmp_path / "termbase-de.json"
     export_res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "export",
             "--scope",
             "global",
@@ -157,7 +157,7 @@ def test_lexicon_export_and_import_global(monkeypatch, tmp_path: Path):
     import_res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "import",
             "--scope",
             "global",
@@ -190,7 +190,7 @@ def test_lexicon_export_and_import_global(monkeypatch, tmp_path: Path):
     merge_res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "import",
             "--scope",
             "global",
@@ -210,7 +210,7 @@ def test_lexicon_export_and_import_global(monkeypatch, tmp_path: Path):
     replace_res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "import",
             "--scope",
             "global",
@@ -227,11 +227,11 @@ def test_lexicon_export_and_import_global(monkeypatch, tmp_path: Path):
     assert list(shard_path.parent.glob("de.*.bak.json"))
 
 
-def test_lexicon_scan_source_and_audit_jsonl(monkeypatch, tmp_path: Path):
+def test_termbase_scan_source_and_audit_jsonl(monkeypatch, tmp_path: Path):
     shard_path = _global_shard(monkeypatch, tmp_path)
-    write_lexicon_shard(
+    write_termbase_shard(
         shard_path,
-        TranslationLexicon.model_validate(
+        TranslationTermbase.model_validate(
             {
                 "language_key": "de",
                 "source_language": "en",
@@ -261,7 +261,7 @@ def test_lexicon_scan_source_and_audit_jsonl(monkeypatch, tmp_path: Path):
     scan = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "scan-source",
             str(project_dir),
             "--profile",
@@ -274,20 +274,20 @@ def test_lexicon_scan_source_and_audit_jsonl(monkeypatch, tmp_path: Path):
 
     audit = runner.invoke(
         app,
-        ["lexicon", "audit", str(project_dir), "--profile", "de_default", "--jsonl"],
+        ["termbase", "audit", str(project_dir), "--profile", "de_default", "--jsonl"],
     )
     assert audit.exit_code == 0, audit.output
     assert "forbidden_target" in audit.output
     assert "schimmligen Prinzipien" in audit.output
 
 
-def test_lexicon_status_merges_layers(monkeypatch, tmp_path: Path):
+def test_termbase_status_merges_layers(monkeypatch, tmp_path: Path):
     shard_path = _global_shard(monkeypatch, tmp_path)
     project_dir, _ = _make_project(tmp_path)
     project = load_project(project_dir, profile="de_default")
-    write_lexicon_shard(
+    write_termbase_shard(
         shard_path,
-        TranslationLexicon.model_validate(
+        TranslationTermbase.model_validate(
             {
                 "language_key": "de",
                 "source_language": "en",
@@ -304,9 +304,9 @@ def test_lexicon_status_merges_layers(monkeypatch, tmp_path: Path):
             }
         ),
     )
-    write_lexicon_shard(
-        project_lexicon_path(project, "de"),
-        TranslationLexicon.model_validate(
+    write_termbase_shard(
+        project_termbase_path(project, "de"),
+        TranslationTermbase.model_validate(
             {
                 "language_key": "de",
                 "source_language": "en",
@@ -327,7 +327,7 @@ def test_lexicon_status_merges_layers(monkeypatch, tmp_path: Path):
 
     status = runner.invoke(
         app,
-        ["lexicon", "status", str(project_dir), "--profile", "de_default", "--json"],
+        ["termbase", "status", str(project_dir), "--profile", "de_default", "--json"],
     )
     assert status.exit_code == 0, status.output
     payload = json.loads(status.output)
@@ -335,11 +335,11 @@ def test_lexicon_status_merges_layers(monkeypatch, tmp_path: Path):
     assert "LEX-SHARED" in payload["conflicts"]
 
 
-def test_lexicon_isolated_global_reads_and_profile_writes(monkeypatch, tmp_path: Path):
+def test_termbase_isolated_global_reads_and_profile_writes(monkeypatch, tmp_path: Path):
     shard_path = _global_shard(monkeypatch, tmp_path)
-    write_lexicon_shard(
+    write_termbase_shard(
         shard_path,
-        TranslationLexicon(
+        TranslationTermbase(
             language_key="de",
             source_language="en",
             target_language="de",
@@ -350,16 +350,16 @@ def test_lexicon_isolated_global_reads_and_profile_writes(monkeypatch, tmp_path:
     monkeypatch.chdir(profile_root)
 
     status = runner.invoke(
-        app, ["lexicon", "status", ".", "--scope", "global", "--language", "de"]
+        app, ["termbase", "status", ".", "--scope", "global", "--language", "de"]
     )
     assert status.exit_code == 0, status.output
     assert str(tmp_path) not in status.output
-    assert "$BOOKTX_LEXICON_DIR/de.json" in status.output
+    assert "$BOOKTX_TERMBASE_DIR/de.json" in status.output
 
     blocked = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "add",
             ".",
             "--scope",
@@ -378,7 +378,7 @@ def test_lexicon_isolated_global_reads_and_profile_writes(monkeypatch, tmp_path:
     allowed = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "add",
             ".",
             "--scope",
@@ -393,10 +393,10 @@ def test_lexicon_isolated_global_reads_and_profile_writes(monkeypatch, tmp_path:
     )
     assert allowed.exit_code == 0, allowed.output
     project = load_project(project_dir, profile="de_default")
-    assert profile_lexicon_path(project, "de").is_file()
+    assert profile_termbase_path(project, "de").is_file()
 
 
-def test_lexicon_locale_precedence_prefers_profile_locale_override(
+def test_termbase_locale_precedence_prefers_profile_locale_override(
     monkeypatch, tmp_path: Path
 ):
     _global_shard(monkeypatch, tmp_path)
@@ -416,9 +416,9 @@ def test_lexicon_locale_precedence_prefers_profile_locale_override(
     )
     assert create.exit_code == 0, create.output
     project = load_project(project_dir, profile="de_locale")
-    write_lexicon_shard(
-        project_lexicon_path(project, "de"),
-        TranslationLexicon.model_validate(
+    write_termbase_shard(
+        project_termbase_path(project, "de"),
+        TranslationTermbase.model_validate(
             {
                 "language_key": "de",
                 "source_language": "en",
@@ -438,9 +438,9 @@ def test_lexicon_locale_precedence_prefers_profile_locale_override(
             }
         ),
     )
-    write_lexicon_shard(
-        profile_lexicon_path(project, "de-DE"),
-        TranslationLexicon.model_validate(
+    write_termbase_shard(
+        profile_termbase_path(project, "de-DE"),
+        TranslationTermbase.model_validate(
             {
                 "language_key": "de-DE",
                 "source_language": "en",
@@ -470,7 +470,7 @@ def test_lexicon_locale_precedence_prefers_profile_locale_override(
 
     audit = runner.invoke(
         app,
-        ["lexicon", "audit", str(project_dir), "--profile", "de_locale", "--jsonl"],
+        ["termbase", "audit", str(project_dir), "--profile", "de_locale", "--jsonl"],
     )
     assert audit.exit_code == 0, audit.output
     assert "modrigen Prinzipien" in audit.output

@@ -21,13 +21,9 @@ from booktx.config import (
     translation_review_ingest_block_path,
     translation_review_source_block_path,
 )
-from booktx.context import load_context
 from booktx.io_utils import write_text_atomic
-from booktx.lexicon import resolve_effective_lexicon
-from booktx.lexicon_audit import audit_lexicon
-from booktx.lexicon_tasking import collect_applicable_lexicon_for_record_sources
 from booktx.models import (
-    ApplicableLexiconFindingSnapshot,
+    ApplicableTermbaseFindingSnapshot,
     QualityReviewConfig,
     ReviewContextRecord,
     ReviewPassConfig,
@@ -36,6 +32,9 @@ from booktx.models import (
     TranslationReviewTask,
     TranslationReviewTaskRecord,
 )
+from booktx.termbase import resolve_effective_termbase
+from booktx.termbase_audit import audit_termbase
+from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
 from booktx.translation_store import (
     active_candidate,
     active_review_candidate,
@@ -377,34 +376,39 @@ def create_review_task(
 
     records: list[TranslationReviewTaskRecord] = []
     record_sources = {sel.record_id: sel.source for sel in selected}
-    applicable_lexicon, applicable_lexicon_sha256 = (
-        collect_applicable_lexicon_for_record_sources(project, record_sources)
+    applicable_termbase, applicable_termbase_sha256 = (
+        collect_applicable_termbase_for_record_sources(project, record_sources)
     )
-    effective_lexicon, _ = resolve_effective_lexicon(project)
-    audit_result = audit_lexicon(
+    effective_termbase, _ = resolve_effective_termbase(project)
+    audit_result = audit_termbase(
         project,
         bundle,
-        effective_lexicon,
+        effective_termbase,
         chapter_id=chapter.chapter_id,
         entry_ids={
             snapshot.entry_id
-            for snapshots in applicable_lexicon.values()
+            for snapshots in applicable_termbase.values()
             for snapshot in snapshots
         }
         or None,
     )
-    finding_map: dict[str, list[ApplicableLexiconFindingSnapshot]] = {}
+    finding_map: dict[str, list[ApplicableTermbaseFindingSnapshot]] = {}
     for finding in audit_result.matches:
         finding_map.setdefault(finding.record_id, []).append(
-            ApplicableLexiconFindingSnapshot(
+            ApplicableTermbaseFindingSnapshot(
                 entry_id=finding.entry_id,
+                rule_id=finding.rule_id,
+                context_id=finding.context_id,
                 status=finding.status,
                 rule_code=finding.rule_code,
                 severity=finding.severity,
                 reason=finding.reason,
                 target_forbidden_found=list(finding.target_forbidden_found),
-                target_preferred_found=list(finding.target_preferred_found),
+                target_required_found=list(finding.target_required_found),
+                target_allowed_found=list(finding.target_allowed_found),
                 effective_candidate_ref=finding.effective_candidate_ref,
+                prompt=finding.prompt,
+                fallback=finding.fallback,
             )
         )
     for sel in selected:
@@ -440,8 +444,8 @@ def create_review_task(
                 review_window_sha256=sha256_text(window_payload),
                 before=before,
                 after=after,
-                applicable_lexicon=applicable_lexicon.get(sel.record_id, []),
-                lexicon_findings=finding_map.get(sel.record_id, []),
+                applicable_termbase=applicable_termbase.get(sel.record_id, []),
+                termbase_findings=finding_map.get(sel.record_id, []),
             )
         )
 
@@ -472,8 +476,7 @@ def create_review_task(
             project.source_config.model_dump(mode="json")
         ),
         review_policy_sha256=None,
-        mandatory_glossary_sha256=_live_mandatory_glossary_sha256(project),
-        applicable_lexicon_sha256=applicable_lexicon_sha256,
+        applicable_termbase_sha256=applicable_termbase_sha256,
         before_records=before_n,
         after_records=after_n,
         source_words=sum(source_by_id[s.record_id].source_words for s in selected),
@@ -490,15 +493,6 @@ def create_review_task(
     return task
 
 
-def _live_mandatory_glossary_sha256(project: Project) -> str:
-    """Hash of the live binding glossary fields for review task fingerprinting."""
-    from booktx.glossary_match import mandatory_glossary_sha256
-
-    ctx = load_context(project)
-    glossary = list(ctx.glossary) if ctx is not None else []
-    return mandatory_glossary_sha256(glossary)
-
-
 def write_review_source_block(project: Project, task: TranslationReviewTask) -> object:
     """Write the review source block with neighbors and the selected base target."""
     path = translation_review_source_block_path(project, task.review_task_id)
@@ -509,7 +503,7 @@ def write_review_source_block(project: Project, task: TranslationReviewTask) -> 
         f"# pass: R{task.pass_number} {task.pass_name}".rstrip(),
         f"# chapter: {task.chapter_id} {task.chapter_title}".rstrip(),
         f"# instruction: {task.pass_instructions}".rstrip(),
-        f"# applicable_lexicon_sha256: {task.applicable_lexicon_sha256 or ''}",
+        f"# applicable_termbase_sha256: {task.applicable_termbase_sha256 or ''}",
         "",
     ]
     for rec in task.records:
@@ -522,12 +516,12 @@ def write_review_source_block(project: Project, task: TranslationReviewTask) -> 
         parts.append(f">>> {rec.id} REVIEW {rec.review_ref} FROM {rec.base_ref}")
         parts.append(f"SOURCE: {rec.source}")
         parts.append(f"CURRENT: {rec.base_target}")
-        for snapshot in rec.applicable_lexicon:
+        for snapshot in rec.applicable_termbase:
             note = snapshot.sense or snapshot.rationale
-            parts.append(f"LEXICON: {snapshot.entry_id} — {note}".rstrip(" —"))
-        for finding in rec.lexicon_findings:
+            parts.append(f"TERMBASE: {snapshot.entry_id} — {note}".rstrip(" —"))
+        for finding in rec.termbase_findings:
             parts.append(
-                f"LEXICON-FINDING: {finding.status} {finding.entry_id} {finding.reason}".rstrip()
+                f"TERMBASE-FINDING: {finding.status} {finding.entry_id} {finding.reason}".rstrip()
             )
         parts.append("")
         for ctx in rec.after:

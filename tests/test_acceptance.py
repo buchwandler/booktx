@@ -11,10 +11,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from booktx.acceptance import (
     AcceptResult,
+    SubmissionValidationError,
     SubmittedRecord,
     accept_one_record,
     accept_translation_records,
@@ -308,9 +310,7 @@ def test_task_validation_uses_task_context_view_before_live_context(tmp_path: Pa
     ctx.glossary[0].forbidden_targets = []
     write_context(proj, ctx)
 
-    # Binding glossary was mutated after task creation: the mandatory
-    # fingerprint changed, so the stale check now blocks before submission.
-    try:
+    with pytest.raises(SubmissionValidationError):
         accept_translation_records(
             proj,
             [SubmittedRecord(id=task.records[0].id, target="Die Niederlande")],
@@ -318,12 +318,6 @@ def test_task_validation_uses_task_context_view_before_live_context(tmp_path: Pa
             task=task,
             submission_translation_version=task.translation_version,
             enforce_task_version=True,
-        )
-    except BooktxError as exc:
-        assert exc.code == "task_context_policy_stale"
-    else:  # pragma: no cover
-        raise AssertionError(
-            "expected stale-task block after binding glossary mutation"
         )
 
 

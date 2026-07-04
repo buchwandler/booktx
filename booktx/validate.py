@@ -39,7 +39,6 @@ from booktx.config import (
     translation_store_path,
 )
 from booktx.context import (
-    GlossaryEntry,
     TranslationContext,
     analyze_context_markdown_drift,
     context_markdown_path,
@@ -47,16 +46,13 @@ from booktx.context import (
     render_context_markdown,
 )
 from booktx.epub_manifest import load_epub_template_from_manifest
+from booktx.glossary_audit import evaluate_glossary_entry
 from booktx.glossary_diagnostics import (
     format_glossary_missing_message,
     source_phrase_window,
 )
 from booktx.glossary_match import (
-    TermSpan,
-    applicable_entry_indexes,
-    contains_term,
     source_glossary_matches,
-    target_contains_approved,
     target_terms,
 )
 from booktx.models import (
@@ -643,20 +639,30 @@ def _check_forbidden_terms(
     if context is None:
         return []
     findings: list[Finding] = []
-    applicable = applicable_entry_indexes(source_rec.source, context.glossary)
     spans = source_glossary_matches(source_rec.source, context.glossary)
     shadowed_entries = {span.entry_index for span in spans if span.shadowed}
     for idx, entry in enumerate(context.glossary):
-        if (
-            entry.enforce == "off"
-            or not entry.forbidden_targets
-            or idx not in applicable
-        ):
+        if entry.enforce == "off" or not entry.forbidden_targets:
             continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
-        entry_findings = _forbidden_target_findings(
-            entry, target_rec, chunk_id, severity
-        )
+        entry_findings: list[Finding] = []
+        for evaluation in evaluate_glossary_entry(
+            entry=entry,
+            source_text=source_rec.source,
+            target=target_rec.target,
+        ):
+            if evaluation.evaluation.status != "forbidden_target":
+                continue
+            for forbidden in evaluation.evaluation.forbidden_target_found:
+                entry_findings.append(
+                    Finding(
+                        chunk_id=chunk_id,
+                        severity=severity,
+                        rule="forbidden_term_used",
+                        message=f"{entry.source} must not be translated as {forbidden}",
+                        record_id=target_rec.id,
+                    )
+                )
         if idx in shadowed_entries and entry_findings:
             for finding in entry_findings:
                 finding.severity = Severity.WARN
@@ -666,30 +672,6 @@ def _check_forbidden_terms(
                     f" {finding.message}"
                 )
         findings.extend(entry_findings)
-    return findings
-
-
-def _forbidden_target_findings(
-    entry: GlossaryEntry,
-    target_rec: TranslatedRecord,
-    chunk_id: str,
-    severity: str,
-) -> list[Finding]:
-    findings: list[Finding] = []
-    for forbidden in entry.forbidden_targets:
-        if not contains_term(
-            target_rec.target, forbidden, case_sensitive=entry.case_sensitive
-        ):
-            continue
-        findings.append(
-            Finding(
-                chunk_id=chunk_id,
-                severity=severity,
-                rule="forbidden_term_used",
-                message=f"{entry.source} must not be translated as {forbidden}",
-                record_id=target_rec.id,
-            )
-        )
     return findings
 
 
@@ -713,26 +695,30 @@ def _check_required_glossary_targets(
     if context is None:
         return []
     findings: list[Finding] = []
-    spans = source_glossary_matches(source_rec.source, context.glossary)
-    active_spans_by_entry: dict[int, list[TermSpan]] = {}
-    for span in spans:
-        if not span.shadowed:
-            active_spans_by_entry.setdefault(span.entry_index, []).append(span)
-
-    for idx, entry in enumerate(context.glossary):
+    for _idx, entry in enumerate(context.glossary):
         if entry.enforce == "off" or not entry.require_target:
             continue
-        spans_for_entry = active_spans_by_entry.get(idx, [])
-        if not spans_for_entry:
+        evaluations = evaluate_glossary_entry(
+            entry=entry,
+            source_text=source_rec.source,
+            target=target_rec.target,
+        )
+        missing = [
+            evaluation
+            for evaluation in evaluations
+            if not (
+                evaluation.evaluation.required_target_found
+                or evaluation.evaluation.allowed_target_found
+            )
+        ]
+        if not missing:
             continue
         approved = target_terms(entry)
         if not approved:
             # Cannot require a target that is undefined.
             continue
-        if target_contains_approved(target_rec.target, entry):
-            continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
-        matched = spans_for_entry[0]
+        matched = missing[0].matched_span
         phrase_excerpt = source_phrase_window(
             source_rec.source, matched.start, matched.end
         )

@@ -313,6 +313,7 @@ def test_todo_next_creates_durable_files(tmp_path: Path):
     assert payload["chapters_requested"] == 2
     assert payload["batch_words"] == 800
     assert payload["version"] == 1
+    assert payload.get("mandatory_glossary_sha256") is None
 
     json_path = project_dir / payload["json_path"]
     md_path = project_dir / payload["markdown_path"]
@@ -1188,7 +1189,7 @@ def test_todo_resume_context_drift_prints_recreate_command(tmp_path: Path):
     assert "--start-chapter 0001" in res.output
 
 
-def test_insert_stale_todo_task_prints_resume_hint(tmp_path: Path):
+def test_insert_after_glossary_change_keeps_todo_resume_hint(tmp_path: Path):
     project_dir = _make_three_chapter_project(tmp_path)
     todo = _create_todo(project_dir, chapters=2, batch_words=777)
     next_res = runner.invoke(
@@ -1251,10 +1252,7 @@ def test_insert_stale_todo_task_prints_resume_hint(tmp_path: Path):
         ],
     )
 
-    assert insert_res.exit_code == 1
-    assert "predates mandatory" in insert_res.output
-    assert "glossary changes" in insert_res.output
-    assert "next:" in insert_res.output
+    assert insert_res.exit_code == 0
     assert "booktx translate todo-resume ." in insert_res.output
     assert "--todo-id" in insert_res.output
     assert todo["todo_id"] in insert_res.output

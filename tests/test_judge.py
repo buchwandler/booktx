@@ -283,6 +283,7 @@ def test_judge_next_includes_source_and_effective_candidates(tmp_path: Path):
         load_profile_project(project_dir, "de_judge"), _judge_task_id(project_dir)
     )
     assert task is not None
+    assert task.applicable_termbase_sha256
     assert task.records[0].source
     assert [candidate.profile for candidate in task.records[0].candidates] == [
         "de_a",

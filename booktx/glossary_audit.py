@@ -15,28 +15,44 @@ reference. The generator never guesses the corrected translation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from booktx.config import Project, load_translation_store
 from booktx.context import GlossaryEntry, load_context
 from booktx.glossary_match import (
-    contains_term,
-    source_rule_applies,
-    target_contains_approved,
+    source_glossary_matches,
     target_terms,
 )
 from booktx.models import TranslationReviewCandidate
-from booktx.status import StatusBundle
+from booktx.termbase import TermbaseEntry
+from booktx.termbase_match import TermbaseRuleEvaluation, evaluate_entry_policy
 from booktx.translation_store import (
     effective_target_candidate,
 )
+
+if TYPE_CHECKING:
+    from booktx.status import StatusBundle
 
 __all__ = [
     "GlossaryAuditRecord",
     "GlossaryAuditResult",
     "audit_glossary_term",
+    "evaluate_glossary_entry",
     "render_ingest_block",
     "render_source_block",
 ]
+
+
+@dataclass(slots=True)
+class GlossaryEntryEvaluation:
+    matched_span: object
+    evaluation: TermbaseRuleEvaluation
+
+
+def _evaluation_missing_required(item: GlossaryEntryEvaluation) -> bool:
+    return not (
+        item.evaluation.required_target_found or item.evaluation.allowed_target_found
+    )
 
 
 @dataclass(slots=True)
@@ -98,22 +114,48 @@ def _record_dict(r: GlossaryAuditRecord) -> dict[str, object]:
     }
 
 
-def _classify(
+def _glossary_entry_to_termbase(entry: GlossaryEntry) -> TermbaseEntry:
+    return TermbaseEntry(
+        id=f"legacy-glossary-{entry.source}",
+        kind="flat_term",
+        source=entry.source,
+        source_variants=list(entry.source_variants),
+        source_language="en",
+        case_sensitive=entry.case_sensitive,
+        target_preferred=target_terms(entry),
+        target_forbidden=list(entry.forbidden_targets),
+        preferred_policy="required" if entry.require_target else "off",
+        target_language="de",
+        severity="warn" if entry.enforce == "off" else entry.enforce,
+        rationale=entry.notes,
+    )
+
+
+def evaluate_glossary_entry(
     *,
     entry: GlossaryEntry,
     source_text: str,
     target: str,
-) -> tuple[list[str], bool]:
-    """Return (forbidden targets found, missing_approved) for one target."""
-    forbidden_found = [
-        ft
-        for ft in entry.forbidden_targets
-        if contains_term(target, ft, case_sensitive=entry.case_sensitive)
+) -> list[GlossaryEntryEvaluation]:
+    adapted = _glossary_entry_to_termbase(entry)
+    spans = [
+        span
+        for span in source_glossary_matches(source_text, [entry])
+        if not span.shadowed
     ]
-    missing_approved = False
-    if entry.require_target and target_terms(entry):
-        missing_approved = not target_contains_approved(target, entry)
-    return forbidden_found, missing_approved
+    return [
+        GlossaryEntryEvaluation(
+            matched_span=span,
+            evaluation=evaluate_entry_policy(
+                target,
+                adapted,
+                source_match=span.matched_term,
+                source_span=(span.start, span.end),
+                occurrence_index=index,
+            )[0],
+        )
+        for index, span in enumerate(spans)
+    ]
 
 
 def audit_glossary_term(
@@ -161,7 +203,12 @@ def audit_glossary_term(
             seen_record_ids.add(record_id)
             source_view = source_by_id.get(record_id)
             source_text = source_view.source if source_view is not None else ""
-            if not source_rule_applies(source_text, entry):
+            evaluations = evaluate_glossary_entry(
+                entry=entry,
+                source_text=source_text,
+                target="",
+            )
+            if not evaluations:
                 continue
             result.records_with_source_term += 1
             stored = store_records.get(record_id)
@@ -175,8 +222,17 @@ def audit_glossary_term(
                 if isinstance(effective, TranslationReviewCandidate)
                 else effective.version_ref
             )
-            forbidden_found, missing_approved = _classify(
+            evaluations = evaluate_glossary_entry(
                 entry=entry, source_text=source_text, target=effective.target
+            )
+            forbidden_found = [
+                hit
+                for item in evaluations
+                for hit in item.evaluation.forbidden_target_found
+            ]
+            missing_approved = any(
+                entry.require_target and _evaluation_missing_required(item)
+                for item in evaluations
             )
             rec = GlossaryAuditRecord(
                 record_id=record_id,
@@ -205,10 +261,19 @@ def audit_glossary_term(
                 for inactive in stored.versions:
                     if inactive.version_ref == effective_translation_ref:
                         continue
-                    in_forbidden, in_missing = _classify(
+                    inactive_evaluations = evaluate_glossary_entry(
                         entry=entry,
                         source_text=source_text,
                         target=inactive.target,
+                    )
+                    in_forbidden = [
+                        hit
+                        for item in inactive_evaluations
+                        for hit in item.evaluation.forbidden_target_found
+                    ]
+                    in_missing = any(
+                        entry.require_target and _evaluation_missing_required(item)
+                        for item in inactive_evaluations
                     )
                     if in_forbidden or in_missing:
                         result.inactive_records.append(

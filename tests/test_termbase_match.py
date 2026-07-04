@@ -6,13 +6,6 @@ from typer.testing import CliRunner
 
 from booktx.cli import app
 from booktx.config import load_project, write_translation_store
-from booktx.lexicon import EffectiveTranslationLexicon, LexiconEntry
-from booktx.lexicon_audit import audit_lexicon
-from booktx.lexicon_match import (
-    entry_preferred_absence,
-    entry_target_forbidden_hits,
-    lexicon_source_matches,
-)
 from booktx.models import (
     StoredTranslationRecordV2,
     TranslationCandidate,
@@ -20,6 +13,18 @@ from booktx.models import (
 )
 from booktx.progress import source_record_sha256
 from booktx.status import build_status_snapshot
+from booktx.termbase import (
+    EffectiveTranslationTermbase,
+    TermbaseEntry,
+    TermbaseUsageRule,
+)
+from booktx.termbase_audit import audit_termbase
+from booktx.termbase_match import (
+    entry_preferred_absence,
+    entry_target_forbidden_hits,
+    evaluate_entry_policy,
+    termbase_source_matches,
+)
 
 runner = CliRunner()
 
@@ -32,8 +37,8 @@ def _entry(
     source_regex: str | None = r"\bmouldy\s+principles(?:\s+of\s+magic)?\b",
     case_sensitive: bool = False,
     preferred_policy: str = "off",
-) -> LexiconEntry:
-    return LexiconEntry(
+) -> TermbaseEntry:
+    return TermbaseEntry(
         id=entry_id,
         kind="word_sense",
         source=source,
@@ -101,7 +106,7 @@ def _effective(record_id: str, source: str, target: str) -> TranslationStoreV2:
 
 
 def test_literal_boundary_match():
-    spans = lexicon_source_matches(
+    spans = termbase_source_matches(
         "the mouldy principles of magic",
         [_entry("LEX-ONE", source_regex=None, source_variants=[])],
     )
@@ -111,7 +116,7 @@ def test_literal_boundary_match():
 
 
 def test_no_substring_false_positive():
-    spans = lexicon_source_matches(
+    spans = termbase_source_matches(
         "the mouldyprinciples of magic",
         [_entry("LEX-ONE", source_regex=None, source_variants=[])],
     )
@@ -119,7 +124,7 @@ def test_no_substring_false_positive():
 
 
 def test_regex_match_optional_of_magic():
-    spans = lexicon_source_matches(
+    spans = termbase_source_matches(
         "she had learned the mouldy principles of magic",
         [
             _entry(
@@ -134,7 +139,7 @@ def test_regex_match_optional_of_magic():
 
 
 def test_literal_and_regex_same_span_are_deduped():
-    spans = lexicon_source_matches(
+    spans = termbase_source_matches(
         "she had learned the mouldy principles of magic",
         [
             _entry(
@@ -149,7 +154,7 @@ def test_literal_and_regex_same_span_are_deduped():
 
 
 def test_longest_match_shadows_shorter_contained_entry():
-    spans = lexicon_source_matches(
+    spans = termbase_source_matches(
         "she had learned the mouldy principles of magic",
         [
             _entry(
@@ -173,7 +178,7 @@ def test_longest_match_shadows_shorter_contained_entry():
 
 
 def test_partially_overlapping_matches_remain_separate():
-    spans = lexicon_source_matches(
+    spans = termbase_source_matches(
         "the stale mouldy principles",
         [
             _entry(
@@ -199,8 +204,119 @@ def test_case_sensitive_matching_is_respected():
         source_regex=None,
         case_sensitive=True,
     )
-    assert lexicon_source_matches("Mouldy Principles", [entry])
-    assert lexicon_source_matches("mouldy principles", [entry]) == []
+    assert termbase_source_matches("Mouldy Principles", [entry])
+    assert termbase_source_matches("mouldy principles", [entry]) == []
+
+
+def test_specific_phrase_entry_shadows_generic_kinden_entry():
+    generic = TermbaseEntry(
+        id="TERM-KINDEN",
+        kind="flat_term",
+        source="kinden",
+        source_language="en",
+        target_language="de",
+        target_preferred=["Kinden"],
+        preferred_policy="required",
+    )
+    specific = TermbaseEntry(
+        id="TERM-ANT-KINDEN",
+        kind="flat_term",
+        source="Ant-kinden",
+        source_language="en",
+        target_language="de",
+        target_preferred=["Ameisenkinden"],
+        preferred_policy="required",
+    )
+
+    spans = termbase_source_matches("The Ant-kinden arrived.", [generic, specific])
+
+    generic_span = next(span for span in spans if span.entry_id == "TERM-KINDEN")
+    specific_span = next(span for span in spans if span.entry_id == "TERM-ANT-KINDEN")
+    assert specific_span.shadowed is False
+    assert generic_span.shadowed is True
+
+
+def test_contextual_usage_rules_are_occurrence_scoped_and_deterministic():
+    entry = TermbaseEntry(
+        id="TERM-KINDEN-CONTEXT",
+        kind="contextual_term",
+        source="kinden",
+        source_variants=[],
+        source_regex=r"\b(?:Ant-)?kinden\b",
+        source_language="en",
+        target_language="de",
+        usage_rules=[
+            TermbaseUsageRule(
+                id="rule-ant",
+                source_cue="Ant-kinden",
+                required_target_literals=["Ameisenkinden"],
+                forbidden_target_literals=["Kinden"],
+                prompt="Use the species-specific compound.",
+                severity="error",
+            ),
+            TermbaseUsageRule(
+                id="rule-fallback",
+                fallback=True,
+                allowed_target_literals=["Kinden"],
+                prompt="Use the generic form elsewhere.",
+            ),
+        ],
+    )
+
+    spans = [
+        span
+        for span in termbase_source_matches("Ant-kinden and kinden", [entry])
+        if not span.shadowed
+    ]
+    assert [span.source_match for span in spans] == ["Ant-kinden", "kinden"]
+
+    evaluations = [
+        evaluate_entry_policy(
+            "Ameisenkinden und Kinden",
+            entry,
+            source_match=span.source_match,
+            source_span=span.source_span,
+            occurrence_index=index,
+        )[0]
+        for index, span in enumerate(spans)
+    ]
+
+    assert [(item.rule_id, item.status) for item in evaluations] == [
+        ("rule-ant", "clean"),
+        ("rule-fallback", "clean"),
+    ]
+
+
+def test_contextual_usage_rule_reports_forbidden_generic_target():
+    entry = TermbaseEntry(
+        id="TERM-KINDEN-CONTEXT",
+        kind="contextual_term",
+        source="kinden",
+        source_regex=r"\bAnt-kinden\b",
+        source_language="en",
+        target_language="de",
+        usage_rules=[
+            TermbaseUsageRule(
+                id="rule-ant",
+                source_cue="Ant-kinden",
+                required_target_literals=["Ameisenkinden"],
+                forbidden_target_literals=["Kinden"],
+                severity="error",
+            )
+        ],
+    )
+
+    evaluation = evaluate_entry_policy(
+        "Die Kinden warteten.",
+        entry,
+        source_match="Ant-kinden",
+        source_span=(4, 15),
+        occurrence_index=0,
+    )[0]
+
+    assert evaluation.rule_id == "rule-ant"
+    assert evaluation.status == "forbidden_target"
+    assert evaluation.forbidden_target_found == ["Kinden"]
 
 
 def test_forbidden_literal_target_detects_phrase():
@@ -256,14 +372,14 @@ def test_audit_flags_forbidden_effective_target_only(tmp_path: Path):
         project, _effective(matching_view.record_id, matching_view.source, target)
     )
     bundle = build_status_snapshot(project, context_exists=False, context_ready=False)
-    effective = EffectiveTranslationLexicon(
+    effective = EffectiveTranslationTermbase(
         language_keys=["de"],
         source_language="en",
         target_language="de",
         entries=[_entry("LEX-ONE")],
     )
 
-    result = audit_lexicon(project, bundle, effective)
+    result = audit_termbase(project, bundle, effective)
 
     assert result.source_matched_records == 1
     assert result.audited_records == 1
@@ -294,14 +410,14 @@ def test_audit_does_not_flag_unrelated_mouldy_with_phrase_specific_rule(tmp_path
         project, _effective(first_view.record_id, first_view.source, target)
     )
     bundle = build_status_snapshot(project, context_exists=False, context_ready=False)
-    effective = EffectiveTranslationLexicon(
+    effective = EffectiveTranslationTermbase(
         language_keys=["de"],
         source_language="en",
         target_language="de",
         entries=[_entry("LEX-ONE")],
     )
 
-    result = audit_lexicon(project, bundle, effective)
+    result = audit_termbase(project, bundle, effective)
 
     assert result.source_matched_records == 0
     assert result.matches == []

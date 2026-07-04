@@ -239,20 +239,20 @@ booktx epub extract-text ./book --profile de_gpt5_5     # extract plain text fro
 effective translated targets without a full validate run. The `epub`
 commands read the profile-local `output/` directory produced by `booktx build`; run `booktx build .` first if `no EPUB output directory` is reported.
 
-## Translation preference dictionary / lexicon
+## Translation preference dictionary / termbase
 
 ```bash
-booktx lexicon status ./book --profile de_gpt5_5 --json
-booktx lexicon add --scope global --language de --id LEX-MOULDY --source "mouldy principles" --preferred "schäbige Prinzipien" --forbid "schimmligen Prinzipien" --approve
-booktx lexicon scan-source ./book --profile de_gpt5_5 --jsonl
-booktx lexicon audit ./book --profile de_gpt5_5 --jsonl
-booktx lexicon write-review ./book --profile de_gpt5_5 --pass 1
-booktx lexicon promote-context ./book --profile de_gpt5_5 --entry LEX-MOULDY --as-question
-booktx lexicon export --scope global --language de --output ./lexicon-de.json
-booktx lexicon import --scope global --language de --input ./lexicon-de.json --mode merge
+booktx termbase status ./book --profile de_gpt5_5 --json
+booktx termbase add --scope global --language de --id LEX-MOULDY --source "mouldy principles" --preferred "schäbige Prinzipien" --forbid "schimmligen Prinzipien" --approve
+booktx termbase scan-source ./book --profile de_gpt5_5 --jsonl
+booktx termbase audit ./book --profile de_gpt5_5 --jsonl
+booktx termbase write-review ./book --profile de_gpt5_5 --pass 1
+booktx termbase promote-context ./book --profile de_gpt5_5 --entry LEX-MOULDY --as-question
+booktx termbase export --scope global --language de --output ./termbase-de.json
+booktx termbase import --scope global --language de --input ./termbase-de.json --mode merge
 ```
 
-Use the lexicon for recurring word-sense preferences, literalism traps, and
+Use the termbase for recurring word-sense preferences, literalism traps, and
 cross-book lexical habits that should only appear in prompts when the source
 cue actually matches the selected records. Do **not** use it as a replacement
 for the glossary: names, invented terms, and mandatory enforced terminology
@@ -268,9 +268,9 @@ Higher-precedence entries with the same id replace lower entries wholesale, and
 `status=disabled` acts as a tombstone. Only approved effective entries
 participate in source matching, task prompts, or audits.
 
-In isolated profile-root mode, read-only lexicon commands and profile-scope
+In isolated profile-root mode, read-only termbase commands and profile-scope
 writes work without `--profile`, but global/project mutations remain blocked.
-Global path output is redacted to `~` or `$BOOKTX_LEXICON_DIR/...`.
+Global path output is redacted to `~` or `$BOOKTX_TERMBASE_DIR/...`.
 
 ## `check` -- scoped build-preflight validation
 

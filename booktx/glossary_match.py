@@ -14,34 +14,17 @@ phrase such as ``ten days`` into a match for ``tenday``.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import re
 from dataclasses import dataclass
 
 from booktx.context import GlossaryEntry
+from booktx.termbase import TermbaseEntry
+from booktx.termbase_match import iter_boundary_matches, termbase_source_matches
 
 
-def _edge_prefix(term: str) -> str:
-    """Left boundary: require a non-word char (or start) before an alnum edge."""
-    return r"(?<!\w)" if term[0].isalnum() or term[0] == "_" else ""
-
-
-def _edge_suffix(term: str) -> str:
-    """Right boundary: require a non-word char (or end) after an alnum edge."""
-    return r"(?!\w)" if term[-1].isalnum() or term[-1] == "_" else ""
-
-
-def iter_term_matches(
-    text: str, term: str, *, case_sensitive: bool
-) -> list[re.Match[str]]:
-    """Return boundary-delimited matches for ``term`` in ``text``."""
-    term = term.strip()
-    if not term:
-        return []
-    pattern = f"{_edge_prefix(term)}{re.escape(term)}{_edge_suffix(term)}"
-    flags = 0 if case_sensitive else re.IGNORECASE
-    return list(re.finditer(pattern, text, flags))
+def iter_term_matches(text: str, term: str, *, case_sensitive: bool):
+    """Compatibility wrapper around the canonical termbase matcher."""
+    return iter_boundary_matches(text, term, case_sensitive=case_sensitive)
 
 
 def contains_term(text: str, term: str, *, case_sensitive: bool) -> bool:
@@ -88,62 +71,40 @@ class TermSpan:
 def source_glossary_matches(
     source_text: str, glossary: list[GlossaryEntry]
 ) -> list[TermSpan]:
-    """Return source glossary spans with global longest-match suppression.
-
-    All candidate primary/variant terms are discovered first.  Spans are then
-    accepted in deterministic order: earlier start, longer span, primary before
-    variant, then entry/term order. Fully contained later spans are returned as
-    ``shadowed=True`` so callers can detect mixed short/long ambiguity.
-    """
-    candidates: list[TermSpan] = []
+    """Return source glossary spans via the canonical termbase matcher."""
+    adapted_entries: list[TermbaseEntry] = []
+    index_by_entry_id: dict[str, int] = {}
     for entry_index, entry in enumerate(glossary):
-        for term_index, term in enumerate(source_terms(entry)):
-            for match in iter_term_matches(
-                source_text, term, case_sensitive=entry.case_sensitive
-            ):
-                candidates.append(
-                    TermSpan(
-                        entry_index=entry_index,
-                        term_index=term_index,
-                        matched_term=match.group(0),
-                        start=match.start(),
-                        end=match.end(),
-                        is_primary=term_index == 0,
-                    )
-                )
-    ordered = sorted(
-        candidates,
-        key=lambda span: (
-            span.start,
-            -(span.end - span.start),
-            0 if span.is_primary else 1,
-            span.entry_index,
-            span.term_index,
-        ),
-    )
-    accepted: list[TermSpan] = []
-    result: list[TermSpan] = []
-    for span in ordered:
-        contained = any(span.start >= a.start and span.end <= a.end for a in accepted)
-        if contained:
-            result.append(
-                TermSpan(
-                    span.entry_index,
-                    span.term_index,
-                    span.matched_term,
-                    span.start,
-                    span.end,
-                    span.is_primary,
-                    True,
-                )
+        entry_id = f"glossary-{entry_index}"
+        index_by_entry_id[entry_id] = entry_index
+        adapted_entries.append(
+            TermbaseEntry(
+                id=entry_id,
+                kind="flat_term",
+                source=entry.source,
+                source_variants=list(entry.source_variants),
+                source_language="en",
+                case_sensitive=entry.case_sensitive,
+                target_preferred=target_terms(entry),
+                target_forbidden=list(entry.forbidden_targets),
+                preferred_policy="required" if entry.require_target else "off",
+                target_language="de",
+                severity="warn" if entry.enforce == "off" else entry.enforce,
             )
-        else:
-            accepted.append(span)
-            result.append(span)
-    return sorted(
-        result,
-        key=lambda span: (span.start, span.end, span.entry_index, span.term_index),
-    )
+        )
+    spans = termbase_source_matches(source_text, adapted_entries)
+    return [
+        TermSpan(
+            entry_index=index_by_entry_id[span.entry_id],
+            term_index=span.cue_order,
+            matched_term=span.source_match,
+            start=span.source_span[0],
+            end=span.source_span[1],
+            is_primary=span.cue_order == 0,
+            shadowed=span.shadowed,
+        )
+        for span in spans
+    ]
 
 
 def applicable_entry_indexes(
@@ -216,6 +177,8 @@ def mandatory_glossary_sha256(glossary: list[GlossaryEntry]) -> str:
     serialized = json.dumps(
         payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     )
+    import hashlib
+
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 

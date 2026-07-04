@@ -37,6 +37,7 @@ from booktx.judge_store import (
 )
 from booktx.judge_tasks import create_judge_task
 from booktx.models import JudgeTask, SelectionConfig
+from booktx.termbase import publish_termbase_snapshot
 from booktx.workflows.profile import create_profile_workflow
 
 if TYPE_CHECKING:
@@ -147,6 +148,7 @@ def prepare_judge_isolation_workflow(
     sync_result = sync_judge_source_snapshots(
         project, source_profiles=configured, write=True
     )
+    termbase_snapshot_paths = publish_termbase_snapshot(project)
     agents_result = write_agents_workflow(
         project_dir,
         mode="isolated",
@@ -157,6 +159,7 @@ def prepare_judge_isolation_workflow(
     payload["manifest_sha256"] = sync_result.manifest_sha256
     payload["changed"] = sync_result.changed
     payload["agents_written"] = [str(p) for p in agents_result.written]
+    payload["termbase_snapshots"] = [str(path) for path in termbase_snapshot_paths]
     payload["next"] = f"cd translations/{profile} && booktx judge status ."
     return payload
 

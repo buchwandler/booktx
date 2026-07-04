@@ -22,13 +22,13 @@ from booktx.config import (
     write_translation_store,
 )
 from booktx.io_utils import utc_timestamp
-from booktx.lexicon_tasking import applicable_lexicon_sha256_for_record_sources
 from booktx.models import (
     QualityReviewConfig,
     StoredTranslationRecordV2,
     TranslationReviewCandidate,
     TranslationReviewTask,
 )
+from booktx.termbase_tasking import applicable_termbase_sha256_for_record_sources
 from booktx.translation_store import (
     find_review_candidate,
     resolve_review_base,
@@ -110,45 +110,24 @@ def _validate_task_evidence(project: Project, task: TranslationReviewTask) -> No
             )
 
 
-def _enforce_mandatory_glossary_freshness(proj: Project, task: object) -> None:
-    """Block stale review tasks whose mandatory-glossary fingerprint is stale."""
+def _enforce_applicable_termbase_freshness(proj: Project, task: object) -> None:
+    """Block stale review tasks whose applicable termbase snapshot changed."""
     import warnings
 
-    from booktx.glossary_match import live_mandatory_glossary_sha256
-
-    stored = getattr(task, "mandatory_glossary_sha256", None)
+    stored = getattr(task, "applicable_termbase_sha256", None)
     if stored is None:
         warnings.warn(
-            "review task predates mandatory_glossary_sha256 fingerprinting; "
-            "recreate the task to enable stale-glossary enforcement",
-            stacklevel=2,
-        )
-        return
-    if live_mandatory_glossary_sha256(proj) != stored:
-        raise _err(
-            "task_context_policy_stale",
-            "task context predates mandatory glossary changes; recreate the task",
-        )
-
-
-def _enforce_applicable_lexicon_freshness(proj: Project, task: object) -> None:
-    """Block stale review tasks whose applicable lexicon snapshot changed."""
-    import warnings
-
-    stored = getattr(task, "applicable_lexicon_sha256", None)
-    if stored is None:
-        warnings.warn(
-            "review task predates applicable_lexicon_sha256 fingerprinting; "
-            "recreate the task to enable stale-lexicon enforcement",
+            "review task predates applicable_termbase_sha256 fingerprinting; "
+            "recreate the task to enable stale-termbase enforcement",
             stacklevel=2,
         )
         return
     records = getattr(task, "records", [])
     record_sources = {record.id: record.source for record in records}
-    if applicable_lexicon_sha256_for_record_sources(proj, record_sources) != stored:
+    if applicable_termbase_sha256_for_record_sources(proj, record_sources) != stored:
         raise _err(
             "task_context_policy_stale",
-            "task context predates applicable lexicon changes; recreate the task",
+            "task context predates applicable termbase changes; recreate the task",
         )
 
 
@@ -207,8 +186,7 @@ def accept_review_submission(
 
     _validate_task_profile(project, task)
     _validate_task_evidence(project, task)
-    _enforce_mandatory_glossary_freshness(project, task)
-    _enforce_applicable_lexicon_freshness(project, task)
+    _enforce_applicable_termbase_freshness(project, task)
 
     task_records = {r.id: r for r in task.records}
     source_by_id = bundle.index.source_by_id

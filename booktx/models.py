@@ -49,9 +49,10 @@ __all__ = [
     "TranslationTrackLedgerEntry",
     "TranslationVersionLedger",
     "TranslationIdentity",
-    "ApplicableLexiconExampleSnapshot",
-    "ApplicableLexiconEntrySnapshot",
-    "ApplicableLexiconFindingSnapshot",
+    "ApplicableTermbaseExampleSnapshot",
+    "ApplicableTermbaseUsageRuleSnapshot",
+    "ApplicableTermbaseEntrySnapshot",
+    "ApplicableTermbaseFindingSnapshot",
     "TranslationTaskRecord",
     "TranslationTask",
     "StatusTotals",
@@ -578,8 +579,8 @@ class TranslationIdentity(BaseModel):
     model: str
 
 
-class ApplicableLexiconExampleSnapshot(BaseModel):
-    """One compact lexicon example persisted with a task snapshot."""
+class ApplicableTermbaseExampleSnapshot(BaseModel):
+    """One compact termbase example persisted with a task snapshot."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -589,13 +590,35 @@ class ApplicableLexiconExampleSnapshot(BaseModel):
     note: str = ""
 
 
-class ApplicableLexiconEntrySnapshot(BaseModel):
-    """One applicable lexicon entry snapshot persisted on a task record."""
+class ApplicableTermbaseUsageRuleSnapshot(BaseModel):
+    """One compact termbase usage rule persisted with a task snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str
+    context_id: str
+    source_cue: str | None = None
+    source_regex: str | None = None
+    required_target_literals: list[str] = Field(default_factory=list)
+    required_target_regexes: list[str] = Field(default_factory=list)
+    allowed_target_literals: list[str] = Field(default_factory=list)
+    allowed_target_regexes: list[str] = Field(default_factory=list)
+    forbidden_target_literals: list[str] = Field(default_factory=list)
+    forbidden_target_regexes: list[str] = Field(default_factory=list)
+    severity: Literal["info", "warn", "error"] = "warn"
+    prompt: str = ""
+    fallback: bool = False
+
+
+class ApplicableTermbaseEntrySnapshot(BaseModel):
+    """One applicable termbase entry snapshot persisted on a task record."""
 
     model_config = ConfigDict(extra="forbid")
 
     entry_id: str
     kind: Literal[
+        "flat_term",
+        "contextual_term",
         "phrase_preference",
         "collocation_preference",
         "word_sense",
@@ -618,22 +641,28 @@ class ApplicableLexiconEntrySnapshot(BaseModel):
     severity: Literal["info", "warn", "error"] = "warn"
     sense: str = ""
     rationale: str = ""
-    examples: list[ApplicableLexiconExampleSnapshot] = Field(default_factory=list)
+    examples: list[ApplicableTermbaseExampleSnapshot] = Field(default_factory=list)
+    usage_rules: list[ApplicableTermbaseUsageRuleSnapshot] = Field(default_factory=list)
 
 
-class ApplicableLexiconFindingSnapshot(BaseModel):
-    """One deterministic lexicon audit finding persisted on a review task record."""
+class ApplicableTermbaseFindingSnapshot(BaseModel):
+    """One deterministic termbase audit finding persisted on a review task record."""
 
     model_config = ConfigDict(extra="forbid")
 
     entry_id: str
+    rule_id: str = ""
+    context_id: str = ""
     status: Literal["forbidden_target", "preferred_missing", "clean"]
     rule_code: str
     severity: Literal["info", "warn", "error"]
     reason: str = ""
     target_forbidden_found: list[str] = Field(default_factory=list)
-    target_preferred_found: list[str] = Field(default_factory=list)
+    target_required_found: list[str] = Field(default_factory=list)
+    target_allowed_found: list[str] = Field(default_factory=list)
     effective_candidate_ref: str = ""
+    prompt: str = ""
+    fallback: bool = False
 
 
 class TranslationTaskRecord(BaseModel):
@@ -646,7 +675,7 @@ class TranslationTaskRecord(BaseModel):
     source: str = Field(..., description="Source text with placeholders")
     protected_terms: list[str] = Field(default_factory=list)
     placeholders: list[Placeholder] = Field(default_factory=list)
-    applicable_lexicon: list[ApplicableLexiconEntrySnapshot] = Field(
+    applicable_termbase: list[ApplicableTermbaseEntrySnapshot] = Field(
         default_factory=list
     )
 
@@ -693,9 +722,9 @@ class TranslationTask(BaseModel):
         default=None,
         description="sha256 of binding glossary fields when the task was created",
     )
-    applicable_lexicon_sha256: str | None = Field(
+    applicable_termbase_sha256: str | None = Field(
         default=None,
-        description="sha256 of applicable lexicon entry snapshots when the task was created",
+        description="sha256 of applicable termbase entry snapshots when the task was created",
     )
     context_notes_scope: str | None = Field(
         default=None,
@@ -769,10 +798,10 @@ class TranslationReviewTaskRecord(BaseModel):
     review_window_sha256: str
     before: list[ReviewContextRecord] = Field(default_factory=list)
     after: list[ReviewContextRecord] = Field(default_factory=list)
-    applicable_lexicon: list[ApplicableLexiconEntrySnapshot] = Field(
+    applicable_termbase: list[ApplicableTermbaseEntrySnapshot] = Field(
         default_factory=list
     )
-    lexicon_findings: list[ApplicableLexiconFindingSnapshot] = Field(
+    termbase_findings: list[ApplicableTermbaseFindingSnapshot] = Field(
         default_factory=list
     )
 
@@ -806,9 +835,9 @@ class TranslationReviewTask(BaseModel):
         default=None,
         description="sha256 of binding glossary fields when the task was created",
     )
-    applicable_lexicon_sha256: str | None = Field(
+    applicable_termbase_sha256: str | None = Field(
         default=None,
-        description="sha256 of applicable lexicon entry snapshots when the review task was created",
+        description="sha256 of applicable termbase entry snapshots when the review task was created",
     )
 
     before_records: int
@@ -1169,6 +1198,9 @@ class JudgeTaskRecord(BaseModel):
     chunk_id: str
     source: str
     source_sha256: str
+    applicable_termbase: list[ApplicableTermbaseEntrySnapshot] = Field(
+        default_factory=list
+    )
     candidates: list[JudgeTaskCandidate] = Field(default_factory=list)
     missing_profiles: list[str] = Field(default_factory=list)
     output_version_ref: str
@@ -1195,6 +1227,7 @@ class JudgeTask(BaseModel):
     context_view_sha256: str | None = None
     context_view_path: str | None = None
     mandatory_glossary_sha256: str | None = None
+    applicable_termbase_sha256: str | None = None
     source_access: Literal["live", "snapshot"] = "live"
     source_snapshot_sha256: str | None = None
     source_snapshot_path: str | None = None

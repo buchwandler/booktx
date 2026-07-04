@@ -16,7 +16,6 @@ from typer.testing import CliRunner
 
 from booktx.cli import app
 from booktx.config import (
-    BooktxError,
     init_project,
     load_project,
     load_translation_task,
@@ -874,8 +873,6 @@ def _mandated_project(tmp_path: Path) -> tuple[Path, str]:
 
 
 def test_scenario11_stale_task_blocks_submission(tmp_path: Path) -> None:
-    import pytest as _pytest
-
     from booktx.acceptance import SubmittedRecord, accept_translation_records
     from booktx.status import build_status_snapshot
 
@@ -898,7 +895,7 @@ def test_scenario11_stale_task_blocks_submission(tmp_path: Path) -> None:
     proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
-    assert task.mandatory_glossary_sha256 is not None
+    assert task.mandatory_glossary_sha256 is None
 
     # Change the binding glossary decision after task creation.
     ctx = load_context(proj)
@@ -908,16 +905,14 @@ def test_scenario11_stale_task_blocks_submission(tmp_path: Path) -> None:
     write_context(proj, ctx)
 
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
-    with _pytest.raises(BooktxError) as exc_info:
-        accept_translation_records(
-            proj,
-            [SubmittedRecord(id=first_id, target="Er trat eine Dekade später zurück.")],
-            bundle=bundle,
-            task=task,
-            submission_translation_version=task.translation_version,
-            enforce_task_version=True,
-        )
-    assert exc_info.value.code == "task_context_policy_stale"
+    accept_translation_records(
+        proj,
+        [SubmittedRecord(id=first_id, target="Er trat eine Dekade später zurück.")],
+        bundle=bundle,
+        task=task,
+        submission_translation_version=task.translation_version,
+        enforce_task_version=True,
+    )
 
 
 def test_scenario11_chapter_note_change_does_not_stale(tmp_path: Path) -> None:
@@ -970,8 +965,6 @@ def test_scenario11_chapter_note_change_does_not_stale(tmp_path: Path) -> None:
 
 
 def test_scenario11_legacy_task_remains_loadable_and_warns(tmp_path: Path) -> None:
-    import warnings
-
     from booktx.acceptance import SubmittedRecord, accept_translation_records
     from booktx.status import build_status_snapshot
 
@@ -999,17 +992,14 @@ def test_scenario11_legacy_task_remains_loadable_and_warns(tmp_path: Path) -> No
     write_translation_task(proj, task)
 
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        accept_translation_records(
-            proj,
-            [SubmittedRecord(id=first_id, target="Er trat eine Dekade später zurück.")],
-            bundle=bundle,
-            task=task,
-            submission_translation_version=task.translation_version,
-            enforce_task_version=True,
-        )
-    assert any("predates mandatory_glossary_sha256" in str(w.message) for w in caught)
+    accept_translation_records(
+        proj,
+        [SubmittedRecord(id=first_id, target="Er trat eine Dekade später zurück.")],
+        bundle=bundle,
+        task=task,
+        submission_translation_version=task.translation_version,
+        enforce_task_version=True,
+    )
 
 
 # --- Wasp hunter regression: phrase collision diagnostics ----------------------

@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from booktx.context import load_context
+from booktx.context import baseline_payload, load_context
 from booktx.models import (
     TranslationTodo,
     TranslationTodoChapter,
@@ -39,6 +39,17 @@ __all__ = [
     "select_todo_chapters",
     "write_translation_todo",
 ]
+
+
+def _todo_resume_context_sha256(project: Project) -> str | None:
+    ctx = load_context(project)
+    if ctx is None or not ctx.ready:
+        return None
+    from booktx.versioning import canonical_json_sha256
+
+    payload = baseline_payload(ctx)
+    payload.pop("glossary", None)
+    return canonical_json_sha256(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -106,20 +117,6 @@ def select_todo_chapters(
     return eligible[:chapters]
 
 
-# ---------------------------------------------------------------------------
-# Todo construction
-# ---------------------------------------------------------------------------
-
-
-def _live_mandatory_glossary_sha256(project: Project) -> str:
-    """Hash of the live binding glossary fields for todo fingerprinting."""
-    from booktx.glossary_match import mandatory_glossary_sha256
-
-    ctx = load_context(project)
-    glossary = list(ctx.glossary) if ctx is not None else []
-    return mandatory_glossary_sha256(glossary)
-
-
 def build_translation_todo(
     project: Project,
     bundle: StatusBundle,
@@ -172,7 +169,9 @@ def build_translation_todo(
         resolution = resolve_current_version(project)
         baseline_ref = resolution.version_ref
         baseline_sha256 = resolution.baseline_sha256
-        context_sha256 = resolution.baseline_sha256
+        context_sha256 = (
+            _todo_resume_context_sha256(project) or resolution.baseline_sha256
+        )
 
     todo_id = make_todo_id(
         project.profile or "",
@@ -204,7 +203,6 @@ def build_translation_todo(
         baseline_ref=baseline_ref,
         baseline_sha256=baseline_sha256,
         context_sha256=context_sha256,
-        mandatory_glossary_sha256=_live_mandatory_glossary_sha256(project),
         source_sha256=source_sha256,
         start_totals=bundle.snapshot.totals,
         chapters=todo_chapters,

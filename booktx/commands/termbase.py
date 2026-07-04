@@ -9,22 +9,23 @@ import typer
 
 from booktx.cli_support import _handle_booktx_error, console
 from booktx.errors import BooktxError
-from booktx.workflows.lexicon import (
-    lexicon_add_workflow,
-    lexicon_audit_workflow,
-    lexicon_export_workflow,
-    lexicon_import_workflow,
-    lexicon_promote_context_workflow,
-    lexicon_scan_source_workflow,
-    lexicon_status_workflow,
-    lexicon_write_review_workflow,
+from booktx.workflows.termbase import (
+    termbase_add_workflow,
+    termbase_audit_workflow,
+    termbase_export_workflow,
+    termbase_import_workflow,
+    termbase_promote_context_workflow,
+    termbase_scan_source_workflow,
+    termbase_status_workflow,
+    termbase_validate_entry_workflow,
+    termbase_write_review_workflow,
 )
 
-lexicon_app = typer.Typer(help="Manage the translation preference dictionary.")
+termbase_app = typer.Typer(help="Manage the translation preference dictionary.")
 
 
-@lexicon_app.command(name="status")
-def lexicon_status_cmd(
+@termbase_app.command(name="status")
+def termbase_status_cmd(
     project_dir: Path | None = typer.Argument(
         None, help="Optional project directory or profile root."
     ),
@@ -40,7 +41,7 @@ def lexicon_status_cmd(
     as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
     try:
-        payload = lexicon_status_workflow(
+        payload = termbase_status_workflow(
             project_dir,
             profile=profile,
             scope=scope,
@@ -71,8 +72,8 @@ def lexicon_status_cmd(
         )
 
 
-@lexicon_app.command(name="add")
-def lexicon_add_cmd(
+@termbase_app.command(name="add")
+def termbase_add_cmd(
     project_dir: Path | None = typer.Argument(
         None, help="Optional project directory or profile root."
     ),
@@ -83,14 +84,20 @@ def lexicon_add_cmd(
     language: str | None = typer.Option(
         None, "--language", help="Destination language shard key."
     ),
-    entry_id: str = typer.Option(..., "--id", help="Stable lexicon entry id."),
-    kind: str = typer.Option("phrase_preference", "--kind", help="Lexicon entry kind."),
+    entry_file: Path | None = typer.Option(
+        None, "--file", help="Structured termbase entry JSON file."
+    ),
+    entry_id: str | None = typer.Option(None, "--id", help="Stable termbase entry id."),
+    kind: str = typer.Option("flat_term", "--kind", help="Termbase entry kind."),
     source: str = typer.Option(..., "--source", help="Primary source cue."),
     source_variant: list[str] = typer.Option(
         [], "--source-variant", help="Repeatable source variants."
     ),
     source_regex: str | None = typer.Option(
         None, "--source-regex", help="Optional source regex cue."
+    ),
+    case_sensitive: bool = typer.Option(
+        False, "--case-sensitive", help="Match the source term case-sensitively."
     ),
     preferred: list[str] = typer.Option(
         [], "--preferred", help="Repeatable preferred targets."
@@ -115,16 +122,18 @@ def lexicon_add_cmd(
     ),
 ) -> None:
     try:
-        payload = lexicon_add_workflow(
+        payload = termbase_add_workflow(
             project_dir,
             profile=profile,
             scope=scope,
             language=language,
+            entry_file=entry_file,
             entry_id=entry_id,
             kind=kind,
             source=source,
             source_variants=source_variant,
             source_regex=source_regex,
+            case_sensitive=case_sensitive,
             preferred=preferred,
             allowed=allowed,
             forbidden=forbid,
@@ -139,14 +148,29 @@ def lexicon_add_cmd(
         _handle_booktx_error(exc)
         return
     console.print(
-        f"lexicon entry {payload['entry_id']} -> {payload['status']} "
+        f"termbase entry {payload['entry_id']} -> {payload['status']} "
         f"({payload['scope']} {payload['language_key']})"
     )
     console.print(payload["path"], soft_wrap=True, markup=False)
 
 
-@lexicon_app.command(name="export")
-def lexicon_export_cmd(
+@termbase_app.command(name="validate-entry")
+def termbase_validate_entry_cmd(
+    input_path: Path = typer.Option(
+        ..., "--input", help="Structured termbase entry JSON file."
+    ),
+) -> None:
+    try:
+        payload = termbase_validate_entry_workflow(input_path)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print("valid termbase entry")
+    console.print_json(json.dumps(payload["entry"], ensure_ascii=False))
+
+
+@termbase_app.command(name="export")
+def termbase_export_cmd(
     project_dir: Path | None = typer.Argument(
         None, help="Optional project directory or profile root."
     ),
@@ -162,7 +186,7 @@ def lexicon_export_cmd(
     export_format: str = typer.Option("shard", "--format", help="shard|bundle."),
 ) -> None:
     try:
-        payload = lexicon_export_workflow(
+        payload = termbase_export_workflow(
             project_dir,
             profile=profile,
             scope=scope,
@@ -177,11 +201,11 @@ def lexicon_export_cmd(
     if "stdout" in payload:
         console.print(payload["stdout"], soft_wrap=True, markup=False, end="")
         return
-    console.print(f"exported lexicon: {payload['path']}", soft_wrap=True, markup=False)
+    console.print(f"exported termbase: {payload['path']}", soft_wrap=True, markup=False)
 
 
-@lexicon_app.command(name="import")
-def lexicon_import_cmd(
+@termbase_app.command(name="import")
+def termbase_import_cmd(
     project_dir: Path | None = typer.Argument(
         None, help="Optional project directory or profile root."
     ),
@@ -203,7 +227,7 @@ def lexicon_import_cmd(
     import_format: str = typer.Option("auto", "--format", help="auto|shard|bundle."),
 ) -> None:
     try:
-        payload = lexicon_import_workflow(
+        payload = termbase_import_workflow(
             project_dir,
             profile=profile,
             scope=scope,
@@ -225,8 +249,8 @@ def lexicon_import_cmd(
         console.print(f"backup: {payload['backup_path']}", soft_wrap=True, markup=False)
 
 
-@lexicon_app.command(name="scan-source")
-def lexicon_scan_source_cmd(
+@termbase_app.command(name="scan-source")
+def termbase_scan_source_cmd(
     project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
@@ -234,14 +258,14 @@ def lexicon_scan_source_cmd(
     language: str | None = typer.Option(None, "--language", help="Language shard key."),
     chapter: str | None = typer.Option(None, "--chapter", help="Optional chapter id."),
     entry: list[str] = typer.Option(
-        [], "--entry", help="Repeatable lexicon entry id filter."
+        [], "--entry", help="Repeatable termbase entry id filter."
     ),
     jsonl: bool = typer.Option(
         False, "--jsonl", help="Emit one JSON object per match."
     ),
 ) -> None:
     try:
-        payload = lexicon_scan_source_workflow(
+        payload = termbase_scan_source_workflow(
             project_dir,
             profile=profile,
             language=language,
@@ -271,8 +295,8 @@ def lexicon_scan_source_cmd(
         )
 
 
-@lexicon_app.command(name="audit")
-def lexicon_audit_cmd(
+@termbase_app.command(name="audit")
+def termbase_audit_cmd(
     project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
@@ -280,7 +304,7 @@ def lexicon_audit_cmd(
     language: str | None = typer.Option(None, "--language", help="Language shard key."),
     chapter: str | None = typer.Option(None, "--chapter", help="Optional chapter id."),
     entry: list[str] = typer.Option(
-        [], "--entry", help="Repeatable lexicon entry id filter."
+        [], "--entry", help="Repeatable termbase entry id filter."
     ),
     include_clean_matches: bool = typer.Option(
         False,
@@ -292,7 +316,7 @@ def lexicon_audit_cmd(
     ),
 ) -> None:
     try:
-        payload = lexicon_audit_workflow(
+        payload = termbase_audit_workflow(
             project_dir,
             profile=profile,
             language=language,
@@ -329,14 +353,14 @@ def lexicon_audit_cmd(
         )
 
 
-@lexicon_app.command(name="promote-context")
-def lexicon_promote_context_cmd(
+@termbase_app.command(name="promote-context")
+def termbase_promote_context_cmd(
     project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
     language: str | None = typer.Option(None, "--language", help="Language shard key."),
-    entry_id: str = typer.Option(..., "--entry", help="Lexicon entry id."),
+    entry_id: str = typer.Option(..., "--entry", help="Termbase entry id."),
     as_advisory: bool = typer.Option(
         False, "--as-advisory", help="Promote as an advisory glossary entry."
     ),
@@ -348,7 +372,7 @@ def lexicon_promote_context_cmd(
     ),
 ) -> None:
     try:
-        message = lexicon_promote_context_workflow(
+        message = termbase_promote_context_workflow(
             project_dir,
             profile=profile,
             language=language,
@@ -363,15 +387,15 @@ def lexicon_promote_context_cmd(
     console.print(message)
 
 
-@lexicon_app.command(name="write-review")
-def lexicon_write_review_cmd(
+@termbase_app.command(name="write-review")
+def termbase_write_review_cmd(
     project_dir: Path = typer.Argument(..., help="Project directory or profile root."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
     language: str | None = typer.Option(None, "--language", help="Language shard key."),
     entry: list[str] = typer.Option(
-        [], "--entry", help="Repeatable lexicon entry id filter."
+        [], "--entry", help="Repeatable termbase entry id filter."
     ),
     pass_number: int = typer.Option(..., "--pass", help="Quality-review pass number."),
     include_clean_matches: bool = typer.Option(
@@ -381,7 +405,7 @@ def lexicon_write_review_cmd(
     ),
 ) -> None:
     try:
-        payload = lexicon_write_review_workflow(
+        payload = termbase_write_review_workflow(
             project_dir,
             profile=profile,
             language=language,

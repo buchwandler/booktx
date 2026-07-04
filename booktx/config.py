@@ -169,11 +169,12 @@ __all__ = [
     "load_translation_selection_ledger",
     "write_translation_selection_ledger",
     "canonical_language_key",
-    "lexicon_language_keys",
-    "global_lexicon_dir",
-    "global_lexicon_path",
-    "project_lexicon_path",
-    "profile_lexicon_path",
+    "termbase_language_keys",
+    "global_termbase_dir",
+    "global_termbase_path",
+    "project_termbase_path",
+    "profile_termbase_path",
+    "profile_termbase_snapshot_path",
     "judge_task_dir",
     "judge_task_path",
     "judge_task_source_block_path",
@@ -551,8 +552,8 @@ def canonical_language_key(language: str) -> str:
     return "-".join(canonical_parts)
 
 
-def lexicon_language_keys(project: Project, language: str | None = None) -> list[str]:
-    """Resolve the base-plus-locale language-key sequence for lexicon reads."""
+def termbase_language_keys(project: Project, language: str | None = None) -> list[str]:
+    """Resolve the base-plus-locale language-key sequence for termbase reads."""
     if language is not None:
         key = canonical_language_key(language)
         base = key.split("-", 1)[0]
@@ -560,7 +561,7 @@ def lexicon_language_keys(project: Project, language: str | None = None) -> list
     if project.profile_config is None:
         if not project.config.target_language:
             raise _err(
-                "lexicon_language_required",
+                "termbase_language_required",
                 "--language is required when no profile target language is available",
             )
         base = canonical_language_key(project.config.target_language)
@@ -574,33 +575,44 @@ def lexicon_language_keys(project: Project, language: str | None = None) -> list
     return [base] if locale == base else [base, locale]
 
 
-def global_lexicon_dir() -> Path:
-    """Directory containing user-global translation lexicon shards."""
-    override = os.environ.get("BOOKTX_LEXICON_DIR", "").strip()
+def global_termbase_dir() -> Path:
+    """Directory containing user-global translation termbase shards."""
+    override = os.environ.get("BOOKTX_TERMBASE_DIR", "").strip()
     if override:
         return Path(override).expanduser().resolve()
-    return (Path.home() / ".config" / "booktx" / "translation-lexicon").resolve()
+    return (Path.home() / ".config" / "booktx" / "translation-termbase").resolve()
 
 
-def global_lexicon_path(language_key: str) -> Path:
-    """Path to one user-global translation lexicon shard."""
+def global_termbase_path(language_key: str) -> Path:
+    """Path to one user-global translation termbase shard."""
     key = canonical_language_key(language_key)
-    return global_lexicon_dir() / f"{key}.json"
+    return global_termbase_dir() / f"{key}.json"
 
 
-def project_lexicon_path(project: Project, language_key: str) -> Path:
-    """Path to one project/series lexicon shard."""
+def project_termbase_path(project: Project, language_key: str) -> Path:
+    """Path to one project/series termbase shard."""
     key = canonical_language_key(language_key)
-    return project.booktx_dir / "lexicon" / f"{key}.json"
+    return project.booktx_dir / "termbase" / f"{key}.json"
 
 
-def profile_lexicon_path(project: Project, language_key: str) -> Path:
-    """Path to one profile-local lexicon override shard."""
-    _require_profile_paths(project, "profile lexicon access")
+def profile_termbase_path(project: Project, language_key: str) -> Path:
+    """Path to one profile-local termbase override shard."""
+    _require_profile_paths(project, "profile termbase access")
     key = canonical_language_key(language_key)
     return (
         profile_dir(project.root, project.profile or "")
-        / "lexicon-overrides"
+        / "termbase-overrides"
+        / f"{key}.json"
+    )
+
+
+def profile_termbase_snapshot_path(project: Project, language_key: str) -> Path:
+    """Path to one frozen termbase snapshot shard for profile-root isolation."""
+    _require_profile_paths(project, "profile termbase snapshot access")
+    key = canonical_language_key(language_key)
+    return (
+        profile_dir(project.root, project.profile or "")
+        / "termbase-snapshot"
         / f"{key}.json"
     )
 

@@ -196,6 +196,12 @@ def test_export_includes_only_selected_reusable_fields(tmp_path: Path):
     assert pack.target_language == "de"
     assert pack.style is not None
     assert any(g.source == "empire" for g in pack.glossary)
+    assert any(entry.source == "empire" for entry in pack.termbase_entries)
+    termbase_entry = next(
+        entry for entry in pack.termbase_entries if entry.source == "empire"
+    )
+    assert termbase_entry.target_preferred == ["Imperium"]
+    assert termbase_entry.target_forbidden == ["Reich"]
 
 
 def test_export_excludes_source_book_readiness_and_chapter_fields(tmp_path: Path):

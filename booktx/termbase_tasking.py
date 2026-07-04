@@ -1,32 +1,33 @@
-"""Applicable-lexicon snapshot helpers for tasks and submission guards."""
+"""Applicable-termbase snapshot helpers for tasks and submission guards."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 
 from booktx.config import Project
-from booktx.lexicon import (
-    EffectiveTranslationLexicon,
-    LexiconEntry,
-    effective_approved_entries,
-    resolve_effective_lexicon,
-)
-from booktx.lexicon_match import lexicon_source_matches
 from booktx.models import (
-    ApplicableLexiconEntrySnapshot,
-    ApplicableLexiconExampleSnapshot,
+    ApplicableTermbaseEntrySnapshot,
+    ApplicableTermbaseExampleSnapshot,
+    ApplicableTermbaseUsageRuleSnapshot,
 )
+from booktx.termbase import (
+    EffectiveTranslationTermbase,
+    TermbaseEntry,
+    effective_approved_entries,
+    resolve_effective_termbase,
+)
+from booktx.termbase_match import termbase_source_matches
 from booktx.versioning import canonical_json_sha256
 
 __all__ = [
-    "applicable_lexicon_sha256_for_record_sources",
-    "collect_applicable_lexicon_for_record_sources",
+    "applicable_termbase_sha256_for_record_sources",
+    "collect_applicable_termbase_for_record_sources",
 ]
 
 
 def _relevant_entries(
-    project: Project, effective: EffectiveTranslationLexicon
-) -> list[LexiconEntry]:
+    project: Project, effective: EffectiveTranslationTermbase
+) -> list[TermbaseEntry]:
     target_locale = project.config.target_locale or project.config.target_language
     return [
         entry
@@ -39,9 +40,9 @@ def _relevant_entries(
 
 
 def _snapshot(
-    entry: LexiconEntry, *, source_match: str, source_span: tuple[int, int]
-) -> ApplicableLexiconEntrySnapshot:
-    return ApplicableLexiconEntrySnapshot(
+    entry: TermbaseEntry, *, source_match: str, source_span: tuple[int, int]
+) -> ApplicableTermbaseEntrySnapshot:
+    return ApplicableTermbaseEntrySnapshot(
         entry_id=entry.id,
         kind=entry.kind,
         source=entry.source,
@@ -60,7 +61,7 @@ def _snapshot(
         sense=entry.sense,
         rationale=entry.rationale,
         examples=[
-            ApplicableLexiconExampleSnapshot(
+            ApplicableTermbaseExampleSnapshot(
                 source=example.source,
                 good_target=example.good_target,
                 bad_target=example.bad_target,
@@ -68,13 +69,31 @@ def _snapshot(
             )
             for example in entry.examples
         ],
+        usage_rules=[
+            ApplicableTermbaseUsageRuleSnapshot(
+                rule_id=rule.id,
+                context_id=rule.context_id,
+                source_cue=rule.source_cue,
+                source_regex=rule.source_regex,
+                required_target_literals=list(rule.required_target_literals),
+                required_target_regexes=list(rule.required_target_regexes),
+                allowed_target_literals=list(rule.allowed_target_literals),
+                allowed_target_regexes=list(rule.allowed_target_regexes),
+                forbidden_target_literals=list(rule.forbidden_target_literals),
+                forbidden_target_regexes=list(rule.forbidden_target_regexes),
+                severity=rule.severity,
+                prompt=rule.prompt,
+                fallback=rule.fallback,
+            )
+            for rule in entry.usage_rules
+        ],
     )
 
 
 def _choose_per_entry(
-    snapshots: list[ApplicableLexiconEntrySnapshot],
-) -> list[ApplicableLexiconEntrySnapshot]:
-    by_entry: dict[str, ApplicableLexiconEntrySnapshot] = {}
+    snapshots: list[ApplicableTermbaseEntrySnapshot],
+) -> list[ApplicableTermbaseEntrySnapshot]:
+    by_entry: dict[str, ApplicableTermbaseEntrySnapshot] = {}
     for snapshot in snapshots:
         current = by_entry.get(snapshot.entry_id)
         if current is None:
@@ -98,7 +117,7 @@ def _choose_per_entry(
 
 
 def _sha_payload(
-    record_snapshots: Mapping[str, list[ApplicableLexiconEntrySnapshot]],
+    record_snapshots: Mapping[str, list[ApplicableTermbaseEntrySnapshot]],
 ) -> list[dict[str, object]]:
     payload: list[dict[str, object]] = []
     for record_id in sorted(record_snapshots):
@@ -139,22 +158,50 @@ def _sha_payload(
                         }
                         for example in snapshot.examples
                     ],
+                    "usage_rules": [
+                        {
+                            "rule_id": rule.rule_id,
+                            "context_id": rule.context_id,
+                            "source_cue": rule.source_cue,
+                            "source_regex": rule.source_regex,
+                            "required_target_literals": list(
+                                rule.required_target_literals
+                            ),
+                            "required_target_regexes": list(
+                                rule.required_target_regexes
+                            ),
+                            "allowed_target_literals": list(
+                                rule.allowed_target_literals
+                            ),
+                            "allowed_target_regexes": list(rule.allowed_target_regexes),
+                            "forbidden_target_literals": list(
+                                rule.forbidden_target_literals
+                            ),
+                            "forbidden_target_regexes": list(
+                                rule.forbidden_target_regexes
+                            ),
+                            "severity": rule.severity,
+                            "prompt": rule.prompt,
+                            "fallback": rule.fallback,
+                        }
+                        for rule in snapshot.usage_rules
+                    ],
                 }
             )
     return payload
 
 
-def collect_applicable_lexicon_for_record_sources(
+def collect_applicable_termbase_for_record_sources(
     project: Project,
     record_sources: Mapping[str, str],
-) -> tuple[dict[str, list[ApplicableLexiconEntrySnapshot]], str]:
-    effective, _ = resolve_effective_lexicon(project)
+) -> tuple[dict[str, list[ApplicableTermbaseEntrySnapshot]], str]:
+    effective, _ = resolve_effective_termbase(project)
     entries = _relevant_entries(project, effective)
     entry_by_id = {entry.id: entry for entry in entries}
-    record_snapshots: dict[str, list[ApplicableLexiconEntrySnapshot]] = {}
+    record_snapshots: dict[str, list[ApplicableTermbaseEntrySnapshot]] = {}
     for record_id, source_text in record_sources.items():
-        snapshots: list[ApplicableLexiconEntrySnapshot] = []
-        for match in lexicon_source_matches(source_text, entries):
+        snapshots: list[ApplicableTermbaseEntrySnapshot] = []
+        for match in termbase_source_matches(source_text, entries):
             if match.shadowed:
                 continue
             snapshots.append(
@@ -168,8 +215,8 @@ def collect_applicable_lexicon_for_record_sources(
     return record_snapshots, canonical_json_sha256(_sha_payload(record_snapshots))
 
 
-def applicable_lexicon_sha256_for_record_sources(
+def applicable_termbase_sha256_for_record_sources(
     project: Project,
     record_sources: Mapping[str, str],
 ) -> str:
-    return collect_applicable_lexicon_for_record_sources(project, record_sources)[1]
+    return collect_applicable_termbase_for_record_sources(project, record_sources)[1]

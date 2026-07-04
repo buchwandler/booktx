@@ -1,4 +1,4 @@
-"""Workflow functions for the translation preference dictionary CLI."""
+"""Workflow functions for the canonical termbase CLI."""
 
 from __future__ import annotations
 
@@ -11,28 +11,28 @@ from booktx import __version__
 from booktx.config import (
     _err,
     canonical_language_key,
-    lexicon_language_keys,
     load_translation_store,
+    termbase_language_keys,
 )
 from booktx.context import load_context
 from booktx.io_utils import utc_timestamp
-from booktx.lexicon import (
-    EffectiveTranslationLexicon,
-    LexiconEntry,
-    TranslationLexicon,
-    create_lexicon_backup,
-    infer_mutation_language_key,
-    merge_effective_lexicon,
-    resolve_effective_lexicon,
-    resolved_lexicon_layers,
-    write_lexicon_shard,
-)
-from booktx.lexicon_audit import audit_lexicon, scan_source_lexicon
 from booktx.path_display import display_path
 from booktx.review_refs import format_review_ref
 from booktx.review_tasks import ReviewSelectedRecord, create_review_task
 from booktx.runtime import RuntimeContext, resolve_runtime
 from booktx.status import build_status_snapshot
+from booktx.termbase import (
+    EffectiveTranslationTermbase,
+    TermbaseEntry,
+    TranslationTermbase,
+    create_termbase_backup,
+    infer_mutation_language_key,
+    merge_effective_termbase,
+    resolve_effective_termbase,
+    resolved_termbase_layers,
+    write_termbase_shard,
+)
+from booktx.termbase_audit import audit_termbase, scan_source_termbase
 from booktx.translation_store import (
     active_candidate,
     active_review_candidate,
@@ -45,14 +45,15 @@ from booktx.workflows.context import (
 )
 
 __all__ = [
-    "lexicon_add_workflow",
-    "lexicon_audit_workflow",
-    "lexicon_export_workflow",
-    "lexicon_import_workflow",
-    "lexicon_promote_context_workflow",
-    "lexicon_scan_source_workflow",
-    "lexicon_status_workflow",
-    "lexicon_write_review_workflow",
+    "termbase_add_workflow",
+    "termbase_audit_workflow",
+    "termbase_export_workflow",
+    "termbase_import_workflow",
+    "termbase_promote_context_workflow",
+    "termbase_scan_source_workflow",
+    "termbase_status_workflow",
+    "termbase_validate_entry_workflow",
+    "termbase_write_review_workflow",
 ]
 
 
@@ -71,15 +72,15 @@ def _load_runtime(
 
 def _display_global_path(path: Path) -> str:
     exact = path.expanduser().resolve()
-    override_path = os.environ.get("BOOKTX_LEXICON_PATH", "").strip()
+    override_path = os.environ.get("BOOKTX_TERMBASE_PATH", "").strip()
     if override_path and Path(override_path).expanduser().resolve() == exact:
-        return "$BOOKTX_LEXICON_PATH"
-    override_dir = os.environ.get("BOOKTX_LEXICON_DIR", "").strip()
+        return "$BOOKTX_TERMBASE_PATH"
+    override_dir = os.environ.get("BOOKTX_TERMBASE_DIR", "").strip()
     if override_dir:
         resolved_dir = Path(override_dir).expanduser().resolve()
         try:
             rel = exact.relative_to(resolved_dir).as_posix()
-            return f"$BOOKTX_LEXICON_DIR/{rel}" if rel else "$BOOKTX_LEXICON_DIR"
+            return f"$BOOKTX_TERMBASE_DIR/{rel}" if rel else "$BOOKTX_TERMBASE_DIR"
         except ValueError:
             pass
     home = Path.home().resolve()
@@ -90,7 +91,7 @@ def _display_global_path(path: Path) -> str:
         return exact.as_posix()
 
 
-def _display_lexicon_path(path: Path, runtime: RuntimeContext | None) -> str:
+def _display_termbase_path(path: Path, runtime: RuntimeContext | None) -> str:
     if runtime is not None:
         try:
             rendered = display_path(path, runtime.mode)
@@ -113,12 +114,12 @@ def _empty_shard(
     language_key: str,
     *,
     source_language: str | None,
-) -> TranslationLexicon:
+) -> TranslationTermbase:
     key = canonical_language_key(language_key)
     parts = key.split("-", 1)
     target_language = parts[0]
     target_locale = key if len(parts) > 1 else ""
-    return TranslationLexicon(
+    return TranslationTermbase(
         language_key=key,
         source_language=source_language,
         target_language=target_language,
@@ -133,9 +134,9 @@ def _scope_shard(
     scope: Literal["global", "project", "profile"],
     language_key: str,
     allow_global_exact_override: bool = False,
-) -> tuple[Path, TranslationLexicon | None]:
+) -> tuple[Path, TranslationTermbase | None]:
     project = runtime.project if runtime is not None else None
-    layers = resolved_lexicon_layers(
+    layers = resolved_termbase_layers(
         project,
         language_keys=[language_key],
         scope=scope,
@@ -151,26 +152,37 @@ def _require_mutation_scope(
     scope: str,
 ) -> None:
     if runtime is None and scope != "global":
-        raise _err("lexicon_project_required", "this lexicon scope requires a project")
+        raise _err(
+            "termbase_project_required", "this termbase scope requires a project"
+        )
     if (
         runtime is not None
         and runtime.mode.isolated_output
         and scope in {"global", "project"}
     ):
         raise _err(
-            "lexicon_isolated_scope_blocked",
-            "global and project lexicon mutations are blocked in "
+            "termbase_isolated_scope_blocked",
+            "global and project termbase mutations are blocked in "
             "profile-root isolated mode",
         )
 
 
-def _effective_counts(effective: EffectiveTranslationLexicon) -> tuple[int, int]:
+def _effective_counts(effective: EffectiveTranslationTermbase) -> tuple[int, int]:
     active = sum(1 for entry in effective.entries if entry.status == "approved")
     disabled = sum(1 for entry in effective.entries if entry.status == "disabled")
     return active, disabled
 
 
-def lexicon_status_workflow(
+def _validate_entry_file(input_path: Path) -> TermbaseEntry:
+    try:
+        return TermbaseEntry.model_validate_json(input_path.read_text("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        raise _err(
+            "termbase_entry_invalid", f"invalid termbase entry file: {exc}"
+        ) from exc
+
+
+def termbase_status_workflow(
     project_dir: Path | None,
     *,
     profile: str | None,
@@ -180,36 +192,38 @@ def lexicon_status_workflow(
     runtime = _load_runtime(project_dir, profile=profile, require_profile=False)
     resolved_scope = _default_scope(project_dir, scope, project_default="effective")
     if runtime is None and resolved_scope != "global":
-        raise _err("lexicon_project_required", "this lexicon scope requires a project")
+        raise _err(
+            "termbase_project_required", "this termbase scope requires a project"
+        )
     if runtime is None and language is None:
         raise _err(
-            "lexicon_language_required", "--language is required outside a project"
+            "termbase_language_required", "--language is required outside a project"
         )
     if resolved_scope == "effective":
         if runtime is None:
             raise _err(
-                "lexicon_project_required",
-                "effective lexicon status requires a project",
+                "termbase_project_required",
+                "effective termbase status requires a project",
             )
-        language_keys = lexicon_language_keys(runtime.project, language)
-        layers = resolved_lexicon_layers(
+        language_keys = termbase_language_keys(runtime.project, language)
+        layers = resolved_termbase_layers(
             runtime.project, language_keys=language_keys, scope="effective"
         )
-        effective = merge_effective_lexicon(layers, language_keys=language_keys)
+        effective = merge_effective_termbase(layers, language_keys=language_keys)
         active_entries, disabled_entries = _effective_counts(effective)
         target_locale = effective.target_locale or effective.target_language
     else:
         language_keys = (
-            lexicon_language_keys(runtime.project, language)
+            termbase_language_keys(runtime.project, language)
             if runtime is not None
             else [canonical_language_key(language or "")]
         )
-        layers = resolved_lexicon_layers(
+        layers = resolved_termbase_layers(
             runtime.project if runtime is not None else None,
             language_keys=language_keys,
             scope=resolved_scope,  # type: ignore[arg-type]
         )
-        effective = merge_effective_lexicon(layers, language_keys=language_keys)
+        effective = merge_effective_termbase(layers, language_keys=language_keys)
         active_entries, disabled_entries = _effective_counts(effective)
         target_locale = effective.target_locale or effective.target_language
     conflict_ids: dict[str, int] = {}
@@ -231,7 +245,7 @@ def lexicon_status_workflow(
             {
                 "scope": layer.scope,
                 "language_key": layer.language_key,
-                "path": _display_lexicon_path(layer.path, runtime),
+                "path": _display_termbase_path(layer.path, runtime),
                 "exists": layer.exists,
                 "entry_count": len(layer.shard.entries)
                 if layer.shard is not None
@@ -242,17 +256,19 @@ def lexicon_status_workflow(
     }
 
 
-def lexicon_add_workflow(
+def termbase_add_workflow(
     project_dir: Path | None,
     *,
     profile: str | None,
     scope: str | None,
     language: str | None,
-    entry_id: str,
+    entry_file: Path | None,
+    entry_id: str | None,
     kind: str,
     source: str,
     source_variants: list[str],
     source_regex: str | None,
+    case_sensitive: bool,
     preferred: list[str],
     allowed: list[str],
     forbidden: list[str],
@@ -267,17 +283,17 @@ def lexicon_add_workflow(
     resolved_scope = _default_scope(project_dir, scope, project_default="global")
     if project_dir is not None and scope is None:
         raise _err(
-            "lexicon_scope_required",
+            "termbase_scope_required",
             "--scope is required when a project path is supplied",
         )
     _require_mutation_scope(runtime, scope=resolved_scope)
     if resolved_scope not in {"global", "project", "profile"}:
         raise _err(
-            "lexicon_scope_invalid", "--scope must be global, project, or profile"
+            "termbase_scope_invalid", "--scope must be global, project, or profile"
         )
     if runtime is None and language is None:
         raise _err(
-            "lexicon_language_required", "--language is required outside a project"
+            "termbase_language_required", "--language is required outside a project"
         )
     language_key = (
         canonical_language_key(language)
@@ -297,44 +313,82 @@ def lexicon_add_workflow(
             project.config.source_language if project is not None else None
         ),
     )
-    if any(entry.id == entry_id for entry in existing.entries):
-        raise _err("lexicon_entry_exists", f"lexicon entry already exists: {entry_id}")
-    new_entry = LexiconEntry(
-        id=entry_id,
-        status="approved" if approve else "draft",
-        kind=kind,  # type: ignore[arg-type]
-        source=source,
-        source_variants=source_variants,
-        source_regex=source_regex,
-        source_language=(
-            project.config.source_language
-            if project is not None
-            else existing.source_language or "en"
-        ),
-        target_preferred=preferred,
-        target_allowed=allowed,
-        target_forbidden=forbidden,
-        target_regex_forbidden=forbidden_regex,
-        preferred_policy=preferred_policy,  # type: ignore[arg-type]
-        target_language=existing.target_language,
-        target_locale=existing.target_locale,
-        sense=sense,
-        rationale=rationale,
-        severity=severity,  # type: ignore[arg-type]
-        created_at=utc_timestamp(),
-        updated_at=utc_timestamp(),
-        created_by_kind="user" if approve else "unknown",
-    )
-    write_lexicon_shard(
+    if entry_file is not None:
+        new_entry = _validate_entry_file(entry_file)
+        if new_entry.target_language != existing.target_language:
+            raise _err(
+                "termbase_language_mismatch",
+                f"entry target_language {new_entry.target_language!r} does not match "
+                f"destination {existing.target_language!r}",
+            )
+        if new_entry.target_locale != existing.target_locale:
+            raise _err(
+                "termbase_language_mismatch",
+                f"entry target_locale {new_entry.target_locale!r} does not match "
+                f"destination {existing.target_locale!r}",
+            )
+        if (
+            existing.source_language is not None
+            and new_entry.source_language != existing.source_language
+        ):
+            raise _err(
+                "termbase_language_mismatch",
+                f"entry source_language {new_entry.source_language!r} does not match "
+                f"destination {existing.source_language!r}",
+            )
+        if approve and new_entry.status != "approved":
+            new_entry = new_entry.model_copy(update={"status": "approved"})
+    else:
+        if entry_id is None:
+            raise _err(
+                "termbase_entry_id_required", "--id is required unless --file is used"
+            )
+        new_entry = TermbaseEntry(
+            id=entry_id,
+            status="approved" if approve else "draft",
+            kind=kind,  # type: ignore[arg-type]
+            source=source,
+            source_variants=source_variants,
+            source_regex=source_regex,
+            source_language=(
+                project.config.source_language
+                if project is not None
+                else existing.source_language or "en"
+            ),
+            case_sensitive=case_sensitive,
+            target_preferred=preferred,
+            target_allowed=allowed,
+            target_forbidden=forbidden,
+            target_regex_forbidden=forbidden_regex,
+            preferred_policy=preferred_policy,  # type: ignore[arg-type]
+            target_language=existing.target_language,
+            target_locale=existing.target_locale,
+            sense=sense,
+            rationale=rationale,
+            severity=severity,  # type: ignore[arg-type]
+            created_at=utc_timestamp(),
+            updated_at=utc_timestamp(),
+            created_by_kind="user" if approve else "unknown",
+        )
+    if any(entry.id == new_entry.id for entry in existing.entries):
+        raise _err(
+            "termbase_entry_exists", f"termbase entry already exists: {new_entry.id}"
+        )
+    write_termbase_shard(
         path, existing.model_copy(update={"entries": [*existing.entries, new_entry]})
     )
     return {
-        "path": _display_lexicon_path(path, runtime),
+        "path": _display_termbase_path(path, runtime),
         "scope": resolved_scope,
         "language_key": language_key,
-        "entry_id": entry_id,
+        "entry_id": new_entry.id,
         "status": new_entry.status,
     }
+
+
+def termbase_validate_entry_workflow(input_path: Path) -> dict[str, Any]:
+    entry = _validate_entry_file(input_path)
+    return {"entry": entry.model_dump(mode="json")}
 
 
 def _export_bundle(
@@ -362,7 +416,7 @@ def _export_bundle(
     )
 
 
-def lexicon_export_workflow(
+def termbase_export_workflow(
     project_dir: Path | None,
     *,
     profile: str | None,
@@ -375,23 +429,25 @@ def lexicon_export_workflow(
     runtime = _load_runtime(project_dir, profile=profile, require_profile=False)
     resolved_scope = _default_scope(project_dir, scope, project_default="effective")
     if runtime is None and resolved_scope != "global":
-        raise _err("lexicon_project_required", "this lexicon scope requires a project")
+        raise _err(
+            "termbase_project_required", "this termbase scope requires a project"
+        )
     if runtime is None and language is None:
         raise _err(
-            "lexicon_language_required", "--language is required outside a project"
+            "termbase_language_required", "--language is required outside a project"
         )
     if not stdout and output is None:
         raise _err(
-            "lexicon_output_required", "--output is required unless --stdout is passed"
+            "termbase_output_required", "--output is required unless --stdout is passed"
         )
     if export_format not in {"shard", "bundle"}:
-        raise _err("lexicon_export_format", "--format must be shard or bundle")
+        raise _err("termbase_export_format", "--format must be shard or bundle")
     if resolved_scope == "effective":
         if runtime is None:
             raise _err(
-                "lexicon_project_required", "effective export requires a project"
+                "termbase_project_required", "effective export requires a project"
             )
-        effective, layers = resolve_effective_lexicon(
+        effective, layers = resolve_effective_termbase(
             runtime.project, language=language
         )
         payload = {
@@ -409,7 +465,7 @@ def lexicon_export_workflow(
             scope=resolved_scope,
             language_keys=effective.language_keys,
             path_strings=[
-                _display_lexicon_path(layer.path, runtime) for layer in layers
+                _display_termbase_path(layer.path, runtime) for layer in layers
             ],
             payload=payload,
         )
@@ -436,13 +492,13 @@ def lexicon_export_workflow(
             text = _export_bundle(
                 scope=resolved_scope,
                 language_keys=[language_key],
-                path_strings=[_display_lexicon_path(path, runtime)],
+                path_strings=[_display_termbase_path(path, runtime)],
                 payload={"shard": exported.model_dump(mode="json")},
             )
         else:
-            from booktx.lexicon import canonical_lexicon_json
+            from booktx.termbase import canonical_termbase_json
 
-            text = canonical_lexicon_json(exported)
+            text = canonical_termbase_json(exported)
     if stdout:
         return {"stdout": text}
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -450,30 +506,30 @@ def lexicon_export_workflow(
     return {"path": str(output), "scope": resolved_scope}
 
 
-def _load_import_shard(input_path: Path, import_format: str) -> TranslationLexicon:
+def _load_import_shard(input_path: Path, import_format: str) -> TranslationTermbase:
     payload = json.loads(input_path.read_text("utf-8"))
     if import_format == "auto":
         if "language_key" in payload and "entries" in payload:
-            return TranslationLexicon.model_validate(payload)
+            return TranslationTermbase.model_validate(payload)
         if "shard" in payload:
-            return TranslationLexicon.model_validate(payload["shard"])
-        raise _err("lexicon_import_format", "could not detect shard or bundle format")
+            return TranslationTermbase.model_validate(payload["shard"])
+        raise _err("termbase_import_format", "could not detect shard or bundle format")
     if import_format == "bundle":
         if "shard" not in payload:
-            raise _err("lexicon_import_format", "bundle payload is missing 'shard'")
-        return TranslationLexicon.model_validate(payload["shard"])
-    return TranslationLexicon.model_validate(payload)
+            raise _err("termbase_import_format", "bundle payload is missing 'shard'")
+        return TranslationTermbase.model_validate(payload["shard"])
+    return TranslationTermbase.model_validate(payload)
 
 
 def _merge_import_entries(
-    existing: TranslationLexicon,
-    imported: TranslationLexicon,
+    existing: TranslationTermbase,
+    imported: TranslationTermbase,
     *,
     on_conflict: str,
-) -> tuple[list[LexiconEntry], int, int]:
+) -> tuple[list[TermbaseEntry], int, int]:
     if on_conflict not in {"fail", "skip", "overwrite", "newer"}:
         raise _err(
-            "lexicon_conflict_policy",
+            "termbase_conflict_policy",
             "--on-conflict must be fail, skip, overwrite, or newer",
         )
     merged = {entry.id: entry for entry in existing.entries}
@@ -489,7 +545,7 @@ def _merge_import_entries(
             continue
         if on_conflict == "fail":
             raise _err(
-                "lexicon_conflict",
+                "termbase_conflict",
                 f"entry id conflict while importing: {incoming.id}",
             )
         if on_conflict == "overwrite":
@@ -498,13 +554,13 @@ def _merge_import_entries(
             continue
         if not current.updated_at or not incoming.updated_at:
             raise _err(
-                "lexicon_conflict_newer",
+                "termbase_conflict_newer",
                 f"entry {incoming.id} is missing updated_at required by "
                 f"--on-conflict newer",
             )
         if current.updated_at == incoming.updated_at:
             raise _err(
-                "lexicon_conflict_newer",
+                "termbase_conflict_newer",
                 f"entry {incoming.id} has equal updated_at values; "
                 f"cannot resolve --on-conflict newer",
             )
@@ -514,7 +570,7 @@ def _merge_import_entries(
     return sorted(merged.values(), key=lambda entry: entry.id), added, updated
 
 
-def lexicon_import_workflow(
+def termbase_import_workflow(
     project_dir: Path | None,
     *,
     profile: str | None,
@@ -529,19 +585,19 @@ def lexicon_import_workflow(
     runtime = _load_runtime(project_dir, profile=profile, require_profile=False)
     resolved_scope = _default_scope(project_dir, scope, project_default="global")
     if resolved_scope == "effective":
-        raise _err("lexicon_import_scope", "effective is not a valid import scope")
+        raise _err("termbase_import_scope", "effective is not a valid import scope")
     if project_dir is not None and scope is None:
         raise _err(
-            "lexicon_scope_required",
+            "termbase_scope_required",
             "--scope is required when a project path is supplied",
         )
     _require_mutation_scope(runtime, scope=resolved_scope)
     if runtime is None and language is None:
         raise _err(
-            "lexicon_language_required", "--language is required outside a project"
+            "termbase_language_required", "--language is required outside a project"
         )
     if mode not in {"dry-run", "merge", "replace"}:
-        raise _err("lexicon_import_mode", "--mode must be dry-run, merge, or replace")
+        raise _err("termbase_import_mode", "--mode must be dry-run, merge, or replace")
     language_key = (
         canonical_language_key(language)
         if language is not None
@@ -567,7 +623,7 @@ def lexicon_import_workflow(
         )
     if imported.language_key != language_key:
         raise _err(
-            "lexicon_language_mismatch",
+            "termbase_language_mismatch",
             f"imported shard language_key {imported.language_key!r} does not match "
             f"destination {language_key!r}",
         )
@@ -588,9 +644,9 @@ def lexicon_import_workflow(
             "mode": mode,
         }
         if mode != "dry-run" and existing is not None:
-            summary["backup_path"] = str(create_lexicon_backup(path))
+            summary["backup_path"] = str(create_termbase_backup(path))
         if mode == "replace":
-            write_lexicon_shard(path, imported)
+            write_termbase_shard(path, imported)
         return summary
     entries, added, updated = _merge_import_entries(
         destination, imported, on_conflict=on_conflict
@@ -604,12 +660,12 @@ def lexicon_import_workflow(
     }
     if mode == "merge":
         if existing is not None and updated > 0:
-            summary["backup_path"] = str(create_lexicon_backup(path))
-        write_lexicon_shard(path, destination.model_copy(update={"entries": entries}))
+            summary["backup_path"] = str(create_termbase_backup(path))
+        write_termbase_shard(path, destination.model_copy(update={"entries": entries}))
     return summary
 
 
-def lexicon_scan_source_workflow(
+def termbase_scan_source_workflow(
     project_dir: Path,
     *,
     profile: str | None,
@@ -619,8 +675,8 @@ def lexicon_scan_source_workflow(
 ) -> dict[str, Any]:
     runtime = resolve_runtime(project_dir, profile=profile, require_profile=True)
     context = load_context(runtime.project)
-    effective, _ = resolve_effective_lexicon(runtime.project, language=language)
-    result = scan_source_lexicon(
+    effective, _ = resolve_effective_termbase(runtime.project, language=language)
+    result = scan_source_termbase(
         runtime.project,
         build_status_snapshot(
             runtime.project,
@@ -634,7 +690,7 @@ def lexicon_scan_source_workflow(
     return result.model_dump(mode="json")
 
 
-def lexicon_audit_workflow(
+def termbase_audit_workflow(
     project_dir: Path,
     *,
     profile: str | None,
@@ -649,8 +705,8 @@ def lexicon_audit_workflow(
         context_exists=context is not None,
         context_ready=bool(context and context.ready),
     )
-    effective, _ = resolve_effective_lexicon(runtime.project, language=language)
-    result = audit_lexicon(
+    effective, _ = resolve_effective_termbase(runtime.project, language=language)
+    result = audit_termbase(
         runtime.project,
         bundle,
         effective,
@@ -660,7 +716,7 @@ def lexicon_audit_workflow(
     return result.model_dump(mode="json")
 
 
-def lexicon_promote_context_workflow(
+def termbase_promote_context_workflow(
     project_dir: Path,
     *,
     profile: str | None,
@@ -671,21 +727,21 @@ def lexicon_promote_context_workflow(
     as_question: bool,
 ) -> str:
     runtime = resolve_runtime(project_dir, profile=profile, require_profile=True)
-    effective, _ = resolve_effective_lexicon(runtime.project, language=language)
+    effective, _ = resolve_effective_termbase(runtime.project, language=language)
     entry = next((item for item in effective.entries if item.id == entry_id), None)
     if entry is None or entry.status != "approved":
         raise _err(
-            "lexicon_entry_missing", f"approved lexicon entry not found: {entry_id}"
+            "termbase_entry_missing", f"approved termbase entry not found: {entry_id}"
         )
     if sum(1 for flag in (as_advisory, as_binding, as_question) if flag) > 1:
         raise _err(
-            "lexicon_promote_mode",
+            "termbase_promote_mode",
             "choose only one of --as-advisory, --as-binding, or --as-question",
         )
     if as_binding:
         if len(entry.target_preferred) != 1:
             raise _err(
-                "lexicon_promote_binding",
+                "termbase_promote_binding",
                 "--as-binding requires exactly one preferred target",
             )
         ctx = load_context(runtime.project)
@@ -720,7 +776,7 @@ def lexicon_promote_context_workflow(
         return add_question_workflow(
             runtime.project,
             ctx,
-            topic="lexicon",
+            topic="termbase",
             question=(
                 f"How should {entry.source!r} be promoted into the local glossary? "
                 f"Current preferred targets: {preferred}."
@@ -730,8 +786,8 @@ def lexicon_promote_context_workflow(
             recommendation=entry.target_preferred[0]
             if len(entry.target_preferred) == 1
             else None,
-            reason="Promoted from translation lexicon.",
-            source="lexicon",
+            reason="Promoted from translation termbase.",
+            source="termbase",
             question_id=None,
             allow_duplicate=False,
         )
@@ -758,7 +814,7 @@ def lexicon_promote_context_workflow(
     )
 
 
-def lexicon_write_review_workflow(
+def termbase_write_review_workflow(
     project_dir: Path,
     *,
     profile: str | None,
@@ -789,8 +845,8 @@ def lexicon_write_review_workflow(
         context_exists=context is not None,
         context_ready=bool(context and context.ready),
     )
-    effective, _ = resolve_effective_lexicon(runtime.project, language=language)
-    audit_result = audit_lexicon(
+    effective, _ = resolve_effective_termbase(runtime.project, language=language)
+    audit_result = audit_termbase(
         runtime.project,
         bundle,
         effective,
@@ -803,8 +859,8 @@ def lexicon_write_review_workflow(
     ]
     if not candidate_matches:
         raise _err(
-            "lexicon_no_review_records",
-            "no lexicon-matched records need review for the requested selection",
+            "termbase_no_review_records",
+            "no termbase-matched records need review for the requested selection",
         )
     first_chapter_id = candidate_matches[0].chapter_id
     store = load_translation_store(runtime.project)
@@ -820,7 +876,7 @@ def lexicon_write_review_workflow(
         if base_review is not None:
             if base_review.pass_number != pass_number:
                 raise _err(
-                    "lexicon_review_active_pass_mismatch",
+                    "termbase_review_active_pass_mismatch",
                     f"record {match.record_id} has active review "
                     f"{base_review.review_ref}; use --pass {base_review.pass_number}",
                 )
@@ -859,8 +915,8 @@ def lexicon_write_review_workflow(
         seen_records.add(match.record_id)
     if not selected:
         raise _err(
-            "lexicon_no_review_records",
-            "no lexicon-matched records were eligible for review task creation",
+            "termbase_no_review_records",
+            "no termbase-matched records were eligible for review task creation",
         )
     chapter = bundle.index.chapters_by_id[first_chapter_id]
     task = create_review_task(

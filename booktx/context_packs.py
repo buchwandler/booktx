@@ -57,6 +57,11 @@ from booktx.context import (
     load_context,
     next_question_id,
 )
+from booktx.glossary_context_migration import (
+    context_glossary_to_termbase_entry,
+    termbase_entry_to_context_glossary,
+)
+from booktx.termbase import TermbaseEntry
 
 if TYPE_CHECKING:
     from booktx.config import Project
@@ -228,6 +233,7 @@ class SeriesContextPack(BaseModel):
     style: StyleProfile | None = None
     global_rules: list[str] = Field(default_factory=list)
     glossary: list[GlossaryEntry] = Field(default_factory=list)
+    termbase_entries: list[TermbaseEntry] = Field(default_factory=list)
     questions: list[ContextQuestion] = Field(default_factory=list)
     notes: str = ""
 
@@ -490,9 +496,19 @@ def export_context_pack(
         global_rules = [collapse_whitespace(rule) for rule in context.global_rules]
         global_rules = [rule for rule in global_rules if rule]
 
+    termbase_entries: list[TermbaseEntry] = []
     glossary: list[GlossaryEntry] = []
     if include_glossary:
         glossary = [entry.model_copy(deep=True) for entry in context.glossary]
+        termbase_entries = [
+            context_glossary_to_termbase_entry(
+                entry,
+                source_language=src_lang,
+                target_language=tgt_lang,
+                target_locale=locale,
+            )
+            for entry in glossary
+        ]
 
     questions: list[ContextQuestion] = []
     if include_questions == "approved":
@@ -528,6 +544,7 @@ def export_context_pack(
         style=style,
         global_rules=global_rules,
         glossary=glossary,
+        termbase_entries=termbase_entries,
         questions=questions,
     )
     return pack
@@ -645,6 +662,8 @@ def plan_context_pack_import(
         _merge_global_rules(merged, pack, findings=findings)
     if pack.glossary:
         _merge_glossary(merged, pack, conflict=conflict, findings=findings)
+    if pack.termbase_entries and not pack.glossary:
+        _merge_termbase_entries(merged, pack, conflict=conflict, findings=findings)
     if pack.questions:
         _merge_questions(merged, pack, conflict=conflict, findings=findings)
 
@@ -932,6 +951,22 @@ def _merge_global_rules(
                 message=f"global rule: {normalized}",
             )
         )
+
+
+def _merge_termbase_entries(
+    merged: TranslationContext,
+    pack: SeriesContextPack,
+    *,
+    conflict: PackConflictMode,
+    findings: list[ContextPackImportFinding],
+) -> None:
+    legacy_entries = [
+        termbase_entry_to_context_glossary(entry) for entry in pack.termbase_entries
+    ]
+    if not legacy_entries:
+        return
+    shim = pack.model_copy(update={"glossary": legacy_entries, "termbase_entries": []})
+    _merge_glossary(merged, shim, conflict=conflict, findings=findings)
 
 
 def _merge_glossary(

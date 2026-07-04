@@ -21,7 +21,7 @@ from booktx.config import (
 from booktx.models import TranslationTodo
 from booktx.status import StatusBundle
 from booktx.validate import ValidationReport
-from booktx.versioning import resolve_current_version
+from booktx.versioning import canonical_json_sha256
 
 if TYPE_CHECKING:
     from booktx.runtime import RuntimeMode
@@ -204,8 +204,14 @@ def recreate_todo_command(
 def _current_context_sha256(project: Project, bundle: StatusBundle) -> str | None:
     if not bundle.snapshot.context.exists or not bundle.snapshot.context.ready:
         return None
-    resolution = resolve_current_version(project)
-    return resolution.baseline_sha256
+    from booktx.context import baseline_payload, load_context
+
+    ctx = load_context(project)
+    if ctx is None or not ctx.ready:
+        return None
+    payload = baseline_payload(ctx)
+    payload.pop("glossary", None)
+    return canonical_json_sha256(payload)
 
 
 def _chapter_statuses(
@@ -293,7 +299,7 @@ def build_todo_status(
             source_drifted or bundle.snapshot.source.source_sha256 != todo.source_sha256
         )
     current_context_sha = _current_context_sha256(project, bundle)
-    expected_context_sha = todo.baseline_sha256 or todo.context_sha256
+    expected_context_sha = todo.context_sha256 or todo.baseline_sha256
     context_drifted = (
         expected_context_sha is not None and current_context_sha != expected_context_sha
     )

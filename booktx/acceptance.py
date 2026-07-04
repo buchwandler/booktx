@@ -40,9 +40,9 @@ from booktx.config import (
     write_translation_store,
 )
 from booktx.io_utils import utc_timestamp
-from booktx.lexicon_tasking import applicable_lexicon_sha256_for_record_sources
 from booktx.models import TranslatedRecord
 from booktx.progress import count_words
+from booktx.termbase_tasking import applicable_termbase_sha256_for_record_sources
 from booktx.translation_store import ensure_store_record, upsert_translation_version
 from booktx.validate import Severity, load_validation_context, validate_record_pair
 from booktx.versioning import resolve_current_version
@@ -153,53 +153,25 @@ def _validate_task_profile(
         )
 
 
-def _enforce_mandatory_glossary_freshness(proj: Project, task: object) -> None:
-    """Block stale tasks whose mandatory-glossary fingerprint is out of date.
-
-    Non-legacy tasks (with ``mandatory_glossary_sha256``) must match the live
-    binding glossary; otherwise a mandatory user decision changed after the
-    task was created and the task must be recreated. Legacy tasks without the
-    field remain loadable and emit a non-fatal compatibility warning.
-    """
+def _enforce_applicable_termbase_freshness(proj: Project, task: object) -> None:
+    """Block stale tasks whose applicable termbase snapshot changed."""
     import warnings
 
-    from booktx.glossary_match import live_mandatory_glossary_sha256
-
-    stored = getattr(task, "mandatory_glossary_sha256", None)
+    stored = getattr(task, "applicable_termbase_sha256", None)
     if stored is None:
         warnings.warn(
-            "task predates mandatory_glossary_sha256 fingerprinting; "
-            "recreate the task to enable stale-glossary enforcement",
-            stacklevel=2,
-        )
-        return
-    if live_mandatory_glossary_sha256(proj) != stored:
-        raise _err(
-            "task_context_policy_stale",
-            f"task {getattr(task, 'task_id', '<unknown>')} predates mandatory "
-            "glossary changes; create a fresh task before inserting translations",
-        )
-
-
-def _enforce_applicable_lexicon_freshness(proj: Project, task: object) -> None:
-    """Block stale tasks whose applicable lexicon snapshot changed."""
-    import warnings
-
-    stored = getattr(task, "applicable_lexicon_sha256", None)
-    if stored is None:
-        warnings.warn(
-            "task predates applicable_lexicon_sha256 fingerprinting; "
-            "recreate the task to enable stale-lexicon enforcement",
+            "task predates applicable_termbase_sha256 fingerprinting; "
+            "recreate the task to enable stale-termbase enforcement",
             stacklevel=2,
         )
         return
     records = getattr(task, "records", [])
     record_sources = {record.id: record.source for record in records}
-    if applicable_lexicon_sha256_for_record_sources(proj, record_sources) != stored:
+    if applicable_termbase_sha256_for_record_sources(proj, record_sources) != stored:
         raise _err(
             "task_context_policy_stale",
             f"task {getattr(task, 'task_id', '<unknown>')} predates applicable "
-            "lexicon changes; create a fresh task before inserting translations",
+            "termbase changes; create a fresh task before inserting translations",
         )
 
 
@@ -227,8 +199,7 @@ def validate_submitted_records(
     )
 
     if task is not None:
-        _enforce_mandatory_glossary_freshness(proj, task)
-        _enforce_applicable_lexicon_freshness(proj, task)
+        _enforce_applicable_termbase_freshness(proj, task)
 
     try:
         context = load_validation_context(

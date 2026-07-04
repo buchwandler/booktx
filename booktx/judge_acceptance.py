@@ -30,7 +30,6 @@ from booktx.glossary_match import (
     TermSpan,
     applicable_entry_indexes,
     contains_term,
-    live_mandatory_glossary_sha256,
     source_glossary_matches,
     target_contains_approved,
     target_terms,
@@ -44,6 +43,7 @@ from booktx.models import (
     Record,
     TranslatedRecord,
 )
+from booktx.termbase_tasking import applicable_termbase_sha256_for_record_sources
 from booktx.translation_store import (
     EffectiveCandidateError,
     effective_candidate_selection,
@@ -296,11 +296,15 @@ def _validate_task_evidence(project: Project, task: JudgeTask) -> None:
                 f"source config changed since judge task {task.judge_task_id} "
                 "was created",
             )
-    if task.mandatory_glossary_sha256 is not None:
-        if live_mandatory_glossary_sha256(project) != task.mandatory_glossary_sha256:
+    if task.applicable_termbase_sha256 is not None:
+        record_sources = {record.id: record.source for record in task.records}
+        if (
+            applicable_termbase_sha256_for_record_sources(project, record_sources)
+            != task.applicable_termbase_sha256
+        ):
             raise _err(
                 "task_context_policy_stale",
-                "judge task context predates mandatory glossary changes; "
+                "judge task context predates applicable termbase changes; "
                 "recreate the task",
             )
 

@@ -16,7 +16,6 @@ from booktx.config import (
     write_translation_store,
 )
 from booktx.context import load_context
-from booktx.lexicon import TranslationLexicon, write_lexicon_shard
 from booktx.models import (
     StoredTranslationRecordV2,
     TranslationCandidate,
@@ -25,6 +24,7 @@ from booktx.models import (
 )
 from booktx.progress import source_record_sha256
 from booktx.status import build_status_snapshot
+from booktx.termbase import TranslationTermbase, write_termbase_shard
 from booktx.translation_store import sha256_text
 
 runner = CliRunner()
@@ -75,19 +75,19 @@ def _make_project(tmp_path: Path) -> Path:
     return project_dir
 
 
-def _write_lexicon(
+def _write_termbase(
     monkeypatch,
     tmp_path: Path,
     *,
     rationale: str = "Avoid literal mould.",
     preferred: list[str] | None = None,
 ) -> Path:
-    root = tmp_path / "global-lexicon"
-    monkeypatch.setenv("BOOKTX_LEXICON_DIR", str(root))
+    root = tmp_path / "global-termbase"
+    monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(root))
     shard = root / "de.json"
-    write_lexicon_shard(
+    write_termbase_shard(
         shard,
-        TranslationLexicon.model_validate(
+        TranslationTermbase.model_validate(
             {
                 "language_key": "de",
                 "source_language": "en",
@@ -178,27 +178,28 @@ def _accepted_store(record_id: str, source: str, target: str) -> TranslationStor
     )
 
 
-def test_translation_task_persists_applicable_lexicon(monkeypatch, tmp_path: Path):
-    _write_lexicon(monkeypatch, tmp_path)
+def test_translation_task_persists_applicable_termbase(monkeypatch, tmp_path: Path):
+    _write_termbase(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     task, task_id = _task_for_project(project_dir)
 
-    assert task.applicable_lexicon_sha256
+    assert task.mandatory_glossary_sha256 is None
+    assert task.applicable_termbase_sha256
     matching_record = next(
-        record for record in task.records if record.applicable_lexicon
+        record for record in task.records if record.applicable_termbase
     )
-    assert matching_record.applicable_lexicon[0].entry_id == "LEX-MOULDY"
+    assert matching_record.applicable_termbase[0].entry_id == "LEX-MOULDY"
 
     source_block = (
         load_project(project_dir, profile="de_default").tasks_dir
         / f"{task_id}.source.block.txt"
     ).read_text("utf-8")
-    assert "# applicable lexicon:" in source_block
-    assert "# lexicon: LEX-MOULDY" in source_block
+    assert "# applicable termbase:" in source_block
+    assert "# termbase: LEX-MOULDY" in source_block
 
 
-def test_unrelated_lexicon_change_does_not_stale_task(monkeypatch, tmp_path: Path):
-    shard = _write_lexicon(monkeypatch, tmp_path)
+def test_unrelated_termbase_change_does_not_stale_task(monkeypatch, tmp_path: Path):
+    shard = _write_termbase(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     task, _ = _task_for_project(project_dir)
     proj = load_project(project_dir, profile="de_default")
@@ -238,8 +239,10 @@ def test_unrelated_lexicon_change_does_not_stale_task(monkeypatch, tmp_path: Pat
     assert result.version_ref == task.translation_version
 
 
-def test_applicable_lexicon_change_stales_translation_task(monkeypatch, tmp_path: Path):
-    shard = _write_lexicon(monkeypatch, tmp_path)
+def test_applicable_termbase_change_stales_translation_task(
+    monkeypatch, tmp_path: Path
+):
+    shard = _write_termbase(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     task, _ = _task_for_project(project_dir)
     proj = load_project(project_dir, profile="de_default")
@@ -272,10 +275,10 @@ def test_applicable_lexicon_change_stales_translation_task(monkeypatch, tmp_path
     assert excinfo.value.code == "task_context_policy_stale"
 
 
-def test_write_review_persists_applicable_lexicon_and_findings(
+def test_write_review_persists_applicable_termbase_and_findings(
     monkeypatch, tmp_path: Path
 ):
-    _write_lexicon(monkeypatch, tmp_path)
+    _write_termbase(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     rid, source = _matching_record(project_dir)
     proj = load_project(project_dir, profile="de_default")
@@ -300,7 +303,7 @@ def test_write_review_persists_applicable_lexicon_and_findings(
             "--pass",
             "1",
             "--name",
-            "Lexicon review",
+            "Termbase review",
             "--mode",
             "manual",
             "--enforce",
@@ -312,7 +315,7 @@ def test_write_review_persists_applicable_lexicon_and_findings(
     res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "write-review",
             str(project_dir),
             "--profile",
@@ -329,27 +332,28 @@ def test_write_review_persists_applicable_lexicon_and_findings(
     )
     review_task = load_translation_review_task(proj, task_id)
     assert review_task is not None
-    assert review_task.applicable_lexicon_sha256
-    assert review_task.records[0].applicable_lexicon[0].entry_id == "LEX-MOULDY"
-    assert review_task.records[0].lexicon_findings[0].status == "forbidden_target"
+    assert review_task.mandatory_glossary_sha256 is None
+    assert review_task.applicable_termbase_sha256
+    assert review_task.records[0].applicable_termbase[0].entry_id == "LEX-MOULDY"
+    assert review_task.records[0].termbase_findings[0].status == "forbidden_target"
 
     source_block = (
         proj.profile_dir / "reviews" / f"{task_id}.source.block.txt"
     ).read_text("utf-8")
-    assert "LEXICON: LEX-MOULDY" in source_block
-    assert "LEXICON-FINDING: forbidden_target" in source_block
+    assert "TERMBASE: LEX-MOULDY" in source_block
+    assert "TERMBASE-FINDING: forbidden_target" in source_block
 
 
 def test_promote_context_defaults_to_question_for_ambiguous_entry(
     monkeypatch, tmp_path: Path
 ):
-    _write_lexicon(monkeypatch, tmp_path)
+    _write_termbase(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
 
     res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "promote-context",
             str(project_dir),
             "--profile",
@@ -362,20 +366,20 @@ def test_promote_context_defaults_to_question_for_ambiguous_entry(
     assert res.exit_code == 0, res.output
     ctx = load_context(load_project(project_dir, profile="de_default"))
     assert ctx is not None
-    assert any(question.topic == "lexicon" for question in ctx.questions)
+    assert any(question.topic == "termbase" for question in ctx.questions)
     assert ctx.ready is False
 
 
 def test_promote_context_defaults_to_advisory_for_single_preferred(
     monkeypatch, tmp_path: Path
 ):
-    _write_lexicon(monkeypatch, tmp_path, preferred=["schäbige Prinzipien"])
+    _write_termbase(monkeypatch, tmp_path, preferred=["schäbige Prinzipien"])
     project_dir = _make_project(tmp_path)
 
     res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "promote-context",
             str(project_dir),
             "--profile",
@@ -396,7 +400,7 @@ def test_promote_context_defaults_to_advisory_for_single_preferred(
 
 
 def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path: Path):
-    _write_lexicon(monkeypatch, tmp_path)
+    _write_termbase(monkeypatch, tmp_path)
     project_dir = _make_project(tmp_path)
     rid, source = _matching_record(project_dir)
     proj = load_project(project_dir, profile="de_default")
@@ -454,7 +458,7 @@ def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path:
             "--pass",
             "1",
             "--name",
-            "Lexicon review",
+            "Termbase review",
             "--mode",
             "manual",
             "--enforce",
@@ -466,7 +470,7 @@ def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path:
     res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "write-review",
             str(project_dir),
             "--profile",
@@ -490,7 +494,7 @@ def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path:
 
 
 def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: Path):
-    _write_lexicon(monkeypatch, tmp_path, preferred=["schäbigen Prinzipien"])
+    _write_termbase(monkeypatch, tmp_path, preferred=["schäbigen Prinzipien"])
     project_dir = _make_project(tmp_path)
     rid, source = _matching_record(project_dir)
     proj = load_project(project_dir, profile="de_default")
@@ -515,7 +519,7 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
             "--pass",
             "1",
             "--name",
-            "Lexicon review",
+            "Termbase review",
             "--mode",
             "manual",
             "--enforce",
@@ -527,7 +531,7 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
     create_res = runner.invoke(
         app,
         [
-            "lexicon",
+            "termbase",
             "write-review",
             str(project_dir),
             "--profile",
@@ -568,7 +572,7 @@ def test_trigger_case_becomes_clean_after_review_insert(monkeypatch, tmp_path: P
 
     audit = runner.invoke(
         app,
-        ["lexicon", "audit", str(project_dir), "--profile", "de_default", "--jsonl"],
+        ["termbase", "audit", str(project_dir), "--profile", "de_default", "--jsonl"],
     )
     assert audit.exit_code == 0, audit.output
     assert audit.output.strip() == ""
