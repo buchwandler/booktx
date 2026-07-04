@@ -18,6 +18,12 @@ jobs:
         pip install pytest
         pip install build
         pip install -e .
+    - name: Syntax/import smoke
+      run: |
+        python -m compileall -q booktx tests
+        python -c "from booktx.cli import main; print('booktx CLI import OK')"
+    - name: Judge/isolation smoke
+      run: python -m pytest tests/test_judge.py tests/test_cli_isolation.py -q
     - name: Run tests
       if: runner.os != 'Windows'
       run: python -m pytest

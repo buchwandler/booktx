@@ -35,6 +35,7 @@ from booktx.judge_sources import (
 )
 from booktx.models import SelectionConfig, TranslationReviewCandidate
 from booktx.progress import load_source_records
+from booktx.status import build_status_snapshot
 from booktx.translation_store import (
     ensure_store_record,
     sha256_text,
@@ -48,6 +49,20 @@ DOC = """\
 # One
 
 The Empire advances. The Lowlands answer.
+"""
+
+MULTI_CHAPTER_DOC = """\
+# One
+
+The Empire advances.
+
+# Two
+
+The Lowlands answer.
+
+# Three
+
+A third paragraph stands here.
 """
 
 REQUIRED_ANSWERS = (
@@ -215,6 +230,39 @@ def _judge_project(tmp_path: Path) -> tuple[Path, list[str]]:
     for profile in ("de_a", "de_b", "de_judge"):
         _ready_context(project_dir, profile)
     return project_dir, _record_ids(project_dir)
+
+
+def _multi_chapter_judge_project(
+    tmp_path: Path,
+) -> tuple[Path, dict[str, list[str]]]:
+    """Three-chapter judge project; returns chapter_id -> ordered record ids."""
+    project_dir = tmp_path / "book"
+    src = tmp_path / "novel.md"
+    src.write_text(MULTI_CHAPTER_DOC, encoding="utf-8")
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--source-file",
+            str(src),
+            "--source-lang",
+            "en",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
+    _create_translation_profile(project_dir, "de_a")
+    _create_translation_profile(project_dir, "de_b")
+    _create_selection_profile(project_dir, "de_judge", ["de_a", "de_b"])
+    for profile in ("de_a", "de_b", "de_judge"):
+        _ready_context(project_dir, profile)
+    proj = load_profile_project(project_dir, "de_judge")
+    bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
+    chapters = {
+        cid: list(rids) for cid, rids in bundle.index.record_ids_by_chapter.items()
+    }
+    return project_dir, chapters
 
 
 def _judge_task_id(project_dir: Path) -> str:
@@ -2141,6 +2189,189 @@ def test_judge_accept_identical_respects_require_all_sources(tmp_path: Path):
 
     assert res.exit_code != 0
     assert "missing effective candidates" in res.output
+
+
+def test_judge_accept_identical_scoped_next_for_incomplete_chapter(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    # Chapter 0002 has divergent candidates and cannot be auto-accepted.
+    for record_id in chapters["0002"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Antwort A.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Antwort B.")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0002",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "next command for chapter 0002:" in res.output
+    assert "--chapter 0002" in res.output
+    # Must not point back at an earlier (complete or untouched) chapter.
+    assert "next command for chapter 0001:" not in res.output
+
+
+def test_judge_accept_identical_complete_chapter_then_global_next(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    # Chapter 0001 has identical valid candidates and is fully auto-accepted.
+    for record_id in chapters["0001"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Gemeinsam.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Gemeinsam.")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--chapter",
+            "0001",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "chapter 0001 complete" in res.output
+    # The next missing chapter is 0002; the global next must point there.
+    assert "next global command:" in res.output
+    assert "--chapter 0002" in res.output
+
+
+def test_judge_accept_identical_no_chapter_preserves_global_next(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    for record_id in chapters["0001"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Gemeinsam.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Gemeinsam.")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    # No explicit --chapter: keep the historical global "next command:" line.
+    assert "next command:" in res.output
+    assert "next command for chapter" not in res.output
+    assert "--chapter 0002" in res.output
+
+
+def test_judge_sweep_identical_stops_on_chapter_needing_judging(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    for record_id in chapters["0001"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Gemeinsam 1.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Gemeinsam 1.")
+    # Chapter 0002 has divergent candidates and needs LLM judging.
+    for record_id in chapters["0002"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Antwort A.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Antwort B.")
+    for record_id in chapters["0003"]:
+        _write_source_candidate(project_dir, "de_a", record_id, "Gemeinsam 3.")
+        _write_source_candidate(project_dir, "de_b", record_id, "Gemeinsam 3.")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "sweep-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--from-chapter",
+            "0001",
+            "--to-chapter",
+            "0003",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    # Chapter 0001 is fully accepted; the sweep stops at the divergent 0002.
+    assert "needs_judging" in res.output
+    assert "next command for chapter 0002:" in res.output
+    assert "--chapter 0002" in res.output
+    # The sweep stops at 0002, so 0003 must not be processed.
+    assert "0003" not in res.output
+
+
+def test_judge_sweep_identical_completes_all_chapters(tmp_path: Path):
+    project_dir, chapters = _multi_chapter_judge_project(tmp_path)
+    for cid in ("0001", "0002", "0003"):
+        for record_id in chapters[cid]:
+            _write_source_candidate(project_dir, "de_a", record_id, f"{cid} text.")
+            _write_source_candidate(project_dir, "de_b", record_id, f"{cid} text.")
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "sweep-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--from-chapter",
+            "0001",
+            "--to-chapter",
+            "0003",
+            "--write",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "all chapters in range complete" in res.output
+    assert "needs_judging" not in res.output
+
+
+def test_judge_sweep_identical_does_not_mask_invalid_range(tmp_path: Path):
+    project_dir, _ = _multi_chapter_judge_project(tmp_path)
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "sweep-identical",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+            "--from-chapter",
+            "0001",
+            "--to-chapter",
+            "0099",
+            "--write",
+        ],
+    )
+
+    # An out-of-range --to-chapter must surface as an error, not be masked.
+    assert res.exit_code != 0
+    assert "0099" in res.output
 
 
 # --- Test 16: sync requires configured source order ---

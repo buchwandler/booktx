@@ -22,6 +22,10 @@ class BooktxError(Exception):
         self.code = code
 
 
-def _err(code: str, message: str) -> BooktxError:
-    """Construct a :class:`BooktxError` (helper kept for concise call sites)."""
-    return BooktxError(code, message)
+def _err(code: str, *message_parts: str) -> BooktxError:
+    """Construct a :class:`BooktxError` (helper kept for concise call sites).
+
+    Message fragments are concatenated in order, so a long message may be
+    split across several adjacent string literals at the call site.
+    """
+    return BooktxError(code, "".join(message_parts))

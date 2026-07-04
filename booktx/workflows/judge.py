@@ -327,6 +327,37 @@ def _build_status_next_command(
     )
 
 
+def build_chapter_next_command(
+    proj: Project,
+    runtime: RuntimeContext,
+    *,
+    chapter: str,
+    status_payload: dict[str, Any],
+) -> str:
+    """Format-aware `judge next` command for a specific chapter.
+
+    Reuses the same builder as the global status next command so the scoped
+    command respects snapshot (decisions) vs live (block) mode instead of
+    hard-coding a format. Returns "" when context is not ready or the
+    snapshot is unusable, mirroring `_build_status_next_command`.
+    """
+    context_info = status_payload.get("context") or {}
+    context_ready = bool(context_info.get("ready"))
+    snapshot_info = status_payload.get("snapshot")
+    snapshot_usable = snapshot_info is None or snapshot_info.get("state") == "valid"
+    source_access = status_payload.get("source_access")
+    source_profiles = list(status_payload.get("source_profiles") or [])
+    return _build_status_next_command(
+        runtime,
+        proj,
+        source_profiles,
+        chapter,
+        source_access,
+        snapshot_usable,
+        context_ready,
+    )
+
+
 def _judge_context_status(proj: Project) -> dict[str, Any]:
     ctx = load_context(proj)
     if ctx is None:
@@ -677,5 +708,122 @@ def accept_identical_judge_records_workflow(
         "matched_records": len(submitted),
         "accepted_records": accepted,
         "version_refs": version_refs,
+        "write": write,
+    }
+
+
+def _chapter_missing_records(
+    proj: Project, bundle: StatusBundle, chapter_id: str
+) -> int:
+    """Count records in ``chapter_id`` not yet selected into the store."""
+    record_ids = bundle.index.record_ids_by_chapter.get(chapter_id, [])
+    selected = selected_record_ids(proj)
+    return sum(1 for rid in record_ids if rid not in selected)
+
+
+def sweep_identical_judge_records_workflow(
+    proj: Project,
+    *,
+    bundle: StatusBundle,
+    sources_csv: str | None,
+    from_chapter: str,
+    to_chapter: str,
+    max_records: int | None,
+    require_all_sources: bool,
+    source_access: Literal["live", "snapshot"],
+    write: bool,
+) -> dict[str, Any]:
+    """Accept identical records across a contiguous chapter range in process.
+
+    Iterates chapters from ``from_chapter`` to ``to_chapter`` (inclusive) in
+    source order and accepts identical valid candidates for each chapter when
+    ``write`` is set. Stops at the first chapter that still has missing
+    records after identical acceptance (it needs LLM judging) and returns its
+    id as ``stopped_chapter``. A chapter with no missing records is treated as
+    already complete. ``BooktxError(code=judge_next)`` for a chapter is treated
+    as already-complete; every other error propagates unchanged (no masking).
+
+    The caller (command layer) owns building the scoped/global ``judge next``
+    command because that needs the runtime context.
+    """
+    ordered_chapters = list(bundle.index.record_ids_by_chapter.keys())
+    try:
+        start = ordered_chapters.index(from_chapter)
+        end = ordered_chapters.index(to_chapter)
+    except ValueError as exc:
+        raise _err(
+            "judge_sweep",
+            f"sweep-identical chapter range {from_chapter}..{to_chapter} "
+            "is not contained in the source chapter order",
+        ) from exc
+    if start > end:
+        raise _err(
+            "judge_sweep",
+            f"--from-chapter {from_chapter} must not come after "
+            f"--to-chapter {to_chapter} in source order",
+        )
+    range_chapters = ordered_chapters[start : end + 1]
+
+    rows: list[dict[str, Any]] = []
+    stopped_chapter: str | None = None
+    for chapter_id in range_chapters:
+        try:
+            payload = accept_identical_judge_records_workflow(
+                proj,
+                bundle=bundle,
+                sources_csv=sources_csv,
+                chapter=chapter_id,
+                max_words=10**9,
+                max_records=max_records,
+                max_rendered_lines=None,
+                require_all_sources=require_all_sources,
+                source_access=source_access,
+                write=write,
+            )
+        except BooktxError as exc:
+            if exc.code == "judge_next":
+                rows.append(
+                    {
+                        "chapter_id": chapter_id,
+                        "matched_records": 0,
+                        "accepted_records": 0,
+                        "remaining_records": 0,
+                        "status": "complete",
+                    }
+                )
+                continue
+            raise
+        accepted = int(payload["accepted_records"])
+        matched = int(payload["matched_records"])
+        current_missing = _chapter_missing_records(proj, bundle, chapter_id)
+        # After this step: with --write, identicals are now selected so the
+        # store already reflects the gap; in a dry run, subtract what would
+        # have been accepted.
+        remaining = current_missing if write else max(current_missing - matched, 0)
+        if remaining > 0:
+            rows.append(
+                {
+                    "chapter_id": chapter_id,
+                    "matched_records": matched,
+                    "accepted_records": accepted,
+                    "remaining_records": remaining,
+                    "status": "needs_judging",
+                }
+            )
+            stopped_chapter = chapter_id
+            break
+        rows.append(
+            {
+                "chapter_id": chapter_id,
+                "matched_records": matched,
+                "accepted_records": accepted,
+                "remaining_records": 0,
+                "status": "complete",
+            }
+        )
+
+    return {
+        "rows": rows,
+        "stopped_chapter": stopped_chapter,
         "write": write,
     }

@@ -833,6 +833,10 @@ Rules:
 - Judge tasks compare sibling profiles and write accepted output into the
   selection profile's normal `translation-store.json`, so normal
   `booktx validate` and `booktx build` still apply.
+- In isolated judge mode, do not run multi-chapter shell loops and do not use `|| true` around booktx commands. Run one `judge accept-identical`, `judge next`, or `judge insert` command at a time, inspect the result, then continue.
+- When `judge accept-identical --chapter CHAPTER --write` accepts 0 records, immediately run the scoped `judge next` for the same chapter unless the output says the chapter is complete.
+- Prefer `booktx judge sweep-identical . --from-chapter CHAPTER --to-chapter CHAPTER --max-records N --write` over hand-written chapter loops; it iterates chapters in process and stops on the first chapter that still needs judging.
+- Treat raw Python tracebacks from `booktx` as tool failures. Stop and report the command and traceback; do not work around by editing stores or reading parent paths.
 
 ### Isolated judge workflow
 
@@ -850,6 +854,8 @@ cd translations/de_judge_gpt5_5
 # profile root
 booktx judge status .
 booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
+# Replace hand-written chapter loops with the in-process sweep:
+booktx judge sweep-identical . --from-chapter 0001 --to-chapter 0010 --max-records 100 --write
 booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions
 booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
 booktx judge reset-ingest . --judge-task-id TASK --format decisions --write
@@ -859,3 +865,4 @@ booktx judge continue . --max-records 8
 The isolated workflow uses copied candidate data (no sibling reads) and
 outputs only profile-local paths. Create-profile, sync-sources, and
 prepare-isolation remain blocked in profile-root mode.
+`judge sweep-identical` is the safe replacement for `for ... do accept-identical ... || true; done` loops: it never masks failures and stops on the first chapter that still needs LLM judging, printing its scoped `judge next` command.

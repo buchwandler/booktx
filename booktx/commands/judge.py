@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import typer
+from rich.table import Table
 
 from booktx.cli_support import (
     _die,
@@ -32,6 +33,7 @@ from booktx.workflows.judge import (
     _source_access_from_runtime,
     accept_identical_judge_records_workflow,
     accept_judge_submission_workflow,
+    build_chapter_next_command,
     build_judge_status_workflow,
     create_judge_profile_workflow,
     create_next_judge_task_workflow,
@@ -41,6 +43,7 @@ from booktx.workflows.judge import (
     judge_task_json_path,
     prepare_judge_isolation_workflow,
     reset_judge_ingest_workflow,
+    sweep_identical_judge_records_workflow,
 )
 
 judge_app = typer.Typer(help="Judge and selection-profile workflows.")
@@ -725,6 +728,53 @@ def judge_show(
         console.print(f"validation: {summary}")
 
 
+def _accept_identical_next_message(
+    *,
+    status_payload: dict[str, object],
+    runtime: RuntimeContext,
+    requested_chapter: str | None,
+) -> list[str]:
+    """Lines to print after `accept-identical --write`.
+
+    With an explicit `--chapter`, stay scoped to that chapter: if it still has
+    missing records point at it; if it is complete say so and fall through to
+    the global next command. Without `--chapter`, preserve the historical
+    global `next command:` output.
+    """
+    global_next = str(status_payload.get("next_command") or "")
+    if not requested_chapter:
+        return [f"next command: {global_next}"] if global_next else []
+
+    chapters = status_payload.get("chapters")
+    chapter_status = next(
+        (
+            item
+            for item in (chapters or [])
+            if isinstance(item, dict) and item.get("chapter_id") == requested_chapter
+        ),
+        None,
+    )
+    if chapter_status is None:
+        return [f"chapter {requested_chapter}: not found"]
+
+    missing = int(chapter_status.get("missing_records") or 0)
+    if missing > 0:
+        scoped_next = build_chapter_next_command(
+            runtime.project,
+            runtime,
+            chapter=requested_chapter,
+            status_payload=status_payload,
+        )
+        if scoped_next:
+            return [f"next command for chapter {requested_chapter}: {scoped_next}"]
+        return [f"next command for chapter {requested_chapter}"]
+
+    lines = [f"chapter {requested_chapter} complete"]
+    if global_next:
+        lines.append(f"next global command: {global_next}")
+    return lines
+
+
 @judge_app.command(name="accept-identical")
 def judge_accept_identical(
     project_dir: Path = typer.Argument(..., help="Project directory."),
@@ -793,12 +843,12 @@ def judge_accept_identical(
             bundle=_project_status_snapshot(proj),
             sources_csv=sources_csv,
         )
-        if status_payload["next_command"]:
-            console.print(
-                f"next command: {status_payload['next_command']}",
-                soft_wrap=True,
-                markup=False,
-            )
+        for line in _accept_identical_next_message(
+            status_payload=status_payload,
+            runtime=runtime,
+            requested_chapter=chapter,
+        ):
+            console.print(line, soft_wrap=True, markup=False)
     else:
         console.print(f"matched identical records: {payload['matched_records']}")
         console.print(
@@ -817,6 +867,128 @@ def judge_accept_identical(
             soft_wrap=True,
             markup=False,
         )
+
+
+@judge_app.command(name="sweep-identical")
+def judge_sweep_identical(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Selection profile name."
+    ),
+    sources: str | None = typer.Option(
+        None, "--sources", help="Comma-separated source profiles."
+    ),
+    unit: str = typer.Option("chapter", "--unit", help="Task unit; currently chapter."),
+    from_chapter: str = typer.Option(
+        ..., "--from-chapter", help="First chapter id (inclusive)."
+    ),
+    to_chapter: str = typer.Option(
+        ..., "--to-chapter", help="Last chapter id (inclusive)."
+    ),
+    max_records: int | None = typer.Option(
+        None, "--max-records", help="Optional maximum number of records per chapter."
+    ),
+    require_all_sources: bool = typer.Option(
+        False,
+        "--require-all-sources",
+        help=(
+            "Fail if any selected record is missing a candidate from a source profile."
+        ),
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Accept identical valid candidates into the store."
+    ),
+) -> None:
+    """Accept identical records across a chapter range in process.
+
+    Iterates chapters from --from-chapter to --to-chapter (inclusive), accepts
+    identical valid candidates for each chapter, and stops on the first chapter
+    that still needs LLM judging. Replaces hand-written chapter loops.
+    """
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_no_source_drift(proj)
+    _require_ready_context(proj)
+    if unit != "chapter":
+        _die("--unit must be chapter")
+    source_access = _source_access_from_runtime(runtime)
+    sources_csv = None if runtime.mode.kind == "profile-root" else sources
+    try:
+        payload = sweep_identical_judge_records_workflow(
+            proj,
+            bundle=_project_status_snapshot(proj),
+            sources_csv=sources_csv,
+            from_chapter=from_chapter,
+            to_chapter=to_chapter,
+            max_records=max_records,
+            require_all_sources=require_all_sources,
+            source_access=source_access,
+            write=write,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("chapter")
+    table.add_column("matched", justify="right")
+    table.add_column("accepted", justify="right")
+    table.add_column("remaining", justify="right")
+    table.add_column("status")
+    for row in payload["rows"]:
+        table.add_row(
+            str(row["chapter_id"]),
+            str(row["matched_records"]),
+            str(row["accepted_records"]),
+            str(row["remaining_records"]),
+            str(row["status"]),
+        )
+    console.print(table)
+
+    if not write:
+        console.print(
+            "dry run: re-run with --write to accept the matched identical records",
+            soft_wrap=True,
+            markup=False,
+        )
+        return
+
+    stopped = payload["stopped_chapter"]
+    status_payload = build_judge_status_workflow(
+        proj,
+        runtime,
+        bundle=_project_status_snapshot(proj),
+        sources_csv=sources_csv,
+    )
+    if stopped is not None:
+        scoped_next = build_chapter_next_command(
+            proj,
+            runtime,
+            chapter=stopped,
+            status_payload=status_payload,
+        )
+        line = (
+            f"next command for chapter {stopped}: {scoped_next}"
+            if scoped_next
+            else f"next command for chapter {stopped}"
+        )
+        console.print(line, soft_wrap=True, markup=False)
+    else:
+        global_next = str(status_payload.get("next_command") or "")
+        if global_next:
+            console.print(
+                f"next global command: {global_next}",
+                soft_wrap=True,
+                markup=False,
+            )
+        else:
+            console.print(
+                "all chapters in range complete",
+                soft_wrap=True,
+                markup=False,
+            )
 
 
 # --------------------------------------------------------------------------
