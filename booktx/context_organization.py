@@ -406,6 +406,9 @@ def render_context_organization_report(
 
 def safe_report_path(path: Path) -> None:
     """Reject report paths that violate the no-/tmp policy."""
-    resolved = path.expanduser().resolve()
+    expanded = path.expanduser()
+    if expanded == Path("/tmp") or Path("/tmp") in expanded.parents:
+        raise ValueError("context organization reports must not be written under /tmp")
+    resolved = expanded.resolve()
     if resolved == Path("/tmp") or Path("/tmp") in resolved.parents:
         raise ValueError("context organization reports must not be written under /tmp")
