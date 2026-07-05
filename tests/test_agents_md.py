@@ -106,6 +106,34 @@ def test_agents_md_isolated_judge_says_copy_target_empty():
     assert "Do not paste candidate text into `TARGET` for copy decisions." in text
 
 
+def test_agents_md_isolated_revision_body():
+    kwargs = dict(ISO_SELECTION_KWARGS)
+    kwargs["selection_purpose"] = "revise"
+    text = render_agents_md(**kwargs)
+    # Revision-specific header and contract.
+    assert "# booktx isolated judge revision profile" in text
+    assert "Allowed commands:" in text
+    assert "Forbidden commands" in text
+    # Forbidden deterministic / direct-store bypasses are listed.
+    assert "booktx judge accept-identical . --write" in text
+    assert "booktx judge sweep-identical . --write" in text
+    assert "booktx judge prefill-policy-fixes . --write" in text
+    assert "booktx translation revise-record ." in text
+    assert "booktx translation revise-block ." in text
+    # Allowed revision workflow commands.
+    assert "booktx judge record . --record RECORD_ID --format decisions" in text
+    assert "booktx build . --require-complete" in text
+    assert (
+        "Every record requires an explicit copy or edited judge decision" in text
+    ) or ("choose an explicit copy or edited decision" in text)
+    # Isolation safety preserved.
+    assert "../" not in text
+    assert "translations/" not in text
+    # Compare-only selection body must NOT contain the forbidden section.
+    cmp_text = render_agents_md(**ISO_SELECTION_KWARGS)
+    assert "Forbidden commands" not in cmp_text
+
+
 # --- case 3: collaborative render ----------------------------------------
 
 

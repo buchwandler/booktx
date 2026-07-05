@@ -41,6 +41,7 @@ from booktx.models import (
 )
 from booktx.progress import count_words
 from booktx.record_refs import parse_record_ref
+from booktx.selection_mode import selection_purpose
 from booktx.status import selected_chapter
 from booktx.tasks import limit_records_by_words
 from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
@@ -99,13 +100,29 @@ def _record_ids_for_task(
     return chapter_obj.chapter_id, limited
 
 
-def render_judge_task_block(task: JudgeTask) -> str:
-    lines = [
-        "# booktx judge task",
-        f"judge_task_id: {task.judge_task_id}",
-        f"profile: {task.profile}",
-        f"sources: {','.join(task.source_profiles)}",
-    ]
+def _judge_task_block_header(task: JudgeTask, *, revise: bool) -> list[str]:
+    if revise:
+        source_name = task.source_profiles[0] if task.source_profiles else ""
+        lines = [
+            "# booktx judge revision task",
+            f"judge_task_id: {task.judge_task_id}",
+            f"profile: {task.profile}",
+            f"source: {source_name}",
+            "purpose: revise",
+            "# Goal: proofread and improve the existing target record by record.",
+            "# Use copy only when the base target is already good.",
+            "# Use edited for grammar, flow, punctuation, style, or terminology "
+            "corrections.",
+            "# Preserve meaning, names, policy, placeholders, quotes, ",
+            "and inline XHTML.",
+        ]
+    else:
+        lines = [
+            "# booktx judge task",
+            f"judge_task_id: {task.judge_task_id}",
+            f"profile: {task.profile}",
+            f"sources: {','.join(task.source_profiles)}",
+        ]
     if task.source_access == "snapshot":
         lines.append(f"source_access: {task.source_access}")
         lines.append(
@@ -114,42 +131,48 @@ def render_judge_task_block(task: JudgeTask) -> str:
         )
     lines.append(f"applicable_termbase_sha256: {task.applicable_termbase_sha256 or ''}")
     lines.append("")
-    for record in task.records:
-        lines.extend(
-            [
-                f"## {record.id}",
-                "",
-                "SOURCE:",
-                record.source,
-                "",
-            ]
+    return lines
+
+
+def _judge_glossary_lines(record: JudgeTaskRecord) -> list[str]:
+    if not record.applicable_glossary:
+        return []
+    lines = ["GLOSSARY:"]
+    for entry in record.applicable_glossary:
+        approved = ([entry.target] if entry.target else []) + list(
+            entry.target_variants
         )
-        if record.applicable_glossary:
-            lines.append("GLOSSARY:")
-            for entry in record.applicable_glossary:
-                approved = ([entry.target] if entry.target else []) + list(
-                    entry.target_variants
-                )
-                lines.append(
-                    f"- source: {entry.source} matched: {entry.matched_source_cue}"
-                )
-                if entry.require_target and approved:
-                    lines.append(f"  required: {', '.join(approved)}")
-                if entry.forbidden_targets:
-                    lines.append(f"  forbidden: {', '.join(entry.forbidden_targets)}")
-                lines.append(f"  enforce: {entry.enforce}")
-                if entry.notes:
-                    lines.append(f"  note: {entry.notes}")
-            lines.append("")
-        lines.extend(["CANDIDATES:", ""])
-        for snapshot in record.applicable_termbase:
-            note = snapshot.sense or snapshot.rationale
-            lines.append(f"TERMBASE: {snapshot.entry_id} — {note}".rstrip(" —"))
-        if record.applicable_termbase:
-            lines.append("")
+        lines.append(f"- source: {entry.source} matched: {entry.matched_source_cue}")
+        if entry.require_target and approved:
+            lines.append(f"  required: {', '.join(approved)}")
+        if entry.forbidden_targets:
+            lines.append(f"  forbidden: {', '.join(entry.forbidden_targets)}")
+        lines.append(f"  enforce: {entry.enforce}")
+        if entry.notes:
+            lines.append(f"  note: {entry.notes}")
+    lines.append("")
+    return lines
+
+
+def _judge_termbase_lines(record: JudgeTaskRecord) -> list[str]:
+    if not record.applicable_termbase:
+        return []
+    lines: list[str] = []
+    for snapshot in record.applicable_termbase:
+        note = snapshot.sense or snapshot.rationale
+        lines.append(f"TERMBASE: {snapshot.entry_id} — {note}".rstrip(" —"))
+    lines.append("")
+    return lines
+
+
+def _judge_candidate_lines(record: JudgeTaskRecord, *, revise: bool) -> list[str]:
+    lines: list[str] = []
+    if revise:
+        # Revise profiles render the single base target as BASE_TARGET, not the
+        # multi-candidate CANDIDATES block.
         for candidate in record.candidates:
             lines.append(
-                f"[{candidate.label}] profile={candidate.profile} "
+                f"BASE_TARGET [{candidate.label}] profile={candidate.profile} "
                 f"ref={candidate.selected_ref} sha256={candidate.target_sha256}"
             )
             lines.append(candidate.target)
@@ -160,51 +183,104 @@ def render_judge_task_block(task: JudgeTask) -> str:
                         f"- {finding.severity} {finding.rule}: {finding.message}"
                     )
             lines.append("")
-        if record.missing_profiles:
-            lines.append("missing_profiles: " + ", ".join(record.missing_profiles))
-            lines.append("")
-        lines.extend(
-            [
-                "# Decision modes:",
-                "# - copy: selected must be A/B/C; TARGET must be empty.",
-                "# - edited from candidate: selected is A/B/C;",
-                "#   decision_kind is edited; TARGET is the corrected full target.",
-                "# - new judge target: selected is edited;",
-                "#   decision_kind is edited; TARGET is the full new target.",
-                "# Never paste a copy candidate into TARGET.",
-                "# Use TARGET only for edited/new targets.",
-                "",
-            ]
+        return lines
+    lines.extend(["CANDIDATES:", ""])
+    for candidate in record.candidates:
+        lines.append(
+            f"[{candidate.label}] profile={candidate.profile} "
+            f"ref={candidate.selected_ref} sha256={candidate.target_sha256}"
         )
-        lines.extend(
-            [
-                "DECISION:",
-                "selected: ",
-                "decision_kind: copy",
-                "reason: ",
-                "",
-                "TARGET:",
-                "",
-                "",
-            ]
-        )
-    return "\n".join(lines).rstrip() + "\n"
+        lines.append(candidate.target)
+        if candidate.validation_findings:
+            lines.append("validation:")
+            for finding in candidate.validation_findings:
+                lines.append(f"- {finding.severity} {finding.rule}: {finding.message}")
+        lines.append("")
+    return lines
 
 
-def render_judge_decision_block(task: JudgeTask) -> str:
-    lines = [
-        "# booktx judge decisions",
-        f"judge_task_id: {task.judge_task_id}",
+def _judge_decision_comment(*, revise: bool) -> list[str]:
+    if revise:
+        return [
+            "# Decision: selected=A + copy + empty TARGET keeps the base target.",
+            "# selected=A + edited + full TARGET revises the base target.",
+            "# selected=edited + edited + full TARGET replaces the target entirely.",
+            "",
+        ]
+    return [
         "# Decision modes:",
         "# - copy: selected must be A/B/C; TARGET must be empty.",
         "# - edited from candidate: selected is A/B/C;",
         "#   decision_kind is edited; TARGET is the corrected full target.",
-        "# - new judge target: selected is edited;"
+        "# - new judge target: selected is edited;",
         "#   decision_kind is edited; TARGET is the full new target.",
         "# Never paste a copy candidate into TARGET.",
         "# Use TARGET only for edited/new targets.",
         "",
     ]
+
+
+def _judge_decision_section() -> list[str]:
+    return [
+        "DECISION:",
+        "selected: ",
+        "decision_kind: copy",
+        "reason: ",
+        "",
+        "TARGET:",
+        "",
+        "",
+    ]
+
+
+def render_judge_task_block(task: JudgeTask) -> str:
+    revise = task.selection_purpose == "revise"
+    lines = _judge_task_block_header(task, revise=revise)
+    for record in task.records:
+        lines.extend(
+            [
+                f"## {record.id}",
+                "",
+                "SOURCE:",
+                record.source,
+                "",
+            ]
+        )
+        lines.extend(_judge_glossary_lines(record))
+        lines.extend(_judge_termbase_lines(record))
+        lines.extend(_judge_candidate_lines(record, revise=revise))
+        if record.missing_profiles:
+            lines.append("missing_profiles: " + ", ".join(record.missing_profiles))
+            lines.append("")
+        lines.extend(_judge_decision_comment(revise=revise))
+        lines.extend(_judge_decision_section())
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_judge_decision_block(task: JudgeTask) -> str:
+    revise = task.selection_purpose == "revise"
+    if revise:
+        lines = [
+            "# booktx judge revision decisions",
+            f"judge_task_id: {task.judge_task_id}",
+            "# Fill every record. Use copy only when no improvement is needed.",
+            "# For edited, TARGET must contain the complete corrected target.",
+            "",
+        ]
+    else:
+        lines = [
+            "# booktx judge decisions",
+            f"judge_task_id: {task.judge_task_id}",
+            "# Decision modes:",
+            "# - copy: selected must be A/B/C; TARGET must be empty.",
+            "# - edited from candidate: selected is A/B/C;",
+            "#   decision_kind is edited; TARGET is the corrected full target.",
+            "# - new judge target: selected is edited;"
+            "#   decision_kind is edited; TARGET is the full new target.",
+            "# Never paste a copy candidate into TARGET.",
+            "# Use TARGET only for edited/new targets.",
+            "",
+        ]
     for record in task.records:
         lines.extend(
             [
@@ -334,6 +410,7 @@ def _build_judge_task_model(
         source_snapshot_sha256=source_snapshot_sha256,
         source_snapshot_path=source_snapshot_path,
         source_candidates_sha256=judge_task_candidates_sha256(records),
+        selection_purpose=selection_purpose(project),
         records=records,
     )
 

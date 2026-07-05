@@ -18,10 +18,12 @@ from booktx.epub_manifest import (
     load_epub_template_from_manifest,
     prose_span_from_epub_ref,
 )
+from booktx.judge_provenance import audit_revision_provenance
 from booktx.markdown_io import build_markdown, extract_markdown
 from booktx.models import Chunk, TranslatedChunk
 from booktx.placeholders import restore
 from booktx.progress import count_words
+from booktx.selection_mode import is_revision_selection_profile
 from booktx.validate import (
     EffectiveTranslations,
     Finding,
@@ -456,6 +458,44 @@ class BuildResult:
         }
 
 
+def _enforce_revision_build_provenance(
+    project: Project, *, require_complete: bool
+) -> None:
+    """Reject revise-profile builds with invalid or incomplete provenance.
+
+    Runs before any output is written so transactional build safety is
+    preserved (the last good output is untouched on failure).
+    """
+    if not is_revision_selection_profile(project):
+        return
+    audit = audit_revision_provenance(project)
+    if audit.issues:
+        preview = "; ".join(
+            f"{issue.record_id}: {issue.code}" for issue in audit.issues[:10]
+        )
+        if len(audit.issues) > 10:
+            preview += "; ..."
+        raise BuildError(
+            "revision profile build rejected: active targets have invalid "
+            f"judge-decision provenance ({preview}). Recreate each record via: "
+            "booktx judge record . --record RECORD_ID --format decisions",
+        )
+    if require_complete:
+        source_record_ids = {
+            rec.id for chunk in _load_chunks(project) for rec in chunk.records
+        }
+        missing = sorted(source_record_ids - audit.valid_record_ids)
+        if missing:
+            preview = ", ".join(missing[:10])
+            if len(missing) > 10:
+                preview += ", ..."
+            raise BuildError(
+                "build --require-complete rejected: revision profile is not "
+                "complete; records missing an active target with matching "
+                f"provenance: {preview}",
+            )
+
+
 def build_project(
     project: Project,
     *,
@@ -463,6 +503,7 @@ def build_project(
     require_reviewed: bool = False,
 ) -> BuildResult:
     """Build the translated output document for ``project``."""
+    _enforce_revision_build_provenance(project, require_complete=require_complete)
     source = find_source_file(project)
     if project.config.format == "markdown" or source.suffix.lower() in (
         ".md",

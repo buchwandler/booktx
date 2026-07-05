@@ -1140,6 +1140,15 @@ class SelectionConfig(BaseModel):
     sources: list[str] = Field(default_factory=list)
     allow_edited_targets: bool = True
     require_all_sources: bool = False
+    purpose: Literal["compare", "revise"] = "compare"
+
+    @model_validator(mode="after")
+    def _validate_revision_sources(self) -> SelectionConfig:
+        if self.purpose == "revise" and len(self.sources) != 1:
+            raise ValueError(
+                "selection.purpose=revise requires exactly one configured source"
+            )
+        return self
 
 
 class ContextSyncLedgerFinding(BaseModel):
@@ -1258,6 +1267,7 @@ class JudgeTask(BaseModel):
     source_snapshot_sha256: str | None = None
     source_snapshot_path: str | None = None
     source_candidates_sha256: str | None = None
+    selection_purpose: Literal["compare", "revise"] = "compare"
     records: list[JudgeTaskRecord] = Field(default_factory=list)
 
 
@@ -1335,6 +1345,7 @@ class JudgeDecision(BaseModel):
 
     record_id: str
     output_version_ref: str
+    output_target_sha256: str | None = None
     decision_kind: Literal["copy", "edited"]
     selected_profile: str | None = None
     selected_kind: Literal["translation", "review"] | None = None

@@ -832,7 +832,7 @@ Decision modes (fill `judge-ingest/TASK.decisions.txt`):
 Never paste a copy candidate into `TARGET`. Use `TARGET` only for edited/new targets.
 
 - Do not chain `judge insert` and `judge next` in one shell command.
-- Prefer `judge accept-identical` before asking the LLM to compare trivial identical records.
+- Prefer `judge accept-identical` before asking the LLM to compare trivial identical records (compare mode only; disabled for `selection.purpose=revise`).
 - Treat `translation-selection-ledger.json` as provenance; never hand-edit it.
 - Judge tasks compare sibling profiles and write accepted output into the
   selection profile's normal `translation-store.json`, so normal
@@ -869,4 +869,44 @@ booktx judge continue . --max-records 8
 The isolated workflow uses copied candidate data (no sibling reads) and
 outputs only profile-local paths. Create-profile, sync-sources, and
 prepare-isolation remain blocked in profile-root mode.
+
+### Single-source judge revision profiles
+
+Use `--purpose revise` when one translation source is clearly best and you
+want an isolated final profile where an LLM must explicitly proofread every
+record.
+
+Revision profiles are judge profiles, not review passes. Their effective
+output is valid only while each active target has matching judge-decision
+provenance.
+
+Do not run `accept-identical`, `sweep-identical`, or
+`prefill-policy-fixes` in a revision profile. Do not modify effective output
+through translation or review revision commands; use `judge record` for later
+corrections.
+
+Create a revision profile with exactly one source, then judge every record
+with an explicit `copy` (keep the base target, empty `TARGET`) or `edited`
+(write the complete corrected target) decision. Use the unit of review
+consistently: a booktx **record**, not a sentence.
+
+```bash
+booktx judge create-profile ./book de_glm_5_2_revised \
+  --target de --target-locale de-DE \
+  --sources de_glm_5_2 --context-from de_glm_5_2 --model gpt-5.5 \
+  --purpose revise
+booktx judge prepare-isolation ./book --profile de_glm_5_2_revised --write
+cd translations/de_glm_5_2_revised
+booktx judge status .
+booktx judge next . --unit chapter --chapter 0008 --max-records 20 --format decisions
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
+booktx judge record . --record RECORD_ID --format decisions
+booktx validate . --fail-on-warnings
+booktx build . --require-complete
+```
+
+In `selection.purpose=compare`, prefer `accept-identical` and
+`sweep-identical` for true multi-source identical candidates. In
+`selection.purpose=revise`, never use deterministic selection commands;
+every record requires an explicit copy or edited judge decision.
 `judge sweep-identical` is the safe replacement for `for ... do accept-identical ... || true; done` loops: it never masks failures and stops on the first chapter that still needs LLM judging, printing its scoped `judge next` command.

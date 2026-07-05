@@ -453,6 +453,90 @@ def _render_isolated_selection_body(*, profile: str, target_locale: str) -> str:
     )
 
 
+def _render_isolated_revision_body(*, profile: str, target_locale: str) -> str:
+    return (
+        "\n\n"
+        "# booktx isolated judge revision profile\n"
+        "\n"
+        "You are in a single-source judge revision profile.\n"
+        "\n"
+        "Use only profile-local commands with project argument `.`. "
+        "Do not use parent paths, absolute paths, shell globs, "
+        "filesystem traversal snippets, sibling profile commands, or "
+        "`--profile`.\n"
+        "\n"
+        "Profile:\n"
+        "\n"
+        f"- profile: {profile}\n"
+        f"- target: {target_locale}\n"
+        "- source access: copied judge-sources snapshot\n"
+        "- mutable state: this directory only\n"
+        "\n"
+        "Allowed commands:\n"
+        "\n"
+        "```bash\n"
+        "booktx judge status .\n"
+        "booktx judge next . --unit chapter --chapter CHAPTER "
+        "--max-records 20 --format decisions\n"
+        "booktx judge record . --record RECORD_ID --format decisions\n"
+        "booktx judge insert . --judge-task-id TASK "
+        "--file judge-ingest/TASK.decisions.txt --format decisions\n"
+        "booktx judge continue . --max-records 20\n"
+        "booktx validate . --fail-on-warnings\n"
+        "booktx build . --require-complete\n"
+        "```\n"
+        "\n"
+        "Forbidden commands (they bypass explicit per-record decisions and "
+        "must fail in revision mode):\n"
+        "\n"
+        "```bash\n"
+        "booktx judge accept-identical . --write\n"
+        "booktx judge sweep-identical . --write\n"
+        "booktx judge prefill-policy-fixes . --write\n"
+        "booktx translate insert .\n"
+        "booktx translation revise-record .\n"
+        "booktx translation revise-block .\n"
+        "```\n"
+        "\n"
+        "For every record in a judge task, choose an explicit copy or edited "
+        "decision. Do not skip records. Later corrections must use "
+        "`booktx judge record`.\n"
+        "\n"
+        "Decision semantics:\n"
+        "\n"
+        "- `selected: A` with `decision_kind: copy` and an empty `TARGET` keeps "
+        "the BASE_TARGET unchanged.\n"
+        "- `selected: A` with `decision_kind: edited` and a full `TARGET` revises "
+        "the BASE_TARGET.\n"
+        "- `selected: edited` with `decision_kind: edited` and a full `TARGET` "
+        "replaces the target entirely.\n"
+        "\n"
+        "Autonomy rule:\n"
+        "\n"
+        "- Run one booktx command at a time. Never wrap judge commands in "
+        "a shell loop, never chain them with `||`, `&&`, or `;`, and never "
+        "append `|| true` to swallow failures. Read each command's output "
+        "before continuing.\n"
+        "\n"
+        "Rules:\n"
+        "\n"
+        "- Preserve record ids, placeholders, inline XHTML tags, and quote "
+        "boundaries exactly.\n"
+        "- Do not invent context answers or mark context ready.\n"
+        "- Do not use Python, sed, perl, awk, regex scripts, or bulk "
+        "filesystem edits to rewrite judge ingest files.\n"
+        "- Do not edit `judge-tasks/*.source.block.txt`.\n"
+        "- Do not hand-edit `translation-store.json` or "
+        "`translation-selection-ledger.json`; effective output is valid only "
+        "while each active target has matching judge-decision provenance.\n"
+        "- If booktx prints a parent path, sibling profile, or any "
+        "parent-directory reference, stop and report an isolation bug.\n"
+        "\n"
+        "Use the installed booktx skill when available. This file is the "
+        "local harness entry contract; it does not replace the skill.\n"
+    )
+
+
 def _render_collaborative_body() -> str:
     return (
         "\n\n"
@@ -516,6 +600,7 @@ def render_agents_md(
     source_id: str,
     target_locale: str | None = None,
     profile_kind: str | None = None,
+    selection_purpose: str | None = None,
 ) -> str:
     """Render a complete managed ``AGENTS.md`` document for ``mode``.
 
@@ -523,7 +608,9 @@ def render_agents_md(
     ``translations/``, sibling profile names, or ``--profile``. Only the
     current profile name and its target locale appear, because those are
     local identity. A selection profile (``profile_kind == "selection"``)
-    receives judge-isolation instructions instead of translation instructions.
+    receives judge-isolation instructions instead of translation instructions;
+    a revision selection profile (``selection_purpose == "revise"``) receives
+    the stricter revision contract.
     """
     header = _render_metadata_block(mode=mode, profile=profile, source_id=source_id)
     if mode == "isolated":
@@ -538,9 +625,14 @@ def render_agents_md(
                 "isolated AGENTS.md rendering requires a target locale",
             )
         if profile_kind == "selection":
-            body = _render_isolated_selection_body(
-                profile=profile, target_locale=target_locale
-            )
+            if selection_purpose == "revise":
+                body = _render_isolated_revision_body(
+                    profile=profile, target_locale=target_locale
+                )
+            else:
+                body = _render_isolated_selection_body(
+                    profile=profile, target_locale=target_locale
+                )
         else:
             body = _render_isolated_body(profile=profile, target_locale=target_locale)
     else:

@@ -3693,3 +3693,456 @@ def test_judge_insert_prints_qa_summary_with_warnings(monkeypatch, tmp_path: Pat
     assert res.exit_code == 0, res.output
     assert "qa:" in res.output
     assert "warning:" in res.output
+
+
+# =====================================================================
+# Single-source judge revision profiles (selection.purpose=revise)
+# =====================================================================
+
+
+def _create_revision_profile(project_dir: Path, profile: str, source: str) -> None:
+    create_profile(project_dir, profile, target_language="de", kind="selection")
+    cfg = load_profile_config(project_dir, profile)
+    cfg.selection = SelectionConfig(sources=[source], purpose="revise")
+    write_profile_config(project_dir, cfg)
+
+
+def _revise_project(tmp_path: Path) -> tuple[Path, list[str]]:
+    project_dir = _make_project(tmp_path)
+    _create_translation_profile(project_dir, "de_a")
+    _create_revision_profile(project_dir, "de_rev", "de_a")
+    for profile in ("de_a", "de_rev"):
+        _ready_context(project_dir, profile)
+    return project_dir, _record_ids(project_dir)
+
+
+def _revise_profile_root_next(
+    project_dir: Path, *, profile: str = "de_rev", chapter: str = "0001"
+):
+    pr = project_dir / "translations" / profile
+    with _chdir(pr):
+        return runner.invoke(
+            app,
+            [
+                "judge",
+                "next",
+                ".",
+                "--unit",
+                "chapter",
+                "--chapter",
+                chapter,
+                "--max-words",
+                "900",
+                "--format",
+                "decisions",
+            ],
+        )
+
+
+def _revise_profile_root_insert(
+    project_dir: Path, task_id: str, file_path: str, *, profile: str = "de_rev"
+):
+    pr = project_dir / "translations" / profile
+    with _chdir(pr):
+        return runner.invoke(
+            app,
+            [
+                "judge",
+                "insert",
+                ".",
+                "--judge-task-id",
+                task_id,
+                "--file",
+                file_path,
+                "--format",
+                "decisions",
+            ],
+        )
+
+
+def _revise_task_id(project_dir: Path, profile: str = "de_rev") -> str | None:
+    task_dir = project_dir / "translations" / profile / "judge-tasks"
+    if not task_dir.is_dir():
+        return None
+    files = sorted(task_dir.glob("*.json"))
+    return files[0].stem if files else None
+
+
+def test_revise_create_profile_cli_validates_purpose_and_sources(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    _create_translation_profile(project_dir, "de_a")
+
+    # valid revise creation
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            str(project_dir),
+            "de_rev",
+            "--target",
+            "de",
+            "--sources",
+            "de_a",
+            "--purpose",
+            "revise",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    cfg = load_profile_config(project_dir, "de_rev")
+    assert cfg.selection is not None and cfg.selection.purpose == "revise"
+
+    # invalid purpose rejected, no profile leaked
+    res2 = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            str(project_dir),
+            "de_bad",
+            "--target",
+            "de",
+            "--sources",
+            "de_a",
+            "--purpose",
+            "bogus",
+        ],
+    )
+    assert res2.exit_code != 0
+    assert not (project_dir / "translations" / "de_bad").exists()
+
+    # multi-source revise rejected, no profile leaked
+    _create_translation_profile(project_dir, "de_b")
+    res3 = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            str(project_dir),
+            "de_bad2",
+            "--target",
+            "de",
+            "--sources",
+            "de_a,de_b",
+            "--purpose",
+            "revise",
+        ],
+    )
+    assert res3.exit_code != 0
+    assert not (project_dir / "translations" / "de_bad2").exists()
+
+
+def test_revise_resolve_sources_overrides(tmp_path: Path):
+    project_dir, _ = _revise_project(tmp_path)
+    proj = load_profile_project(project_dir, "de_rev")
+    from booktx.selection_mode import resolve_judge_sources_for_purpose
+
+    # omitted ok
+    assert resolve_judge_sources_for_purpose(proj, None) == ["de_a"]
+    # matching explicit ok
+    assert resolve_judge_sources_for_purpose(proj, "de_a") == ["de_a"]
+    # mismatched / multi rejected
+    from booktx.errors import BooktxError
+
+    for bad in ("de_b", "de_a,de_b"):
+        try:
+            resolve_judge_sources_for_purpose(proj, bad)
+            raise AssertionError(f"expected rejection for {bad!r}")
+        except BooktxError as exc:
+            assert exc.code == "judge_revision_sources_override"
+
+
+def test_revise_deterministic_commands_are_rejected(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    for cmd in (
+        [
+            "judge",
+            "accept-identical",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--sources",
+            "de_a",
+            "--unit",
+            "chapter",
+            "--chapter",
+            "0001",
+            "--max-records",
+            "10",
+        ],
+        [
+            "judge",
+            "sweep-identical",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--sources",
+            "de_a",
+            "--from-chapter",
+            "0001",
+            "--to-chapter",
+            "0001",
+            "--max-records",
+            "10",
+        ],
+    ):
+        # dry run
+        res = runner.invoke(app, cmd)
+        assert res.exit_code != 0, (cmd, res.output)
+        assert "judge_revision_explicit_decisions_required" in res.output or (
+            "revise" in res.output.lower()
+        )
+        # write mode
+        res_w = runner.invoke(app, cmd + ["--write"])
+        assert res_w.exit_code != 0
+    # prefill rejected too (needs a task; create one first)
+    res_next = _revise_profile_root_next(project_dir)
+    assert res_next.exit_code == 0, res_next.output
+    task_id = _revise_task_id(project_dir)
+    assert task_id is not None
+    res_pre = runner.invoke(
+        app,
+        [
+            "judge",
+            "prefill-policy-fixes",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--judge-task-id",
+            task_id,
+        ],
+    )
+    assert res_pre.exit_code != 0
+    res_pre_w = runner.invoke(
+        app,
+        [
+            "judge",
+            "prefill-policy-fixes",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--judge-task-id",
+            task_id,
+            "--write",
+        ],
+    )
+    assert res_pre_w.exit_code != 0
+    # No extra task artifacts were created by the rejected commands: only the one
+    # task from judge next should exist.
+    task_dir = project_dir / "translations" / "de_rev" / "judge-tasks"
+    assert len(list(task_dir.glob("*.json"))) == 1
+
+
+def test_revise_task_artifact_uses_base_target(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Base target.")
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    res = _revise_profile_root_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = _revise_task_id(project_dir)
+    assert task_id is not None
+    proj = load_profile_project(project_dir, "de_rev")
+    block_path = judge_ingest_block_path(proj, task_id)
+    text = Path(block_path).read_text("utf-8")
+    assert "# booktx judge revision task" in text
+    assert "purpose: revise" in text
+    assert "BASE_TARGET [A]" in text
+    assert "CANDIDATES:" not in text
+    decisions_path = judge_ingest_decisions_path(proj, task_id)
+    dec_text = Path(decisions_path).read_text("utf-8")
+    assert "# booktx judge revision decisions" in dec_text
+
+
+def test_revise_insert_requires_complete_task_and_writes_hash(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Base target.")
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    res = _revise_profile_root_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = _revise_task_id(project_dir)
+    proj = load_profile_project(project_dir, "de_rev")
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.decisions.txt"
+
+    # Incomplete (empty submission file with no record) is rejected and
+    # non-mutating: no store record should be created.
+    ingest.write_text(
+        f"# booktx judge revision decisions\njudge_task_id: {task_id}\n",
+        encoding="utf-8",
+    )
+    res_empty = _revise_profile_root_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
+    )
+    assert res_empty.exit_code != 0
+
+    # Valid explicit copy decision writes matching output hash provenance.
+    task = load_judge_task(proj, task_id)
+    base_target = task.records[0].candidates[0].target
+    _fill_decisions_ingest(ingest, task_id, [(record_ids[0], "A", "copy", "ok", "")])
+    res_copy = _revise_profile_root_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
+    )
+    assert res_copy.exit_code == 0, res_copy.output
+    ledger = load_translation_selection_ledger(proj)
+    decision = ledger.records[record_ids[0]]
+    assert decision.decision_kind == "copy"
+    assert decision.output_target_sha256 == sha256_text(base_target)
+
+
+def test_revise_insert_edited_writes_hash_and_compare_task_rejected(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Base target.")
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    res = _revise_profile_root_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = _revise_task_id(project_dir)
+    proj = load_profile_project(project_dir, "de_rev")
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.decisions.txt"
+    edited = "Edited target text."
+    _fill_decisions_ingest(
+        ingest, task_id, [(record_ids[0], "A", "edited", "fix", edited)]
+    )
+    res_ed = _revise_profile_root_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
+    )
+    assert res_ed.exit_code == 0, res_ed.output
+    ledger = load_translation_selection_ledger(proj)
+    assert ledger.records[record_ids[0]].output_target_sha256 == sha256_text(edited)
+
+    # A compare-purpose task cannot be inserted into a revise profile.
+    task = load_judge_task(proj, task_id)
+    compare_task = task.model_copy(update={"selection_purpose": "compare"})
+    from booktx.config import write_judge_task
+
+    write_judge_task(proj, compare_task)
+    ingest2 = proj.profile_dir / "judge-ingest" / f"{task_id}-compare.decisions.txt"
+    _fill_decisions_ingest(ingest2, task_id, [(record_ids[0], "A", "copy", "ok", "")])
+    res_cmp = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest2),
+            "--format",
+            "decisions",
+        ],
+    )
+    assert res_cmp.exit_code != 0
+
+
+def test_revise_status_reports_purpose_and_no_sweep(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    res = runner.invoke(
+        app,
+        ["judge", "status", str(project_dir), "--profile", "de_rev", "--json"],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert data["selection_purpose"] == "revise"
+    assert data.get("sweep_hint") == ""
+
+
+def test_revise_validation_and_build_enforce_provenance(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path)
+    for rid in record_ids:
+        _write_source_candidate(project_dir, "de_a", rid, f"Base target {rid}.")
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    res = _revise_profile_root_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = _revise_task_id(project_dir)
+    proj = load_profile_project(project_dir, "de_rev")
+    task = load_judge_task(proj, task_id)
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.decisions.txt"
+
+    # Accept a valid explicit copy decision for every record in the task.
+    decisions = [(rec.id, "A", "copy", "ok", "") for rec in task.records]
+    _fill_decisions_ingest(ingest, task_id, decisions)
+    res_ins = _revise_profile_root_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
+    )
+    assert res_ins.exit_code == 0, res_ins.output
+
+    # Valid provenance: validation and build --require-complete pass.
+    res_v = runner.invoke(app, ["validate", str(project_dir), "--profile", "de_rev"])
+    assert res_v.exit_code == 0, res_v.output
+    res_b = runner.invoke(
+        app, ["build", str(project_dir), "--profile", "de_rev", "--require-complete"]
+    )
+    assert res_b.exit_code == 0, res_b.output
+
+    # Simulate a direct store revision that bypasses judge mode: change the
+    # active target for the first record without updating the decision hash.
+    first = task.records[0].id
+    store = load_translation_store(proj)
+    from booktx.translation_store import effective_candidate_selection
+
+    sel = effective_candidate_selection(store.records[first], strict_active_review=True)
+    assert sel is not None
+    for cand in store.records[first].versions:
+        if cand.version_ref == sel.version_ref:
+            cand.target = "TAMPERED target text."
+    write_translation_store(proj, store)
+
+    res_v2 = runner.invoke(app, ["validate", str(project_dir), "--profile", "de_rev"])
+    assert res_v2.exit_code != 0
+    assert "judge_revision_output_hash_mismatch" in res_v2.output
+    res_b2 = runner.invoke(app, ["build", str(project_dir), "--profile", "de_rev"])
+    assert res_b2.exit_code != 0
+
+    # Re-judging the tampered record through `judge record` restores validity.
+    res_rec = runner.invoke(
+        app,
+        [
+            "judge",
+            "record",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--record",
+            first,
+            "--format",
+            "decisions",
+        ],
+    )
+    assert res_rec.exit_code == 0, res_rec.output
+    # The record-task creates a new task id; find and fill it.
+    task_files = sorted(
+        (project_dir / "translations" / "de_rev" / "judge-tasks").glob("*.json"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    rt_id = task_files[-1].stem
+    rproj = load_profile_project(project_dir, "de_rev")
+    ringest = rproj.profile_dir / "judge-ingest" / f"{rt_id}.decisions.txt"
+    _fill_decisions_ingest(ringest, rt_id, [(first, "A", "copy", "ok", "")])
+    res_reins = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--judge-task-id",
+            rt_id,
+            "--file",
+            str(ringest),
+            "--format",
+            "decisions",
+        ],
+    )
+    assert res_reins.exit_code == 0, res_reins.output
+    res_v3 = runner.invoke(app, ["validate", str(project_dir), "--profile", "de_rev"])
+    assert res_v3.exit_code == 0, res_v3.output
+    res_b3 = runner.invoke(
+        app, ["build", str(project_dir), "--profile", "de_rev", "--require-complete"]
+    )
+    assert res_b3.exit_code == 0, res_b3.output

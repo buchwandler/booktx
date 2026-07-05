@@ -229,8 +229,19 @@ For `decision_kind: copy`, set `selected` and `reason` and leave `TARGET`
 empty so booktx copies the selected candidate exactly. Choose
 `decision_kind: edited` only when every available candidate needs a repair.
 Submit the completed judge ingest file with `booktx judge insert ...`;
-booktx writes the chosen target into the selection profile's normal translation
 store and records provenance in `translation-selection-ledger.json`.
+
+In `selection.purpose=compare` (the default, shown above), prefer
+`accept-identical` and `sweep-identical` for true multi-source identical
+candidates.
+
+In `selection.purpose=revise`, never use deterministic selection commands.
+Create the profile with `--purpose revise` and exactly one source; every
+record requires an explicit copy or edited judge decision. Later corrections
+must use `booktx judge record . --record RECORD_ID`, not translation or
+review revision commands, because revision output is valid only while each
+active target has matching judge-decision provenance. See _Single-source judge
+revision profiles_ in `docs/profiles.md`.
 
 ## Isolated judge workflow
 

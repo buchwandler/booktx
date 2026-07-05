@@ -240,6 +240,59 @@ booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file
 Judge task record ids are chunk-based, so a task for a logical chapter can
 still contain ids prefixed with another chunk such as `0001-...`.
 
+## Single-source judge revision profiles
+
+Use `--purpose revise` when one translation source is clearly best and you
+want an isolated final profile where an LLM must explicitly proofread every
+record.
+
+Revision profiles are judge profiles, not review passes. Their effective
+output is valid only while each active target has matching judge-decision
+provenance.
+
+Do not run `accept-identical`, `sweep-identical`, or
+`prefill-policy-fixes` in a revision profile. Do not modify effective output
+through translation or review revision commands; use `judge record` for later
+corrections.
+
+Create a revision profile with exactly one source:
+
+```bash
+booktx judge create-profile ./book de_glm_5_2_revised \
+  --target de \
+  --target-locale de-DE \
+  --sources de_glm_5_2 \
+  --context-from de_glm_5_2 \
+  --model gpt-5.5 \
+  --purpose revise
+
+booktx judge prepare-isolation ./book \
+  --profile de_glm_5_2_revised \
+  --write
+```
+
+Inside the isolated profile root, judge every record explicitly. For each
+record choose `copy` (keep the base target) or `edited` (write the complete
+corrected target). Later corrections use `booktx judge record`, not
+translation or review revision commands:
+
+```bash
+cd translations/de_glm_5_2_revised
+booktx judge status .
+booktx judge next . --unit chapter --chapter 0008 --max-records 20 --format decisions
+booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
+booktx judge continue . --max-records 20
+booktx judge record . --record RECORD_ID --format decisions
+booktx validate . --fail-on-warnings
+booktx build . --require-complete
+```
+
+In `selection.purpose=compare`, prefer `accept-identical` and
+`sweep-identical` for true multi-source identical candidates.
+
+In `selection.purpose=revise`, never use deterministic selection commands.
+Every record requires an explicit copy or edited judge decision.
+
 ## What stays a version?
 
 Versions live _inside_ a profile. Two profiles may both contain version `1.1`;

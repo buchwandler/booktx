@@ -55,6 +55,7 @@ from booktx.glossary_match import (
     source_glossary_matches,
     target_terms,
 )
+from booktx.judge_provenance import audit_revision_provenance
 from booktx.models import (
     Chunk,
     Placeholder,
@@ -67,6 +68,7 @@ from booktx.models import (
 )
 from booktx.placeholders import TOKEN_RE, collect_tokens
 from booktx.progress import source_record_sha256
+from booktx.selection_mode import is_revision_selection_profile
 from booktx.translation_store import (
     active_candidate,
     effective_target_candidate,
@@ -1818,6 +1820,9 @@ def validate_project(
 
     report.findings.extend(_epub_output_policy_findings(project))
     report.findings.extend(_soft_hyphen_findings(project, effective))
+    # Revision profiles: every active effective target must carry matching
+    # judge-decision provenance.
+    report.findings.extend(_revision_provenance_findings(project, source_chunks))
 
     # Scope record-level findings to the resolved chapter/task/record set so a
     # bounded run is not blocked by findings in unrelated chapters. Structural
@@ -1853,6 +1858,35 @@ def validate_project(
             report.chunks_passed += 1
 
     return report
+
+
+def _revision_provenance_findings(
+    project: Project, source_chunks: dict[str, Chunk]
+) -> list[Finding]:
+    """Append an ERROR finding per revision-provenance audit issue.
+
+    Findings are record-attached (real chunk_id) so the existing scope filter
+    treats them like any other record-level finding. Compare profiles return [].
+    """
+    if not is_revision_selection_profile(project):
+        return []
+    record_to_chunk = {
+        rec.id: chunk.chunk_id
+        for chunk in source_chunks.values()
+        for rec in chunk.records
+    }
+    findings: list[Finding] = []
+    for issue in audit_revision_provenance(project).issues:
+        findings.append(
+            Finding(
+                chunk_id=record_to_chunk.get(issue.record_id, "selection-ledger"),
+                severity=Severity.ERROR,
+                rule=issue.code,
+                message=issue.message,
+                record_id=issue.record_id,
+            )
+        )
+    return findings
 
 
 def _uses_new_epub_pipeline(project: Project) -> bool:

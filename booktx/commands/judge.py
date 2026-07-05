@@ -190,6 +190,11 @@ def judge_create_profile(
         "--context-from",
         help="Copy approved judge policy from this source profile.",
     ),
+    purpose: str = typer.Option(
+        "compare",
+        "--purpose",
+        help="Selection purpose: compare or revise.",
+    ),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     _reject_if_isolated(runtime)
@@ -202,6 +207,7 @@ def judge_create_profile(
             sources_csv=sources,
             model=model,
             context_from=context_from,
+            purpose=purpose,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
@@ -432,6 +438,10 @@ def _render_status_blockers(payload: dict[str, object]) -> None:
 def _print_judge_status_payload(payload: dict[str, object]) -> None:
     console.print(f"selection profile: {payload['profile']}")
     console.print(f"mode: {payload['mode']}")
+    purpose = payload.get("selection_purpose") or "compare"
+    console.print(f"purpose: {purpose}")
+    if purpose == "revise":
+        console.print("review mode: explicit judge decisions required")
     console.print("source profiles: " + ", ".join(payload["source_profiles"]))
     context = payload["context"]
     console.print(f"context: {'READY' if context['ready'] else 'NOT READY'}")
@@ -687,11 +697,19 @@ def _print_judge_task(task, proj, runtime: RuntimeContext, output_format: str) -
         )
     console.print(f"submit: {submit}", soft_wrap=True, markup=False)
     if runtime.mode.kind == "profile-root" and output_format == "block":
-        console.print(
-            "hint: copy decisions can leave TARGET empty; booktx will copy the selected candidate exactly",
-            soft_wrap=True,
-            markup=False,
-        )
+        if task.selection_purpose == "revise":
+            console.print(
+                "hint: revision profile - every record needs an explicit copy or "
+                "edited decision; copy keeps the BASE_TARGET and leaves TARGET empty",
+                soft_wrap=True,
+                markup=False,
+            )
+        else:
+            console.print(
+                "hint: copy decisions can leave TARGET empty; booktx will copy the selected candidate exactly",
+                soft_wrap=True,
+                markup=False,
+            )
 
 
 @judge_app.command(name="show")
@@ -731,27 +749,45 @@ def judge_show(
             for candidate in record.candidates
         )
         console.print(f"validation: {summary}")
-    console.print("DECISION MODES:", soft_wrap=True, markup=False)
-    console.print(
-        "- copy: selected must be a candidate label; leave TARGET empty.",
-        soft_wrap=True,
-        markup=False,
-    )
-    console.print(
-        "- edited from candidate: selected is a candidate label; decision_kind is edited; TARGET is the corrected full target.",
-        soft_wrap=True,
-        markup=False,
-    )
-    console.print(
-        "- new judge target: selected is edited; decision_kind is edited; TARGET is the full new target.",
-        soft_wrap=True,
-        markup=False,
-    )
-    console.print(
-        "Never paste a copy candidate into TARGET. Use TARGET only for edited/new targets.",
-        soft_wrap=True,
-        markup=False,
-    )
+    if task.selection_purpose == "revise":
+        console.print("REVISION MODE:", soft_wrap=True, markup=False)
+        console.print(
+            "- proofread the BASE_TARGET for every record; do not skip records.",
+            soft_wrap=True,
+            markup=False,
+        )
+        console.print(
+            "- copy: selected=A and decision_kind=copy; leave TARGET empty to keep the base target.",
+            soft_wrap=True,
+            markup=False,
+        )
+        console.print(
+            "- edited: selected=A (or edited) and decision_kind=edited; TARGET is the complete corrected target.",
+            soft_wrap=True,
+            markup=False,
+        )
+    else:
+        console.print("DECISION MODES:", soft_wrap=True, markup=False)
+        console.print(
+            "- copy: selected must be a candidate label; leave TARGET empty.",
+            soft_wrap=True,
+            markup=False,
+        )
+        console.print(
+            "- edited from candidate: selected is a candidate label; decision_kind is edited; TARGET is the corrected full target.",
+            soft_wrap=True,
+            markup=False,
+        )
+        console.print(
+            "- new judge target: selected is edited; decision_kind is edited; TARGET is the full new target.",
+            soft_wrap=True,
+            markup=False,
+        )
+        console.print(
+            "Never paste a copy candidate into TARGET. Use TARGET only for edited/new targets.",
+            soft_wrap=True,
+            markup=False,
+        )
 
 
 def _accept_identical_next_message(

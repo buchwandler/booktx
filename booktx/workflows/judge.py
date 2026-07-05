@@ -34,6 +34,7 @@ from booktx.judge_acceptance import (
     parse_judge_decisions_submission,
     parse_judge_json_submission,
 )
+from booktx.judge_provenance import audit_revision_provenance
 from booktx.judge_sources import (
     configured_selection_sources,
     load_live_judge_source_views,
@@ -57,6 +58,10 @@ from booktx.models import (
     TranslatedRecord,
 )
 from booktx.placeholders import TOKEN_RE, collect_tokens
+from booktx.selection_mode import (
+    is_revision_selection_profile,
+    selection_purpose,
+)
 from booktx.termbase import publish_termbase_snapshot
 from booktx.termbase_match import iter_boundary_matches
 from booktx.termbase_tasking import validate_termbase_record_pair
@@ -96,7 +101,27 @@ def create_judge_profile_workflow(
     sources_csv: str | None,
     model: str | None,
     context_from: str | None,
+    purpose: str = "compare",
 ) -> Project:
+    # Validate purpose and sources, and construct the intended SelectionConfig,
+    # BEFORE create_profile_workflow writes any profile directory or list entry.
+    # An invalid command must not leave a profile behind.
+    purpose_value = _parse_selection_purpose(purpose)
+    source_profiles = parse_sources_csv(sources_csv)
+    if not source_profiles:
+        raise _err("judge_sources_missing", "--sources must not be empty")
+    if purpose_value == "revise" and len(source_profiles) != 1:
+        raise _err(
+            "judge_revision_source_count",
+            "selection.purpose=revise requires exactly one source profile",
+        )
+    selection_cfg = SelectionConfig(
+        sources=source_profiles,
+        allow_edited_targets=True,
+        require_all_sources=False,
+        purpose=purpose_value,
+    )
+
     project = create_profile_workflow(
         project_dir,
         profile_name,
@@ -106,7 +131,7 @@ def create_judge_profile_workflow(
         kind="selection",
     )
     cfg = load_profile_config(project.root, profile_name)
-    cfg.selection = SelectionConfig(sources=resolve_sources_csv(sources_csv))
+    cfg.selection = selection_cfg
     write_profile_config(project.root, cfg)
     if context_from:
         _sync_judge_context_from_source(project.root, context_from, profile_name)
@@ -255,6 +280,33 @@ def resolve_sources_csv(sources_csv: str | None) -> list[str]:
     if not values:
         raise _err("judge_sources_missing", "--sources must not be empty")
     return values
+
+
+def _parse_selection_purpose(value: str) -> Literal["compare", "revise"]:
+    """Parse and validate a ``--purpose`` value before any mutation."""
+    normalized = (value or "").strip().lower()
+    if normalized not in ("compare", "revise"):
+        raise _err(
+            "judge_purpose",
+            "invalid selection purpose; expected 'compare' or 'revise'",
+        )
+    return normalized  # type: ignore[return-value]
+
+
+def _reject_revision_deterministic(proj: Project, command: str) -> None:
+    """Hard-reject a deterministic selection command in revise mode.
+
+    Revise profiles require explicit copy/edited decisions for every
+    record; the deterministic shortcuts (accept-identical, sweep-identical,
+    prefill-policy-fixes) must fail before any task creation or file write and
+    must leave no artifacts behind.
+    """
+    if is_revision_selection_profile(proj):
+        raise _err(
+            "judge_revision_explicit_decisions_required",
+            f"{command} is disabled for selection.purpose=revise; ",
+            "run judge next and insert explicit copy/edited decisions",
+        )
 
 
 def _source_access_from_runtime(runtime: RuntimeContext) -> Literal["live", "snapshot"]:
@@ -425,7 +477,11 @@ def build_judge_status_workflow(
     sources_csv: str | None,
 ) -> dict[str, Any]:
     source_access = _source_access_from_runtime(runtime)
-    selected_ids = selected_record_ids(proj)
+    purpose = selection_purpose(proj)
+    if purpose == "revise":
+        selected_ids = audit_revision_provenance(proj).valid_record_ids
+    else:
+        selected_ids = selected_record_ids(proj)
     context_info = _judge_context_status(proj)
     blocked_by: list[str] = []
     if not context_info["exists"]:
@@ -494,7 +550,8 @@ def build_judge_status_workflow(
     ]
     sweep_hint = ""
     if (
-        context_info["ready"]
+        purpose != "revise"
+        and context_info["ready"]
         and not blocked_by
         and snapshot_usable
         and len(incomplete_chapters) >= 2
@@ -519,6 +576,7 @@ def build_judge_status_workflow(
         "sweep_hint": sweep_hint,
         "mode": runtime.mode.kind,
         "source_access": source_access,
+        "selection_purpose": purpose,
         "context": context_info,
         "blocked_by": blocked_by,
         "snapshot": snapshot_info,
@@ -730,6 +788,7 @@ def accept_identical_judge_records_workflow(
     source_access: Literal["live", "snapshot"],
     write: bool,
 ) -> dict[str, Any]:
+    _reject_revision_deterministic(proj, "accept-identical")
     task = create_next_judge_task_workflow(
         proj,
         bundle=bundle,
@@ -744,6 +803,8 @@ def accept_identical_judge_records_workflow(
     submitted: list[SubmittedJudgeRecord] = []
     for record in task.records:
         if not record.candidates:
+            continue
+        if len(record.candidates) < 2:
             continue
         if any(candidate.validation_findings for candidate in record.candidates):
             continue
@@ -815,6 +876,7 @@ def sweep_identical_judge_records_workflow(
     The caller (command layer) owns building the scoped/global ``judge next``
     command because that needs the runtime context.
     """
+    _reject_revision_deterministic(proj, "sweep-identical")
     ordered_chapters = list(bundle.index.record_ids_by_chapter.keys())
     try:
         start = ordered_chapters.index(from_chapter)
@@ -1116,6 +1178,7 @@ def prefill_judge_policy_fixes_workflow(
     (edited). Every other record is summarized in
     ``<task>.policy-hints.txt`` for manual judging.
     """
+    _reject_revision_deterministic(proj, "prefill-policy-fixes")
     task = load_judge_task(proj, judge_task_id)
     if task is None:
         raise _err("judge_task_not_found", f"judge task not found: {judge_task_id}")
@@ -1163,9 +1226,6 @@ def finish_chapter_plan_workflow(
     source_access = status_payload.get("source_access")
     if source_access not in {"live", "snapshot"}:
         source_access = "live"
-    sweep_cmd = _build_sweep_hint_command(
-        runtime, proj, source_profiles, chapter, chapter, source_access
-    )
     next_cmd = build_chapter_next_command(
         proj, runtime, chapter=chapter, status_payload=status_payload
     )
@@ -1174,6 +1234,21 @@ def finish_chapter_plan_workflow(
             f"booktx judge next . --unit chapter --chapter {chapter} "
             "--max-records 8 --format decisions"
         )
+    if selection_purpose(proj) == "revise":
+        # Revise profiles never sweep; start with judge next and stop only when
+        # every record has matching judge-decision provenance.
+        plan_lines = [
+            f"chapter {chapter} finish plan:",
+            f"1. judge records: {next_cmd}",
+            "2. edit judge-ingest/TASK.decisions.txt and submit with the "
+            "printed `booktx judge insert . ...` command.",
+            f"stop condition: chapter {chapter} has no records missing "
+            "matching judge-decision provenance.",
+        ]
+        return {"chapter": chapter, "plan_lines": plan_lines}
+    sweep_cmd = _build_sweep_hint_command(
+        runtime, proj, source_profiles, chapter, chapter, source_access
+    )
     plan_lines = [
         f"chapter {chapter} finish plan:",
         f"1. sweep identical records: {sweep_cmd}",

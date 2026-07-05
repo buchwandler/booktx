@@ -43,6 +43,7 @@ from booktx.models import (
     Record,
     TranslatedRecord,
 )
+from booktx.selection_mode import selection_purpose
 from booktx.termbase_tasking import (
     applicable_termbase_sha256_for_record_sources,
     validate_termbase_record_pair,
@@ -678,6 +679,28 @@ def accept_judge_submission(
     _validate_task_profile(project, task)
     _validate_task_evidence(project, task)
 
+    # Revise profiles require a revise-purpose task and a decision for every
+    # record. Completeness is checked before any store or ledger write so a
+    # failed submission is non-mutating.
+    if selection_purpose(project) == "revise":
+        if task.selection_purpose != "revise":
+            raise _err(
+                "judge_revision_task_purpose",
+                "revision profiles require a revision judge task; recreate the task",
+            )
+        submitted_ids = {item.id for item in submitted}
+        task_ids = {record.id for record in task.records}
+        missing = sorted(task_ids - submitted_ids)
+        if missing:
+            preview = ", ".join(missing[:10])
+            if len(missing) > 10:
+                preview += " ..."
+            raise _err(
+                "judge_revision_incomplete_task",
+                "revision judge tasks require a decision for every record; missing: ",
+                preview,
+            )
+
     task_records = {record.id: record for record in task.records}
     source_by_id = bundle.index.source_by_id
     source_chunks = bundle.index.source_chunks
@@ -754,6 +777,9 @@ def accept_judge_submission(
         ledger.records[item.id] = JudgeDecision(
             record_id=item.id,
             output_version_ref=task_record.output_version_ref,
+            output_target_sha256=sha256_text(target_text)
+            if task.selection_purpose == "revise"
+            else None,
             decision_kind=item.decision_kind,  # type: ignore[arg-type]
             selected_profile=selected_candidate.profile
             if selected_candidate is not None

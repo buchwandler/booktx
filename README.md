@@ -421,6 +421,14 @@ candidate exactly. Use `decision_kind: edited` only when the final target differ
 from every candidate. Judge record ids are chunk-based, so a task for chapter
 `0005` can still contain records whose ids start with `0001-`.
 
+When one source is clearly best, create a single-source **revision** profile
+with `--purpose revise`. Every record then requires an explicit `copy` or
+`edited` judge decision; `accept-identical`, `sweep-identical`, and
+`prefill-policy-fixes` are disabled, and effective output stays valid only
+while each active target has matching judge-decision provenance. Use
+`booktx judge record . --record RECORD_ID` for later corrections. See
+`docs/profiles.md` for the full workflow.
+
 `booktx translate next` also snapshots the exact effective task context under
 `translations/<profile>/context-history/views/<sha>/`. New tasks carry both the
 baseline version (for example `1.2`) and the immutable context-view evidence

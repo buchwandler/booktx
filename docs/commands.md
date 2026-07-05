@@ -364,6 +364,13 @@ Use project-root mode to create or refresh a judge source snapshot. After
 profile may run `booktx judge status/next/record/insert` from its profile root
 without sibling profile access.
 
+`--purpose compare` (the default) builds a multi-source selection profile.
+`--purpose revise` builds a single-source revision profile that requires an
+explicit copy or edited judge decision for every record; the deterministic
+commands `accept-identical`, `sweep-identical`, and `prefill-policy-fixes` are
+disabled there. See _Single-source judge revision profiles_ in
+`docs/profiles.md`.
+
 ```bash
 booktx judge create-profile ./book de_judge_gpt5_5 \
   --target de \
@@ -371,6 +378,7 @@ booktx judge create-profile ./book de_judge_gpt5_5 \
   --sources de_gpt5_5,de_glm_5_2 \
   --context-from de_gpt5_5 \
   --model gpt-5.5 \
+  --purpose compare
 
 booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
 
