@@ -89,6 +89,7 @@ __all__ = [
     "prepare_judge_isolation_workflow",
     "prefill_judge_policy_fixes_workflow",
     "finish_chapter_plan_workflow",
+    "load_judge_task",
 ]
 
 

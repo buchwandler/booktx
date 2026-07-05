@@ -87,7 +87,9 @@ def termbase_entry_to_context_glossary(
         notes=entry.rationale,
         case_sensitive=entry.case_sensitive,
         require_target=entry.preferred_policy == "required",
-        enforce="off" if entry.status == "disabled" else entry.severity,
+        enforce="off"
+        if entry.status == "disabled"
+        else ("warn" if entry.severity == "info" else entry.severity),
     )
 
 

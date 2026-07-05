@@ -296,11 +296,15 @@ def termbase_add_workflow(
         raise _err(
             "termbase_language_required", "--language is required outside a project"
         )
-    language_key = (
-        canonical_language_key(language)
-        if language is not None
-        else infer_mutation_language_key(runtime.project)
-    )
+    if runtime is None:
+        assert language is not None
+        language_key = canonical_language_key(language)
+    else:
+        language_key = (
+            canonical_language_key(language)
+            if language is not None
+            else infer_mutation_language_key(runtime.project)
+        )
     path, shard = _scope_shard(
         runtime,
         scope=resolved_scope,  # type: ignore[arg-type]
@@ -471,11 +475,15 @@ def termbase_export_workflow(
             payload=payload,
         )
     else:
-        language_key = (
-            canonical_language_key(language)
-            if language is not None
-            else infer_mutation_language_key(runtime.project)
-        )
+        if runtime is None:
+            assert language is not None
+            language_key = canonical_language_key(language)
+        else:
+            language_key = (
+                canonical_language_key(language)
+                if language is not None
+                else infer_mutation_language_key(runtime.project)
+            )
         path, shard = _scope_shard(
             runtime,
             scope=resolved_scope,  # type: ignore[arg-type]
@@ -502,6 +510,7 @@ def termbase_export_workflow(
             text = canonical_termbase_json(exported)
     if stdout:
         return {"stdout": text}
+    assert output is not None
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(text, encoding="utf-8")
     return {"path": str(output), "scope": resolved_scope}
@@ -599,11 +608,15 @@ def termbase_import_workflow(
         )
     if mode not in {"dry-run", "merge", "replace"}:
         raise _err("termbase_import_mode", "--mode must be dry-run, merge, or replace")
-    language_key = (
-        canonical_language_key(language)
-        if language is not None
-        else infer_mutation_language_key(runtime.project)
-    )
+    if runtime is None:
+        assert language is not None
+        language_key = canonical_language_key(language)
+    else:
+        language_key = (
+            canonical_language_key(language)
+            if language is not None
+            else infer_mutation_language_key(runtime.project)
+        )
     path, existing = _scope_shard(
         runtime,
         scope=resolved_scope,  # type: ignore[arg-type]

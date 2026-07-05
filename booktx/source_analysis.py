@@ -950,7 +950,7 @@ def _phrase_units(prepared: PreparedRecord, source_language: str) -> list[_Span]
     if not text.strip():
         return []
 
-    from phrasplit import split_with_offsets
+    from phrasplit import split_with_offsets  # type: ignore[import-not-found]
 
     segments = split_with_offsets(
         text,

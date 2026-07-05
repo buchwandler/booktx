@@ -594,6 +594,8 @@ def infer_mutation_language_key(project: Project, language: str | None = None) -
 def _use_profile_termbase_snapshot(project: Project | None, scope: str) -> bool:
     if project is None or project.profile is None or scope != "effective":
         return False
+    if project.profile_dir is None:
+        return False
     try:
         return Path.cwd().resolve() == project.profile_dir.resolve()
     except OSError:

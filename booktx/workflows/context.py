@@ -681,7 +681,7 @@ def add_or_update_term_workflow(  # noqa: C901 - long form mirrors original
                 source_variants=_clean_variant_list(source_variant),
                 target=target,
                 target_variants=_clean_variant_list(target_variant),
-                require_target=require_target,
+                require_target=bool(require_target),
                 forbidden_targets=cleaned_forbidden,
                 category=applied_category,
                 status="approved" if target else "open",
@@ -1004,10 +1004,13 @@ def _import_pack_termbase_entries(
     scope: str,
 ) -> ContextPackImportResult:
     """Plan or write pack termbase entries into a project/profile shard."""
-    from booktx.config import profile_termbase_path, project_termbase_path
+    from booktx.config import (
+        canonical_language_key,
+        profile_termbase_path,
+        project_termbase_path,
+    )
     from booktx.termbase import (
         TranslationTermbase,
-        canonical_language_key,
         infer_mutation_language_key,
         load_termbase_shard,
         write_termbase_shard,

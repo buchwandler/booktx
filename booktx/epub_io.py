@@ -53,8 +53,8 @@ def _epub2text_annotates_blocks() -> bool:
     annotator) must be rejected before booktx writes any new-format manifest.
     """
     try:
-        import epub2text.parser as _parser  # type: ignore[import-not-found]
-        import epub2text.toc_map as _toc_map  # type: ignore[import-not-found]
+        import epub2text.parser as _parser
+        import epub2text.toc_map as _toc_map
     except ImportError:
         return False
     if not callable(getattr(_toc_map, "annotate_blocks_with_navigation", None)):
@@ -93,7 +93,7 @@ def extract_epub(
     """Extract translatable EPUB spans through epub2text structured blocks."""
     _assert_epub2text_chapter_contract()
     from epub2text import extract_epub_structure
-    from epub2text.structured import ExtractionPolicy  # type: ignore[import-not-found]
+    from epub2text.structured import ExtractionPolicy
 
     try:
         structured = extract_epub_structure(

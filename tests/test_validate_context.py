@@ -140,7 +140,7 @@ def test_validate_cli_passes_with_warning_for_warn_enforcement(tmp_path: Path):
     res = runner.invoke(app, ["validate", str(proj_path), "--profile", "de_default"])
     assert res.exit_code == 0, res.output
     assert "forbidden_term_used" in res.output
-    assert "warnings=2" in res.output
+    assert "warnings=1" in res.output
 
 
 def test_validate_cli_fail_on_warnings_exits_nonzero(tmp_path: Path):
@@ -152,7 +152,7 @@ def test_validate_cli_fail_on_warnings_exits_nonzero(tmp_path: Path):
     )
     assert res.exit_code == 1, res.output
     assert "forbidden_term_used" in res.output
-    assert "warnings=2" in res.output
+    assert "warnings=1" in res.output
 
 
 # --- context render drift diagnostics --------------------------------------

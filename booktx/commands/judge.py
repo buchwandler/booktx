@@ -21,7 +21,6 @@ from booktx.cli_support import (
     _require_ready_context,
     console,
 )
-from booktx.config import load_judge_task
 from booktx.errors import BooktxError
 from booktx.judge_sources import (
     configured_selection_sources,
@@ -42,6 +41,7 @@ from booktx.workflows.judge import (
     judge_task_block_paths,
     judge_task_decisions_path,
     judge_task_json_path,
+    load_judge_task,
     prefill_judge_policy_fixes_workflow,
     prepare_judge_isolation_workflow,
     reset_judge_ingest_workflow,
@@ -266,22 +266,22 @@ def judge_sync_sources(
         console.print_json(json.dumps(payload, ensure_ascii=False))
         return
     console.print(f"selection profile: {payload['selection_profile']}")
-    console.print("source profiles: " + ", ".join(payload["source_profiles"]))  # type: ignore[arg-type]
+    console.print("source profiles: " + ", ".join(payload["source_profiles"]))
     if write:
         if result.changed:
             console.print(
-                f"published: {len(payload['profiles'])} source store(s) "  # type: ignore[arg-type]
-                f"(snapshot_id {payload['snapshot_id']})"  # type: ignore[arg-type]
+                f"published: {len(payload['profiles'])} source store(s) "
+                f"(snapshot_id {payload['snapshot_id']})"
             )
         else:
             console.print("snapshot unchanged: no writes performed")
     else:
         console.print(
             f"dry-run: would publish {len(payload['profiles'])} source store(s)"
-        )  # type: ignore[arg-type]
+        )
         console.print(f"changed: {payload['changed']}")
     console.print(f"manifest: {payload['manifest']}")
-    for snap in payload["profiles"]:  # type: ignore[assignment]
+    for snap in payload["profiles"]:
         console.print(
             f"  - {snap['profile']}: {snap['records_total']} records, "
             f"{snap['effective_candidates_total']} effective candidates"

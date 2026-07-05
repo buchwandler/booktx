@@ -327,7 +327,7 @@ def _prefill_one(
         ),
         recommendation_reason=(
             "Source analysis found likely world-building or terminology "
-            "candidates that should be reviewed before translation.",
+            "candidates that should be reviewed before translation."
         ),
     )
     _ensure_source_analysis_question(
@@ -356,7 +356,7 @@ def _prefill_one(
         ),
         recommendation_reason=(
             "Source analysis kept rare singleton or low-frequency candidates "
-            "because they look translation-relevant.",
+            "because they look translation-relevant."
         ),
     )
     return result
