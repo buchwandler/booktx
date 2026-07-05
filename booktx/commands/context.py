@@ -82,6 +82,11 @@ def context_prefill(
         help="Also create advisory glossary entries for "
         "low-priority phrase candidates.",
     ),
+    gate_readiness: bool = typer.Option(
+        False,
+        "--gate-readiness",
+        help="Create required questions that gate context readiness.",
+    ),
     write: bool = typer.Option(False, "--write", help="Commit planned changes."),
 ) -> None:
     """Prefill open context recommendations (dry run by default)."""
@@ -114,6 +119,7 @@ def context_prefill(
             profiles=profiles,
             write=write,
             include_advisory=include_advisory,
+            gate_readiness=gate_readiness,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)

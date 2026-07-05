@@ -61,7 +61,7 @@ submit it back. Example:
 
 ```text
 # booktx block submission
-# profile: de_gpt5_5
+# profile: PROFILE_A
 # task: bt-task-20260101T000000Z-ch01-0001r0001-a1b2c3d4
 # translation_version: 1.2
 >>> 0001-000001
@@ -86,7 +86,7 @@ Submissions may also be supplied as JSON (`schema_version` 2). Example:
 ```json
 {
   "schema_version": 2,
-  "profile": "de_gpt5_5",
+  "profile": "PROFILE_A",
   "task_id": "bt-task-...",
   "translation_version": "1.2",
   "records": [{ "id": "0001-000001", "target": "Translated text here." }]

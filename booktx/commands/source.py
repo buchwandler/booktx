@@ -382,3 +382,178 @@ def source_review_candidate_cmd(
         decided_by=decided_by,
         write=write,
     )
+
+
+def _load_project_root_runtime(project_dir: Path, command_name: str):
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    if runtime.mode.isolated_output:
+        _die(f"source {command_name} is a project-root command")
+    return runtime
+
+
+@source_app.command(name="interview-plan")
+def source_interview_plan_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    write: bool = typer.Option(False, "--write", help="Write source-interview.json."),
+) -> None:
+    """Create or preview a profile-local source-policy interview ledger."""
+    runtime = _load_project_root_runtime(project_dir, "interview-plan")
+    from booktx.workflows.source_interview import interview_plan
+
+    try:
+        result = interview_plan(runtime.project, profile=profile, write=write)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(
+        f"{'wrote' if result.written else 'planned'} "
+        f"{len(result.ledger.items)} interview item(s) for {profile}"
+    )
+    console.print(f"ledger: {result.path}")
+    if not write:
+        console.print("Dry run. Re-run with --write to apply.")
+
+
+@source_app.command(name="interview-status")
+def source_interview_status_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    fail_if_open: bool = typer.Option(
+        False, "--fail-if-open", help="Exit non-zero when open items remain."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """Report profile source-policy interview progress."""
+    runtime = _load_project_root_runtime(project_dir, "interview-status")
+    from booktx.workflows.source_interview import interview_status
+
+    try:
+        payload = interview_status(
+            runtime.project, profile=profile, fail_if_open=fail_if_open
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if as_json:
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    else:
+        console.print(f"profile: {payload['profile']}")
+        console.print(f"missing: {str(payload['missing']).lower()}")
+        console.print(f"stale: {str(payload['stale']).lower()}")
+        counts = payload["counts"]
+        assert isinstance(counts, dict)
+        console.print(" ".join(f"{k}={v}" for k, v in counts.items()))
+        console.print(f"open: {payload['open']}")
+    if payload.get("fail"):
+        _die("source interview has open items")
+
+
+@source_app.command(name="interview-next")
+def source_interview_next_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    output_format: str = typer.Option("markdown", "--format", help="markdown or json."),
+) -> None:
+    """Print the next source-policy interview question card."""
+    if output_format not in {"markdown", "json"}:
+        _die("--format must be markdown or json")
+    runtime = _load_project_root_runtime(project_dir, "interview-next")
+    from booktx.workflows.source_interview import interview_next
+
+    try:
+        ledger, item, card = interview_next(runtime.project, profile=profile)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if output_format == "json":
+        console.print_json(
+            json.dumps(
+                {
+                    "profile": ledger.profile,
+                    "item": item.model_dump(mode="json"),
+                    "card": card,
+                },
+                ensure_ascii=False,
+            )
+        )
+    else:
+        console.print(card)
+
+
+@source_app.command(name="interview-answer")
+def source_interview_answer_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    candidate_id: str = typer.Argument(..., help="Candidate id."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    target: str | None = typer.Option(None, "--target", help="Approved target."),
+    forbid: list[str] | None = typer.Option(
+        None, "--forbid", help="Forbidden target. Repeatable."
+    ),
+    rationale: str = typer.Option("", "--rationale", help="Decision rationale."),
+    storage: str = typer.Option(
+        "context", "--storage", help="context, termbase, or both."
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Persist approved policy and ledger status."
+    ),
+) -> None:
+    """Persist an approved source-policy interview answer."""
+    if storage not in {"context", "termbase", "both"}:
+        _die("--storage must be context, termbase, or both")
+    runtime = _load_project_root_runtime(project_dir, "interview-answer")
+    from booktx.workflows.source_interview import interview_answer
+
+    try:
+        item = interview_answer(
+            runtime.project,
+            profile=profile,
+            candidate_id=candidate_id,
+            target=target,
+            forbid=forbid or [],
+            rationale=rationale,
+            storage=storage,
+            write=write,
+        )  # type: ignore[arg-type]
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(
+        f"{'stored' if write else 'would store'} {item.candidate_id} "
+        f"status={item.status}"
+    )
+
+
+@source_app.command(name="interview-skip")
+def source_interview_skip_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    candidate_id: str = typer.Argument(..., help="Candidate id."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    disposition: str = typer.Option(
+        "ignored", "--disposition", help="ignored, reviewed, or deferred."
+    ),
+    reason: str = typer.Option("", "--reason", help="Decision rationale."),
+    write: bool = typer.Option(False, "--write", help="Persist skip decision."),
+) -> None:
+    """Skip or defer one source-policy interview item."""
+    if disposition not in {"ignored", "reviewed", "deferred"}:
+        _die("--disposition must be ignored, reviewed, or deferred")
+    runtime = _load_project_root_runtime(project_dir, "interview-skip")
+    from booktx.workflows.source_interview import interview_skip
+
+    try:
+        item = interview_skip(
+            runtime.project,
+            profile=profile,
+            candidate_id=candidate_id,
+            disposition=disposition,
+            reason=reason,
+            write=write,
+        )  # type: ignore[arg-type]
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(
+        f"{'updated' if write else 'would update'} {item.candidate_id} "
+        f"status={item.status}"
+    )

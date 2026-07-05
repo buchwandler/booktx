@@ -5,8 +5,8 @@ efforts without mixing mutable state.
 
 Examples:
 
-- `de_gpt5_5`
-- `de_glm_5_2`
+- `PROFILE_A`
+- `PROFILE_B`
 - `fr_gpt5_5`
 
 ## Why profiles exist
@@ -21,11 +21,11 @@ Profiles prevent that by moving mutable translation state under
 ## Commands
 
 ```bash
-booktx profile create ./book de_gpt5_5 --target de --target-locale de-DE
+booktx profile create ./book PROFILE_A --target de --target-locale de-DE
 booktx profile list ./book
-booktx profile show ./book de_gpt5_5
-booktx profile compare ./book --profiles de_gpt5_5,de_glm_5_2 --record 0001-000001
-booktx profile migrate-current ./book de_gpt5_5
+booktx profile show ./book PROFILE_A
+booktx profile compare ./book --profiles PROFILE_A,PROFILE_B --record 0001-000001
+booktx profile migrate-current ./book PROFILE_A
 ```
 
 ## Resolution rules
@@ -154,8 +154,8 @@ own context files; it does not make context shared.
 
 Create a new profile whenever you want a hard isolation boundary:
 
-- **Different target language**: `de_gpt5_5`, `fr_gpt5_5`, `es_gpt5_5`.
-- **Different model experiment**: `de_gpt5_5` vs `de_glm_5_2` for the same
+- **Different target language**: `PROFILE_A`, `fr_gpt5_5`, `es_gpt5_5`.
+- **Different model experiment**: `PROFILE_A` vs `PROFILE_B` for the same
   language, so the two outputs never contaminate each other.
 - **Different context decisions**: a re-translation under revised glossary or
   style rules, kept separate from a previous accepted run.
@@ -198,11 +198,11 @@ assembled from cross-profile judge decisions.
 Create one with:
 
 ```bash
-booktx judge create-profile ./book de_judge_gpt5_5 \
+booktx judge create-profile ./book JUDGE_PROFILE \
   --target de \
   --target-locale de-DE \
-  --sources de_gpt5_5,de_glm_5_2 \
-  --context-from de_gpt5_5 \
+  --sources PROFILE_A,PROFILE_B \
+  --context-from PROFILE_A \
   --model gpt-5.5 \
 
 ```
@@ -214,15 +214,15 @@ questions. Without it, initialize the selection profile context explicitly and
 sync policy from a compatible source profile before judging.
 
 ```bash
-booktx context init ./book --profile de_judge_gpt5_5 --non-interactive
+booktx context init ./book --profile JUDGE_PROFILE --non-interactive
 booktx context sync ./book \
-  --from de_gpt5_5 \
-  --to de_judge_gpt5_5 \
+  --from PROFILE_A \
+  --to JUDGE_PROFILE \
   --section glossary \
   --section style \
   --section global-rules \
   --write
-booktx context mark-ready ./book --profile de_judge_gpt5_5
+booktx context mark-ready ./book --profile JUDGE_PROFILE
 ```
 
 Judge profile creation and snapshot preparation are project-root workflows.
@@ -231,10 +231,10 @@ After snapshot preparation, a selection profile may run `judge status`,
 `judge accept-identical` from its own profile root:
 
 ```bash
-booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
-booktx judge accept-identical ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 100 --write
-booktx judge next ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 8 --format decisions
-booktx judge insert ./book --profile de_judge_gpt5_5 --judge-task-id TASK --file translations/de_judge_gpt5_5/judge-ingest/TASK.decisions.txt --format decisions
+booktx judge status ./book --profile JUDGE_PROFILE --sources PROFILE_A,PROFILE_B
+booktx judge accept-identical ./book --profile JUDGE_PROFILE --sources PROFILE_A,PROFILE_B --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next ./book --profile JUDGE_PROFILE --sources PROFILE_A,PROFILE_B --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge insert ./book --profile JUDGE_PROFILE --judge-task-id TASK --file translations/JUDGE_PROFILE/judge-ingest/TASK.decisions.txt --format decisions
 ```
 
 Judge task record ids are chunk-based, so a task for a logical chapter can
@@ -258,16 +258,16 @@ corrections.
 Create a revision profile with exactly one source:
 
 ```bash
-booktx judge create-profile ./book de_glm_5_2_revised \
+booktx judge create-profile ./book PROFILE_REVISED \
   --target de \
   --target-locale de-DE \
-  --sources de_glm_5_2 \
-  --context-from de_glm_5_2 \
+  --sources PROFILE_B \
+  --context-from PROFILE_B \
   --model gpt-5.5 \
   --purpose revise
 
 booktx judge prepare-isolation ./book \
-  --profile de_glm_5_2_revised \
+  --profile PROFILE_REVISED \
   --write
 ```
 
@@ -277,7 +277,7 @@ corrected target). Later corrections use `booktx judge record`, not
 translation or review revision commands:
 
 ```bash
-cd translations/de_glm_5_2_revised
+cd translations/PROFILE_REVISED
 booktx judge status .
 booktx judge next . --unit chapter --chapter 0008 --max-records 20 --format decisions
 booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions

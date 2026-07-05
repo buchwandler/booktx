@@ -13,7 +13,7 @@ Pass `--profile` or select one first:
 Create one:
 
 ```bash
-booktx profile create ./book de_gpt5_5 --target de
+booktx profile create ./book PROFILE_A --target de
 ```
 
 ## `task profile mismatch`

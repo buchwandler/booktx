@@ -18,11 +18,11 @@ That creates and selects a default profile such as `de_default`.
 ## Profile commands
 
 ```bash
-booktx profile create ./book de_gpt5_5 --target de --target-locale de-DE --model codex-openai/gpt-5.5@low
+booktx profile create ./book PROFILE --target de --target-locale de-DE --model codex-openai/gpt-5.5@low
 booktx profile list ./book
-booktx profile show ./book de_gpt5_5
-booktx profile compare ./book --profiles de_gpt5_5,de_glm_5_2 --record 0001-000001
-booktx profile migrate-current ./book de_gpt5_5
+booktx profile show ./book PROFILE
+booktx profile compare ./book --profiles PROFILE,PROFILE_B --record 0001-000001
+booktx profile migrate-current ./book PROFILE
 booktx profile create-pass-through ./book passthrough_en
 ```
 
@@ -31,8 +31,8 @@ booktx profile create-pass-through ./book passthrough_en
 Before starting an agent harness, write the matching harness instructions:
 
 ```bash
-booktx agents write . --mode isolated --profile de_gpt5_5
-cd translations/de_gpt5_5
+booktx agents write . --mode isolated --profile PROFILE
+cd translations/PROFILE
 ```
 
 For project-root collaboration:
@@ -53,19 +53,19 @@ profile-root mode, `agents status`/`clean`/errors expose only the local
 All context files are profile-local:
 
 ```bash
-booktx context init ./book --profile de_gpt5_5 --non-interactive
-booktx context questions ./book --profile de_gpt5_5
-booktx context recommend ./book --profile de_gpt5_5 Q001 --text de-DE --reason "profile target locale"
-booktx context questionnaire ./book --profile de_gpt5_5 --stdout
+booktx context init ./book --profile PROFILE --non-interactive
+booktx context questions ./book --profile PROFILE
+booktx context recommend ./book --profile PROFILE Q001 --text de-DE --reason "profile target locale"
+booktx context questionnaire ./book --profile PROFILE --stdout
 # Stop for user approval, then record the approved answer.
-booktx context approve ./book --profile de_gpt5_5 Q001 --text de-DE --approved-by "user:<USER>"
-booktx context mark-ready ./book --profile de_gpt5_5
-booktx context render ./book --profile de_gpt5_5 --write
-booktx context chapter-note ./book --profile de_gpt5_5 0010 --decision "Keep title literal"
+booktx context approve ./book --profile PROFILE Q001 --text de-DE --approved-by "user:<USER>"
+booktx context mark-ready ./book --profile PROFILE
+booktx context render ./book --profile PROFILE --write
+booktx context chapter-note ./book --profile PROFILE 0010 --decision "Keep title literal"
 
 # Same-book policy sync across sibling profiles (dry run by default).
 booktx context sync ./book \
-  --from de_gpt5_5 \
+  --from PROFILE \
   --all-compatible \
   --section glossary \
   --term "Empire"
@@ -96,11 +96,11 @@ non-blocking).
 
 ```bash
 booktx status ./book
-booktx status ./book --profile de_gpt5_5
-booktx whoami ./book --profile de_gpt5_5
-booktx actor whoami ./book --profile de_gpt5_5
-booktx harness whoami ./book --profile de_gpt5_5
-booktx model whoami ./book --profile de_gpt5_5
+booktx status ./book --profile PROFILE
+booktx whoami ./book --profile PROFILE
+booktx actor whoami ./book --profile PROFILE
+booktx harness whoami ./book --profile PROFILE
+booktx model whoami ./book --profile PROFILE
 ```
 
 When multiple profiles exist and none is active, target-dependent commands fail
@@ -109,38 +109,43 @@ until you pass `--profile` or select one.
 ## Translation workflow
 
 ```bash
-booktx translate next ./book --profile de_gpt5_5 --unit batch --max-words 800 --format block
-booktx translate insert ./book --profile de_gpt5_5 --task-id TASK --file translations/de_gpt5_5/ingest/TASK.block.txt --format block
-booktx translate task-status ./book --profile de_gpt5_5 --task-id TASK
-booktx translate set-record ./book --profile de_gpt5_5 --task-id TASK --record-id RECORD_ID --stdin
-booktx translation get-record ./book --profile de_gpt5_5 74@38 --before 2 --after 2
-booktx translation list ./book --profile de_gpt5_5 --chapter 10
-booktx translation compare ./book --profile de_gpt5_5 74@38 --versions 1.1,1.2
-booktx translation activate ./book --profile de_gpt5_5 74@38 1.2
-booktx translation review ./book --profile de_gpt5_5 74@38 --activate 1.2 --note "Better rhythm"
-booktx translation revise-record ./book --profile de_gpt5_5 74@38 --target "Revised target text"
-booktx translation revise-block ./book --profile de_gpt5_5 --file ingest/fixes.block.txt --format block --activate
-booktx translate export ./book --profile de_gpt5_5
-booktx translate export-index ./book --profile de_gpt5_5
-booktx translate export-index ./book --profile de_gpt5_5 --kind source
-booktx translate export-index ./book --profile de_gpt5_5 --kind target
-booktx translate export-index ./book --profile de_gpt5_5 --kind source-target
-booktx translate export-index ./book --profile de_gpt5_5 --json
-booktx translate export-index ./book --profile de_gpt5_5 --fail-on-warn
-booktx translate search ./book --profile de_gpt5_5 --target "Wespen" --before 1 --after 1
-booktx translate search ./book --profile de_gpt5_5 --source "empire" --jsonl
-booktx translate migrate-inline-xhtml ./book --profile de_gpt5_5  # normalize inline XHTML in stored targets
-booktx source record ./book --profile de_gpt5_5 74@38            # inspect one source record
-booktx source chapter ./book --profile de_gpt5_5 0001            # inspect one source chapter
+booktx translate next ./book --profile PROFILE --unit batch --max-words 800 --format block
+booktx translate insert ./book --profile PROFILE --task-id TASK --file translations/PROFILE/ingest/TASK.block.txt --format block
+booktx translate task-status ./book --profile PROFILE --task-id TASK
+booktx translate set-record ./book --profile PROFILE --task-id TASK --record-id RECORD_ID --stdin
+booktx translation get-record ./book --profile PROFILE 74@38 --before 2 --after 2
+booktx translation list ./book --profile PROFILE --chapter 10
+booktx translation compare ./book --profile PROFILE 74@38 --versions 1.1,1.2
+booktx translation activate ./book --profile PROFILE 74@38 1.2
+booktx translation review ./book --profile PROFILE 74@38 --activate 1.2 --note "Better rhythm"
+booktx translation revise-record ./book --profile PROFILE 74@38 --target "Revised target text"
+booktx translation revise-block ./book --profile PROFILE --file ingest/fixes.block.txt --format block --activate
+booktx translate export ./book --profile PROFILE
+booktx translate export-index ./book --profile PROFILE
+booktx translate export-index ./book --profile PROFILE --kind source
+booktx translate export-index ./book --profile PROFILE --kind target
+booktx translate export-index ./book --profile PROFILE --kind source-target
+booktx translate export-index ./book --profile PROFILE --json
+booktx translate export-index ./book --profile PROFILE --fail-on-warn
+booktx translate search ./book --profile PROFILE --target "Wespen" --before 1 --after 1
+booktx translate search ./book --profile PROFILE --source "empire" --jsonl
+booktx translate migrate-inline-xhtml ./book --profile PROFILE  # normalize inline XHTML in stored targets
+booktx source record ./book --profile PROFILE 74@38            # inspect one source record
+booktx source chapter ./book --profile PROFILE 0001            # inspect one source chapter
 booktx source analyze ./book                                     # dry-run translation-risk review queue
 booktx source analyze ./book --write                             # write canonical JSON + Markdown review queue
 booktx source analyze ./book --write --sync-profiles             # also refresh profile snapshots
-booktx source analysis ./book/translations/de_gpt5_5             # read the current profile snapshot
-booktx context prefill ./book --profile de_gpt5_5 --from-source-analysis
-booktx context prefill ./book --profile de_gpt5_5 --from-source-analysis --include-advisory --write
-booktx context promote-candidate ./book CAND-... --profile de_gpt5_5 --as-question --write
+booktx source analysis ./book/translations/PROFILE             # read the current profile snapshot
+booktx context prefill ./book --profile PROFILE --from-source-analysis
+booktx context prefill ./book --profile PROFILE --from-source-analysis --include-advisory --write
+booktx context promote-candidate ./book CAND-... --profile PROFILE --as-question --write
 booktx source ignore-candidate ./book CAND-... --reason "ordinary vocabulary" --write
 booktx source review-candidate ./book CAND-... --reason "checked, no glossary decision needed" --write
+booktx source interview-plan ./book --profile PROFILE --write       # write generated interview ledger
+booktx source interview-status ./book --profile PROFILE --fail-if-open
+booktx source interview-next ./book --profile PROFILE --format markdown
+booktx source interview-answer ./book CAND-... --profile PROFILE --target TARGET --write
+booktx source interview-skip ./book CAND-... --profile PROFILE --disposition ignored --reason "REASON" --write
 ```
 
 `source analyze` is project-root only and does not write unless `--write` is
@@ -149,6 +154,8 @@ queue. The default output is a translation-risk review surface, not a bulk
 glossary prefill. Profile-root mode can only read its own generated snapshot
 with `source analysis`; if the snapshot is missing, rerun project-root
 analysis with `--write --sync-profiles`.
+
+`context prefill --from-source-analysis --gate-readiness` creates required questions for readiness-gated workflows.
 
 `context prefill --from-source-analysis` is dry-run by default and now creates
 review questions for binding/name/rare candidates instead of open glossary
@@ -170,14 +177,14 @@ nvim source-target-index.json
 ## Bounded agent runs
 
 ```bash
-booktx translate todo-next ./book --profile de_gpt5_5 --chapters 3 --batch-words 800 --write
-booktx translate todo-next ./book --profile de_gpt5_5 --chapters 3 --batch-words 800 --max-run-words 12000 --write --json
-booktx translate todo-status ./book --profile de_gpt5_5 --latest
-booktx translate todo-status ./book --profile de_gpt5_5 --todo-id TODO --json
-booktx translate todo-resume ./book --profile de_gpt5_5 --latest --format block
-booktx translate todo-resume ./book --profile de_gpt5_5 --todo-id TODO --format block
-booktx translate todo-next ./book --profile de_gpt5_5 --chapters 5 --batch-words 800 --skip-current --write
-booktx translate todo-next ./book --profile de_gpt5_5 --chapters 3 --start-chapter 0017 --batch-words 800 --write
+booktx translate todo-next ./book --profile PROFILE --chapters 3 --batch-words 800 --write
+booktx translate todo-next ./book --profile PROFILE --chapters 3 --batch-words 800 --max-run-words 12000 --write --json
+booktx translate todo-status ./book --profile PROFILE --latest
+booktx translate todo-status ./book --profile PROFILE --todo-id TODO --json
+booktx translate todo-resume ./book --profile PROFILE --latest --format block
+booktx translate todo-resume ./book --profile PROFILE --todo-id TODO --format block
+booktx translate todo-next ./book --profile PROFILE --chapters 5 --batch-words 800 --skip-current --write
+booktx translate todo-next ./book --profile PROFILE --chapters 3 --start-chapter 0017 --batch-words 800 --write
 ```
 
 Creates a durable todo under `translations/<profile>/todos/` that describes the
@@ -194,12 +201,12 @@ agent still fills ingest files and runs `translate insert` for each batch.
 Versions are profile-local:
 
 ```bash
-booktx version current ./book --profile de_gpt5_5
-booktx version list ./book --profile de_gpt5_5
-booktx version show ./book --profile de_gpt5_5 1.2
-booktx version select ./book --profile de_gpt5_5 1.2
-booktx version set-label ./book --profile de_gpt5_5 1 "GPT 5.5"
-booktx version fork-context ./book --profile de_gpt5_5 --note "Manual context split"
+booktx version current ./book --profile PROFILE
+booktx version list ./book --profile PROFILE
+booktx version show ./book --profile PROFILE 1.2
+booktx version select ./book --profile PROFILE 1.2
+booktx version set-label ./book --profile PROFILE 1 "GPT 5.5"
+booktx version fork-context ./book --profile PROFILE --note "Manual context split"
 ```
 
 `version list` now reports baseline-scoped subversions. Routine chapter-note
@@ -210,13 +217,13 @@ context-view metadata for the immutable task snapshot it created.
 ## Validate and build
 
 ```bash
-booktx validate ./book --profile de_gpt5_5
-booktx validate ./book --profile de_gpt5_5 --fail-on-warnings
-booktx validate ./book --profile de_gpt5_5 --chapter 0005
-booktx validate ./book --profile de_gpt5_5 --task-id TASK_ID
-booktx validate ./book --profile de_gpt5_5 --json
-booktx build ./book --profile de_gpt5_5
-booktx build ./book --profile de_gpt5_5 --require-complete
+booktx validate ./book --profile PROFILE
+booktx validate ./book --profile PROFILE --fail-on-warnings
+booktx validate ./book --profile PROFILE --chapter 0005
+booktx validate ./book --profile PROFILE --task-id TASK_ID
+booktx validate ./book --profile PROFILE --json
+booktx build ./book --profile PROFILE
+booktx build ./book --profile PROFILE --require-complete
 ```
 
 `--chapter` and `--task-id` scope validation to a specific chapter or task.
@@ -228,11 +235,11 @@ into warning-fatal automation.
 ## QA scan and EPUB inspection
 
 ```bash
-booktx qa-scan ./book --profile de_gpt5_5            # targeted QA scan of translated targets
-booktx epub inspect ./book --profile de_gpt5_5          # inspect built EPUB XHTML output
-booktx epub inspect ./book --profile de_gpt5_5 --chapter 0001 --contains "Wespen"
-booktx epub grep ./book --profile de_gpt5_5 "Wespen"   # grep built EPUB XHTML for text
-booktx epub extract-text ./book --profile de_gpt5_5     # extract plain text from built EPUB XHTML
+booktx qa-scan ./book --profile PROFILE            # targeted QA scan of translated targets
+booktx epub inspect ./book --profile PROFILE          # inspect built EPUB XHTML output
+booktx epub inspect ./book --profile PROFILE --chapter 0001 --contains "Wespen"
+booktx epub grep ./book --profile PROFILE "Wespen"   # grep built EPUB XHTML for text
+booktx epub extract-text ./book --profile PROFILE     # extract plain text from built EPUB XHTML
 ```
 
 `qa-scan` runs targeted quality checks (glossary/forbidden-term/regex) over
@@ -242,12 +249,12 @@ commands read the profile-local `output/` directory produced by `booktx build`; 
 ## Translation preference dictionary / termbase
 
 ```bash
-booktx termbase status ./book --profile de_gpt5_5 --json
+booktx termbase status ./book --profile PROFILE --json
 booktx termbase add --scope global --language de --id LEX-MOULDY --source "mouldy principles" --preferred "schäbige Prinzipien" --forbid "schimmligen Prinzipien" --approve
-booktx termbase scan-source ./book --profile de_gpt5_5 --jsonl
-booktx termbase audit ./book --profile de_gpt5_5 --jsonl
-booktx termbase write-review ./book --profile de_gpt5_5 --pass 1
-booktx termbase promote-context ./book --profile de_gpt5_5 --entry LEX-MOULDY --as-question
+booktx termbase scan-source ./book --profile PROFILE --jsonl
+booktx termbase audit ./book --profile PROFILE --jsonl
+booktx termbase write-review ./book --profile PROFILE --pass 1
+booktx termbase promote-context ./book --profile PROFILE --entry LEX-MOULDY --as-question
 booktx termbase export --scope global --language de --output ./termbase-de.json
 booktx termbase import --scope global --language de --input ./termbase-de.json --mode merge
 ```
@@ -275,8 +282,8 @@ Global path output is redacted to `~` or `$BOOKTX_TERMBASE_DIR/...`.
 ## `check` -- scoped build-preflight validation
 
 ```bash
-booktx check ./book --profile de_gpt5_5 --chapter 0005 --fail-on-warnings
-booktx check ./book --profile de_gpt5_5 --task-id TASK_ID --json
+booktx check ./book --profile PROFILE --chapter 0005 --fail-on-warnings
+booktx check ./book --profile PROFILE --task-id TASK_ID --json
 ```
 
 `check` is a human-friendly alias for scoped validation + EPUB inline-XHTML
@@ -297,7 +304,7 @@ modes. Use it after a build to confirm the output's language contract and
 review reported CSS cascade conflicts:
 
 ```bash
-booktx check ./book --profile de_gpt5_5 --epub-output --json
+booktx check ./book --profile PROFILE --epub-output --json
 ```
 
 ## Pass-through validation
@@ -321,10 +328,10 @@ Most read commands accept `--json`. Examples:
 
 ```bash
 booktx profile list ./book --json
-booktx profile show ./book de_gpt5_5 --json
-booktx whoami ./book --profile de_gpt5_5 --json
-booktx status ./book --profile de_gpt5_5 --json
-booktx version show ./book --profile de_gpt5_5 1.2 --json
+booktx profile show ./book PROFILE --json
+booktx whoami ./book --profile PROFILE --json
+booktx status ./book --profile PROFILE --json
+booktx version show ./book --profile PROFILE 1.2 --json
 ```
 
 `profile list`/`profile show`/`whoami` report the live identity from
@@ -372,46 +379,46 @@ disabled there. See _Single-source judge revision profiles_ in
 `docs/profiles.md`.
 
 ```bash
-booktx judge create-profile ./book de_judge_gpt5_5 \
+booktx judge create-profile ./book JUDGE_PROFILE \
   --target de \
   --target-locale de-DE \
-  --sources de_gpt5_5,de_glm_5_2 \
-  --context-from de_gpt5_5 \
+  --sources PROFILE,PROFILE_B \
+  --context-from PROFILE \
   --model gpt-5.5 \
   --purpose compare
 
-booktx judge status ./book --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2
+booktx judge status ./book --profile JUDGE_PROFILE --sources PROFILE,PROFILE_B
 
 booktx judge accept-identical ./book \
-  --profile de_judge_gpt5_5 \
-  --sources de_gpt5_5,de_glm_5_2 \
+  --profile JUDGE_PROFILE \
+  --sources PROFILE,PROFILE_B \
   --unit chapter \
   --chapter 0001 \
   --max-records 100 \
   --write
 
 booktx judge next ./book \
-  --profile de_judge_gpt5_5 \
-  --sources de_gpt5_5,de_glm_5_2 \
+  --profile JUDGE_PROFILE \
+  --sources PROFILE,PROFILE_B \
   --unit chapter \
   --chapter 0001 \
   --max-records 8 \
   --format decisions
 
 booktx judge record ./book \
-  --profile de_judge_gpt5_5 \
-  --sources de_gpt5_5,de_glm_5_2 \
+  --profile JUDGE_PROFILE \
+  --sources PROFILE,PROFILE_B \
   --record 0001-000001 \
   --format decisions
 
 booktx judge insert ./book \
-  --profile de_judge_gpt5_5 \
+  --profile JUDGE_PROFILE \
   --judge-task-id TASK \
-  --file translations/de_judge_gpt5_5/judge-ingest/TASK.decisions.txt \
+  --file translations/JUDGE_PROFILE/judge-ingest/TASK.decisions.txt \
   --format decisions
 
 booktx judge reset-ingest ./book \
-  --profile de_judge_gpt5_5 \
+  --profile JUDGE_PROFILE \
   --judge-task-id TASK \
   --format decisions \
   --write
@@ -420,8 +427,8 @@ booktx judge reset-ingest ./book \
 ### Prepare isolation (project-root)
 
 ```bash
-booktx judge sync-sources ./book --profile de_judge_gpt5_5 --write
-booktx judge prepare-isolation ./book --profile de_judge_gpt5_5 --write
+booktx judge sync-sources ./book --profile JUDGE_PROFILE --write
+booktx judge prepare-isolation ./book --profile JUDGE_PROFILE --write
 ```
 
 `sync-sources` copies source candidate stores into an immutable profile-local snapshot. `prepare-isolation` syncs and writes judge-specific `AGENTS.md`. Both are dry-run by default; pass `--write` to publish.
@@ -429,7 +436,7 @@ booktx judge prepare-isolation ./book --profile de_judge_gpt5_5 --write
 ### Isolated judge workflow (profile root)
 
 ```bash
-cd translations/de_judge_gpt5_5
+cd translations/JUDGE_PROFILE
 booktx judge status .
 booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
 booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions
@@ -485,18 +492,18 @@ todos, stores, ledgers, identity, chapter contexts, or source state.
 # Export from an approved profile context (dry-run-safe; refuses overwrite
 # without --force; requires ready unless --allow-not-ready).
 booktx context export-pack ./book1 \
-  --profile de_gpt5_5 \
+  --profile PROFILE \
   --series-id shadows-of-apt \
   --title "Shadows of the Apt / German policy" \
   --output ./shadows-of-apt.en-de.booktx-context-pack.json
 
 # Import into another book's profile. Dry run by default; --write commits.
 booktx context import-pack ./book2 \
-  --profile de_gpt5_5 \
+  --profile PROFILE \
   --file ./shadows-of-apt.en-de.booktx-context-pack.json
 
 booktx context import-pack ./book2 \
-  --profile de_gpt5_5 \
+  --profile PROFILE \
   --file ./shadows-of-apt.en-de.booktx-context-pack.json \
   --write
 ```
@@ -520,10 +527,10 @@ In isolated profile-root mode, generated and submitted block paths must be profi
 `booktx context import-pack` is dry-run by default. `--write` commits context changes. Pack termbase entries are not written unless `--write-termbase` is also supplied, for example:
 
 ```bash
-booktx context import-pack ./book4 --profile de_glm_5_2 --file series-context.de.json --write --write-termbase --termbase-scope project
+booktx context import-pack BOOK --profile PROFILE_B --file series-context.de.json --write --write-termbase --termbase-scope project
 ```
 
-Use `booktx termbase status ./book4 --profile de_glm_5_2 --scope effective` after import. Existing tasks created before context or termbase changes can be stale; create fresh tasks after policy changes.
+Use `booktx termbase status BOOK --profile PROFILE_B --scope effective` after import. Existing tasks created before context or termbase changes can be stale; create fresh tasks after policy changes.
 
 ### Source-analysis candidate to termbase
 

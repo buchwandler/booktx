@@ -17,7 +17,7 @@ book/
       0002.json
 
   translations/
-    de_gpt5_5/
+    PROFILE_A/
       config.toml
       identity.json
       context.json

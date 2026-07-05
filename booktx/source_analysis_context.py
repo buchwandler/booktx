@@ -242,6 +242,7 @@ def _ensure_source_analysis_question(
     question: str,
     recommendation: str,
     recommendation_reason: str,
+    required: bool = False,
 ) -> None:
     if not candidate_ids:
         return
@@ -267,11 +268,11 @@ def _ensure_source_analysis_question(
             id=next_question_id(context),
             topic=topic,
             question=rendered_question,
-            required=False,
+            required=required,
             status="recommended",
             origin="source_analysis",
             recommendation=recommendation,
-            recommendation_reason=recommendation_reason,
+            recommendation_reason=str(recommendation_reason),
             recommendation_source="booktx source analysis",
             source_analysis_candidate_ids=candidate_ids,
         )
@@ -287,6 +288,7 @@ def _prefill_one(
     profile: str,
     *,
     include_advisory: bool,
+    gate_readiness: bool = False,
 ) -> ProfilePrefillResult:
     result = ProfilePrefillResult(profile=profile)
     binding_ids: list[str] = []
@@ -329,6 +331,7 @@ def _prefill_one(
             "Source analysis found likely world-building or terminology "
             "candidates that should be reviewed before translation."
         ),
+        required=gate_readiness,
     )
     _ensure_source_analysis_question(
         context,
@@ -342,6 +345,7 @@ def _prefill_one(
             "and which should become glossary-backed policy."
         ),
         recommendation_reason="Source analysis found recurring title/name candidates.",
+        required=gate_readiness,
     )
     _ensure_source_analysis_question(
         context,
@@ -358,6 +362,7 @@ def _prefill_one(
             "Source analysis kept rare singleton or low-frequency candidates "
             "because they look translation-relevant."
         ),
+        required=gate_readiness,
     )
     return result
 
@@ -369,6 +374,7 @@ def prefill_contexts(
     profiles: list[str],
     write: bool,
     include_advisory: bool = False,
+    gate_readiness: bool = False,
 ) -> PrefillResult:
     decisions = load_decisions(project)
     ignored = {
@@ -392,6 +398,7 @@ def prefill_contexts(
                 ignored,
                 profile,
                 include_advisory=include_advisory,
+                gate_readiness=gate_readiness,
             )
             planned.append((profile_project, context, result))
             output.profiles.append(result)

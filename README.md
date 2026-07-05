@@ -58,7 +58,7 @@ book/
     chunks/
 
   translations/
-    de_gpt5_5/
+    PROFILE/
       .booktx-profile.json
       config.toml
       identity.json
@@ -80,33 +80,33 @@ book/
 booktx init ./demo --source-file book.epub --source-lang en
 booktx extract ./demo
 
-booktx profile create ./demo de_gpt5_5 \
+booktx profile create ./demo PROFILE \
   --target de \
   --target-locale de-DE \
   --model codex-openai/gpt-5.5@low \
 
 
-booktx context init ./demo --profile de_gpt5_5 --non-interactive
-booktx context questions ./demo --profile de_gpt5_5
+booktx context init ./demo --profile PROFILE --non-interactive
+booktx context questions ./demo --profile PROFILE
 # Ask the user to approve or edit answers before continuing.
-booktx context approve ./demo --profile de_gpt5_5 Q001 --text "<USER_APPROVED_TEXT>" --approved-by "user:<USER>"
-booktx context render ./demo --profile de_gpt5_5 --write
-booktx context mark-ready ./demo --profile de_gpt5_5
+booktx context approve ./demo --profile PROFILE Q001 --text "<USER_APPROVED_TEXT>" --approved-by "user:<USER>"
+booktx context render ./demo --profile PROFILE --write
+booktx context mark-ready ./demo --profile PROFILE
 
 booktx translate next ./demo \
-  --profile de_gpt5_5 \
+  --profile PROFILE \
   --unit batch \
   --max-words 800 \
   --format block
 
 booktx translate insert ./demo \
-  --profile de_gpt5_5 \
+  --profile PROFILE \
   --task-id TASK \
-  --file translations/de_gpt5_5/ingest/TASK.block.txt \
+  --file translations/PROFILE/ingest/TASK.block.txt \
   --format block
 
-booktx validate ./demo --profile de_gpt5_5
-booktx build ./demo --profile de_gpt5_5
+booktx validate ./demo --profile PROFILE
+booktx build ./demo --profile PROFILE
 ```
 
 ## Collaborative vs isolated profile-root mode
@@ -134,7 +134,7 @@ sibling profile, stop and report a booktx isolation bug.
 
 ### Isolated evaluation workflow
 
-From `book/translations/de_gpt5_5/`:
+From `book/translations/PROFILE/`:
 
 ```bash
 booktx mode .
@@ -156,8 +156,8 @@ access internally, and renders profile-local paths such as `tasks/...`,
 Before starting an agent harness, write the matching harness instructions:
 
 ```bash
-booktx agents write . --mode isolated --profile de_gpt5_5
-cd translations/de_gpt5_5
+booktx agents write . --mode isolated --profile PROFILE
+cd translations/PROFILE
 ```
 
 For project-root collaboration:
@@ -179,7 +179,7 @@ starts:
 ```bash
 booktx source analyze ./demo --write
 booktx source analyze ./demo --write --sync-profiles
-booktx source analysis ./demo/translations/de_gpt5_5
+booktx source analysis ./demo/translations/PROFILE
 ```
 
 This is a review queue, not an approval step. The canonical JSON is
@@ -189,10 +189,10 @@ glossary candidates, names/titles, rare terms, and suppressed noise.
 To turn reviewed candidates into context state:
 
 ```bash
-booktx context prefill ./demo --profile de_gpt5_5 --from-source-analysis
-booktx context prefill ./demo --profile de_gpt5_5 --from-source-analysis --include-advisory --write
-booktx context promote-candidate ./demo CAND-... --profile de_gpt5_5 --as-question --write
-booktx context promote-candidate ./demo CAND-... --profile de_gpt5_5 --target "Imperium" --require-target --enforce error --write
+booktx context prefill ./demo --profile PROFILE --from-source-analysis
+booktx context prefill ./demo --profile PROFILE --from-source-analysis --include-advisory --write
+booktx context promote-candidate ./demo CAND-... --profile PROFILE --as-question --write
+booktx context promote-candidate ./demo CAND-... --profile PROFILE --target "Imperium" --require-target --enforce error --write
 booktx source ignore-candidate ./demo CAND-... --reason "ordinary vocabulary" --write
 ```
 
@@ -207,7 +207,7 @@ When asking an agent to continue for several chapters, create a durable todo:
 
 ```bash
 booktx translate todo-next ./demo \
-  --profile de_gpt5_5 \
+  --profile PROFILE \
   --chapters 3 \
   --batch-words 800 \
   --max-run-words 12000 \
@@ -218,9 +218,9 @@ This writes a todo file (not translations) under `translations/<profile>/todos/`
 Continue bounded runs with:
 
 ```bash
-booktx translate todo-status ./demo --profile de_gpt5_5 --latest
-booktx translate todo-resume ./demo --profile de_gpt5_5 --latest --format block
-booktx check ./demo --profile de_gpt5_5 --fail-on-warnings
+booktx translate todo-status ./demo --profile PROFILE --latest
+booktx translate todo-resume ./demo --profile PROFILE --latest --format block
+booktx check ./demo --profile PROFILE --fail-on-warnings
 ```
 
 ## Single large chapters
@@ -245,8 +245,8 @@ booktx translate next ./demo --chapter 0005 --unit chapter --force-chapter
 After each chapter, run `booktx check` before adding the chapter note:
 
 ```bash
-booktx check ./demo --profile de_gpt5_5 --chapter 0005 --fail-on-warnings
-booktx context chapter-note ./demo --profile de_gpt5_5 0005 ...
+booktx check ./demo --profile PROFILE --chapter 0005 --fail-on-warnings
+booktx context chapter-note ./demo --profile PROFILE 0005 ...
 ```
 
 `--max-run-words` is advisory only: it tells the agent when to stop and report
@@ -261,8 +261,8 @@ readiness, source metadata, language metadata, or actor/model track changes.
 For final release output, prefer:
 
 ```bash
-booktx validate ./demo --profile de_gpt5_5 --fail-on-warnings
-booktx build ./demo --profile de_gpt5_5 --require-complete
+booktx validate ./demo --profile PROFILE --fail-on-warnings
+booktx build ./demo --profile PROFILE --require-complete
 ```
 
 Translated EPUB builds write the resolved target language to publication and
@@ -278,27 +278,27 @@ config and rebuild. Pass-through output stays byte-identical by default. See
 Refresh editor-friendly indexes:
 
 ```bash
-booktx translate export-index ./demo --profile de_gpt5_5
+booktx translate export-index ./demo --profile PROFILE
 ```
 
 This writes:
 
-- `translations/de_gpt5_5/source-index.json` -- source text only, best for reading/searching the original source inside the profile, including isolated profile runs.
-- `translations/de_gpt5_5/target-index.json` -- target text only, best for searching translated terms without English source false positives.
-- `translations/de_gpt5_5/source-target-index.json` -- slim source/target side-by-side view, best for scanning translation fit in an editor.
+- `translations/PROFILE/source-index.json` -- source text only, best for reading/searching the original source inside the profile, including isolated profile runs.
+- `translations/PROFILE/target-index.json` -- target text only, best for searching translated terms without English source false positives.
+- `translations/PROFILE/source-target-index.json` -- slim source/target side-by-side view, best for scanning translation fit in an editor.
 
 ```bash
 # Search only the original source language.
-rg "Wasp" translations/de_gpt5_5/source-index.json
+rg "Wasp" translations/PROFILE/source-index.json
 
 # Search only translated German target text.
-rg "Wespen" translations/de_gpt5_5/target-index.json
+rg "Wespen" translations/PROFILE/target-index.json
 
 # Scan source and target side by side.
-nvim translations/de_gpt5_5/source-target-index.json
+nvim translations/PROFILE/source-target-index.json
 
 # Inspect canonical state for a hit.
-booktx translation get-record ./demo 0014-000029 --profile de_gpt5_5 --json
+booktx translation get-record ./demo 0014-000029 --profile PROFILE --json
 ```
 
 All three files are generated artifacts. Do not edit them manually. The canonical state remains `translation-store.json`.
@@ -328,8 +328,8 @@ context experiment. Two profiles can target the same language with different
 models, or the same model with different languages:
 
 ```bash
-booktx profile create ./demo de_gpt5_5 --target de --model codex-openai/gpt-5.5@low
-booktx profile create ./demo de_glm_5_2 --target de --model glm-5.2
+booktx profile create ./demo PROFILE --target de --model codex-openai/gpt-5.5@low
+booktx profile create ./demo PROFILE_B --target de --model glm-5.2
 booktx profile create ./demo fr_gpt5_5 --target fr --model codex-openai/gpt-5.5@low
 ```
 
@@ -356,7 +356,7 @@ If a project has more than one profile, always pass `--profile`.
 Old single-layout projects can be migrated in place:
 
 ```bash
-booktx profile migrate-current ./demo de_gpt5_5
+booktx profile migrate-current ./demo PROFILE
 ```
 
 CLI identity overrides (`--model`, `--actor`, `--harness`) are honored over any
@@ -366,48 +366,48 @@ legacy `.booktx/identity.json`.
 
 ```bash
 booktx status ./demo
-booktx status ./demo --profile de_gpt5_5
+booktx status ./demo --profile PROFILE
 booktx mode ./demo
 booktx profile list ./demo
-booktx profile show ./demo de_gpt5_5
-booktx whoami ./demo --profile de_gpt5_5
-booktx version current ./demo --profile de_gpt5_5
-booktx translate task-status ./demo --profile de_gpt5_5 --task-id TASK
-booktx translation compare ./demo --profile de_gpt5_5 74@38 --versions 1.1,1.2
-booktx profile compare ./demo --profiles de_gpt5_5,de_glm_5_2 --record 0001-000001
+booktx profile show ./demo PROFILE
+booktx whoami ./demo --profile PROFILE
+booktx version current ./demo --profile PROFILE
+booktx translate task-status ./demo --profile PROFILE --task-id TASK
+booktx translation compare ./demo --profile PROFILE 74@38 --versions 1.1,1.2
+booktx profile compare ./demo --profiles PROFILE,PROFILE_B --record 0001-000001
 booktx source status ./demo
 
 # Series-wide context packs (style/global rules/glossary/approved answers):
-booktx context export-pack ./book1 --profile de_gpt5_5 \
+booktx context export-pack ./book1 --profile PROFILE \
   --series-id shadows-of-apt --output ./soa.en-de.booktx-context-pack.json
-booktx context import-pack ./book2 --profile de_gpt5_5 \
+booktx context import-pack ./book2 --profile PROFILE \
   --file ./soa.en-de.booktx-context-pack.json --write
 
 # Same-book sibling profile policy sync:
 booktx context sync ./demo \
-  --from de_gpt5_5 \
+  --from PROFILE \
   --all-compatible \
   --section glossary \
   --term "Empire"
 
 # Build a judge/selection profile from sibling outputs:
-booktx judge create-profile ./demo de_judge_gpt5_5 \
+booktx judge create-profile ./demo JUDGE_PROFILE \
   --target de \
   --target-locale de-DE \
-  --sources de_gpt5_5,de_glm_5_2 \
-  --context-from de_gpt5_5 \
+  --sources PROFILE,PROFILE_B \
+  --context-from PROFILE \
   --model gpt-5.5 \
 
-booktx judge status ./demo --profile de_judge_gpt5_5
-booktx judge accept-identical ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 100 --write
-booktx judge next ./demo --profile de_judge_gpt5_5 --sources de_gpt5_5,de_glm_5_2 --unit chapter --chapter 0001 --max-records 8 --format decisions
+booktx judge status ./demo --profile JUDGE_PROFILE
+booktx judge accept-identical ./demo --profile JUDGE_PROFILE --sources PROFILE,PROFILE_B --unit chapter --chapter 0001 --max-records 100 --write
+booktx judge next ./demo --profile JUDGE_PROFILE --sources PROFILE,PROFILE_B --unit chapter --chapter 0001 --max-records 8 --format decisions
 ```
 
 For isolated judge work, prepare the snapshot from the project root then cd into the profile root:
 
 ```bash
-booktx judge prepare-isolation ./demo --profile de_judge_gpt5_5 --write
-cd translations/de_judge_gpt5_5
+booktx judge prepare-isolation ./demo --profile JUDGE_PROFILE --write
+cd translations/JUDGE_PROFILE
 booktx judge status .
 booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
 booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions

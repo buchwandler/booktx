@@ -26,6 +26,17 @@ booktx profile list .
 
 If multiple profiles exist, pass `--profile` on all translation-state commands.
 
+Before starting isolated translation, run the generic source-policy interview when source analysis is available:
+
+```bash
+booktx source analyze BOOK --write --sync-profiles
+booktx source interview-plan BOOK --profile PROFILE --write
+booktx source interview-next BOOK --profile PROFILE --format markdown
+booktx source interview-status BOOK --profile PROFILE --fail-if-open
+```
+
+Persist only user-approved answers with `booktx source interview-answer BOOK CAND-... --profile PROFILE --target TARGET --write`, or record explicit skips with `booktx source interview-skip`.
+
 ### Isolated evaluation workflow
 
 Start inside `translations/<profile>/` when you want unbiased model or context
@@ -106,9 +117,9 @@ When the user asks to continue for multiple chapters, do not request one huge
 chapter task. Create a todo instead:
 
 ```bash
-booktx translate todo-next . --profile de_gpt5_5 --chapters 3 --batch-words 800 --write
-booktx translate todo-status . --profile de_gpt5_5 --latest
-booktx translate todo-resume . --profile de_gpt5_5 --latest --format block
+booktx translate todo-next . --profile PROFILE_A --chapters 3 --batch-words 800 --write
+booktx translate todo-status . --profile PROFILE_A --latest
+booktx translate todo-resume . --profile PROFILE_A --latest --format block
 ```
 
 Read the generated todo markdown and follow its loop. After each completed
@@ -199,24 +210,24 @@ When the user wants to assemble a best-of profile from several sibling
 translations, stay at the project root and use the dedicated judge workflow:
 
 ```bash
-booktx judge create-profile ./book de_judge_gpt5_5 \
+booktx judge create-profile ./book JUDGE_PROFILE \
   --target de \
   --target-locale de-DE \
-  --sources de_gpt5_5,de_glm_5_2 \
-  --context-from de_gpt5_5 \
+  --sources PROFILE_A,PROFILE_B \
+  --context-from PROFILE_A \
   --model gpt-5.5 \
 
 booktx judge accept-identical ./book \
-  --profile de_judge_gpt5_5 \
-  --sources de_gpt5_5,de_glm_5_2 \
+  --profile JUDGE_PROFILE \
+  --sources PROFILE_A,PROFILE_B \
   --unit chapter \
   --chapter 0001 \
   --max-records 100 \
   --write
 
 booktx judge next ./book \
-  --profile de_judge_gpt5_5 \
-  --sources de_gpt5_5,de_glm_5_2 \
+  --profile JUDGE_PROFILE \
+  --sources PROFILE_A,PROFILE_B \
   --unit chapter \
   --chapter 0001 \
   --max-records 8 \
@@ -249,7 +260,7 @@ After the selection profile context is ready, prepare a profile-local snapshot
 of the source candidate stores:
 
 ```bash
-booktx judge prepare-isolation ./book --profile de_judge_gpt5_5 --write
+booktx judge prepare-isolation ./book --profile JUDGE_PROFILE --write
 ```
 
 This copies source `translation-store.json`, `translation-version-ledger.json`,
@@ -258,7 +269,7 @@ This copies source `translation-store.json`, `translation-version-ledger.json`,
 `AGENTS.md` instructions. Then start the judge agent inside the profile root:
 
 ```bash
-cd translations/de_judge_gpt5_5
+cd translations/JUDGE_PROFILE
 
 # profile root
 booktx judge status .

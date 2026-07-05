@@ -68,7 +68,7 @@ collaborative mode:
 
 ```bash
 booktx context sync ./book \
-  --from de_gpt5_5 \
+  --from PROFILE_A \
   --all-compatible \
   --section glossary \
   --term "Empire"
@@ -124,17 +124,33 @@ for binding-glossary, name-policy, and invented/rare candidates. It does not
 open advisory glossary entries by default. Use `--include-advisory` only when
 you explicitly want low-priority phrase candidates to seed open glossary rows.
 
+### Source-policy interview
+
+Use the generic interview commands when source-analysis candidates need user-approved profile policy before translation. The interview ledger is generated profile-local state; approved policy is stored in context and termbase commands.
+
+```bash
+booktx source analyze BOOK --write --sync-profiles
+booktx source interview-plan BOOK --profile PROFILE --write
+booktx source interview-next BOOK --profile PROFILE --format markdown
+booktx source interview-answer BOOK CAND-... --profile PROFILE --target TARGET --write
+booktx source interview-skip BOOK CAND-... --profile PROFILE --disposition ignored --reason "REASON" --write
+booktx source interview-status BOOK --profile PROFILE --fail-if-open
+booktx context prefill BOOK --profile PROFILE --from-source-analysis --gate-readiness --write
+```
+
+Run `interview-status --fail-if-open` before marking context ready when the workflow requires all source-policy questions to be resolved.
+
 ## Typical workflow
 
 ```bash
-booktx context init ./book --profile de_gpt5_5 --non-interactive
-booktx context questions ./book --profile de_gpt5_5
-booktx context recommend ./book --profile de_gpt5_5 Q001 --text de-DE --reason "profile target locale"
-booktx context questionnaire ./book --profile de_gpt5_5 --stdout
+booktx context init ./book --profile PROFILE_A --non-interactive
+booktx context questions ./book --profile PROFILE_A
+booktx context recommend ./book --profile PROFILE_A Q001 --text de-DE --reason "profile target locale"
+booktx context questionnaire ./book --profile PROFILE_A --stdout
 # Stop for user approval, then record the approved answer.
-booktx context approve ./book --profile de_gpt5_5 Q001 --text de-DE --approved-by "user:<USER>"
-booktx context mark-ready ./book --profile de_gpt5_5
-booktx context render ./book --profile de_gpt5_5 --write
+booktx context approve ./book --profile PROFILE_A Q001 --text de-DE --approved-by "user:<USER>"
+booktx context mark-ready ./book --profile PROFILE_A
+booktx context render ./book --profile PROFILE_A --write
 ```
 
 When multiple profiles exist, always pass `--profile` unless the intended
