@@ -475,7 +475,10 @@ def _publish_generation(
         # Generation already published: validate and reuse, never overwrite.
         _validate_generation_from_disk(project, snapshot_id, rows, target)
     else:
-        staging = snapshots_root / f".staging-{snapshot_id}-{utc_timestamp()}"
+        staging = (
+            snapshots_root
+            / f".staging-{snapshot_id}-{utc_timestamp().replace(':', '').replace('-', '')}"
+        )
         staging.mkdir(parents=True, exist_ok=True)
         try:
             written.extend(_write_generation_files(project, snapshot_id, rows, staging))
