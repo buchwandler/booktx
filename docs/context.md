@@ -43,8 +43,9 @@ profiles and compares only profiles with compatible source language, target
 language, and target locale. Doctor does not mutate context. It reports issues
 such as Q006 arrow terms, chapter-note terminology candidates, advisory entries
 that look binding, and sibling profile glossary drift. Report files must not be
-written under `/tmp`. In isolated profile-root mode report paths must be
-profile-local relative paths, for example `reports/context-organization-report.md`.
+written under the system temp directory. In isolated profile-root mode report
+paths must be profile-local relative paths, for example
+`reports/context-organization-report.md`.
 
 `context render` supports explicit views:
 

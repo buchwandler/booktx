@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -2244,7 +2245,7 @@ def test_context_doctor_isolated_write_report_rejects_unsafe_paths(
     assert "profile-local relative paths" in parent.output
 
 
-def test_context_doctor_write_report_rejects_tmp_path(tmp_path: Path):
+def test_context_doctor_write_report_rejects_temp_directory(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     runner.invoke(
         app,
@@ -2258,6 +2259,10 @@ def test_context_doctor_write_report_rejects_tmp_path(tmp_path: Path):
         ],
     )
 
+    # A report under the real OS temp directory must be rejected so it is not
+    # lost when the OS cleans temp; independent of the project's tmp_path.
+    report = Path(tempfile.gettempdir()) / "booktx-doctor-report.md"
+
     res = runner.invoke(
         app,
         [
@@ -2267,12 +2272,12 @@ def test_context_doctor_write_report_rejects_tmp_path(tmp_path: Path):
             "--profile",
             "de_default",
             "--write-report",
-            "/tmp/report.md",
+            str(report),
         ],
     )
 
     assert res.exit_code == 1
-    assert "must not be written under /tmp" in res.output
+    assert "must not be written under the system temp directory" in res.output
 
 
 def test_context_doctor_write_report_uses_safe_location(tmp_path: Path):

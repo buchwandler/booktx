@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
@@ -405,10 +406,28 @@ def render_context_organization_report(
 
 
 def safe_report_path(path: Path) -> None:
-    """Reject report paths that violate the no-/tmp policy."""
+    """Reject report paths under the system temp directory.
+
+    Reports must live with project state so they survive temp cleanup. The
+    guard uses :func:`tempfile.gettempdir` so it is portable across POSIX and
+    Windows instead of hardcoding ``/tmp`` (which is not absolute on Windows
+    and never matches a drive-qualified temp path).
+    """
+    temp_dirs = [Path(tempfile.gettempdir())]
+    try:
+        temp_dirs.append(Path(tempfile.gettempdir()).resolve())
+    except OSError:
+        pass
     expanded = path.expanduser()
-    if expanded == Path("/tmp") or Path("/tmp") in expanded.parents:
-        raise ValueError("context organization reports must not be written under /tmp")
-    resolved = expanded.resolve()
-    if resolved == Path("/tmp") or Path("/tmp") in resolved.parents:
-        raise ValueError("context organization reports must not be written under /tmp")
+    inspected = [expanded]
+    try:
+        inspected.append(expanded.resolve())
+    except OSError:
+        pass
+    for candidate in inspected:
+        for temp_dir in temp_dirs:
+            if candidate == temp_dir or temp_dir in candidate.parents:
+                raise ValueError(
+                    "context organization reports must not be written under "
+                    "the system temp directory"
+                )
