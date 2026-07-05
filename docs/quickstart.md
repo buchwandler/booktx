@@ -76,3 +76,14 @@ booktx profile migrate-current ./demo de_gpt5_5
 ## Context approval
 
 booktx never decides translation policy by itself. An agent may propose context answers, but the user must approve them before translation begins. Do not use `context mark-ready --force` during normal translation work.
+
+## Next book in a series
+
+1. Check the completed source profile: `booktx status BOOK3` and `booktx context status BOOK3 --profile PROFILE`.
+2. Export a context pack from the completed profile.
+3. Initialize and extract the new book, then create the matching profile.
+4. Run `booktx context import-pack BOOK4 --profile PROFILE --file PACK --init-missing-context --conflict fail` as a dry run.
+5. Re-run with `--write`; add `--write-termbase --termbase-scope project` only when reusable termbase entries should be imported.
+6. Render context, print the questionnaire, and wait for human approval before `context mark-ready`.
+7. Run `booktx source analyze BOOK4 --write --sync-profiles`, prefill context from source analysis, review any new questions, then mark ready.
+8. Write isolated-agent instructions and start translation only from the profile root.

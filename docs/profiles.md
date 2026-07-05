@@ -448,3 +448,7 @@ Per-pass fields:
 - `instructions` -- prompt for the reviewing agent
 
 Pass-through profiles must not set `[quality_review]`.
+
+## Series continuation profiles
+
+Use the same profile name for a new book only after creating it in the new project. Policy transfer is explicit through context packs and optional termbase import, not by copying profile directories. After project-root preparation, run `booktx agents write BOOK --profile PROFILE --mode isolated` and start translation inside `translations/PROFILE`.

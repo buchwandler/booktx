@@ -1132,6 +1132,16 @@ def context_import_pack(
         "--conflict",
         help="Conflict mode: fail, keep-local, replace.",
     ),
+    write_termbase: bool = typer.Option(
+        False,
+        "--write-termbase",
+        help="Also write pack termbase entries. Requires --write.",
+    ),
+    termbase_scope: str = typer.Option(
+        "project",
+        "--termbase-scope",
+        help="Termbase destination scope: project or profile.",
+    ),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
     """Import a series-wide context pack into the selected profile."""
@@ -1143,6 +1153,8 @@ def context_import_pack(
             write=write,
             init_missing_context=init_missing_context,
             conflict=conflict,
+            write_termbase=write_termbase,
+            termbase_scope=termbase_scope,
         )
     except BooktxError as exc:
         if as_json:

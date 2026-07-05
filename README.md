@@ -600,3 +600,7 @@ When the user reports a bad context-sensitive translation:
 4. Run `booktx termbase audit . --jsonl` and `booktx qa-scan . --forbidden --glossary --include-advisory --jsonl`.
 5. Use `booktx termbase write-review . --pass 1` when the termbase finding should
    create normal review work instead of an immediate deterministic rewrite.
+
+### Starting the next book in a series
+
+Export reusable policy from the completed book with `booktx context export-pack`, initialize and extract the new book, create the target profile, then run `booktx context import-pack` as a dry run before applying it. Termbase entries in a pack are opt-in: they are written only with both `--write` and `--write-termbase`, plus `--termbase-scope project|profile`. After import, run source analysis with `--write --sync-profiles`, review any new questions, and get human approval before `context mark-ready`. Write isolated-agent instructions only after project-root preparation.

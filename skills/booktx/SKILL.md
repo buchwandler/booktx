@@ -910,3 +910,7 @@ In `selection.purpose=compare`, prefer `accept-identical` and
 `selection.purpose=revise`, never use deterministic selection commands;
 every record requires an explicit copy or edited judge decision.
 `judge sweep-identical` is the safe replacement for `for ... do accept-identical ... || true; done` loops: it never masks failures and stops on the first chapter that still needs LLM judging, printing its scoped `judge next` command.
+
+## Starting the next book in a series
+
+Use context packs, not manual file copies. Dry-run `booktx context import-pack` first. Write pack termbase entries only when explicitly intended with `--write --write-termbase --termbase-scope project|profile`. Run source analysis with profile snapshot sync, prefill context, and stop for human approval before `context mark-ready`. After readiness, run `booktx termbase status --scope effective`, write isolated-agent instructions, and start translation only from the profile root.

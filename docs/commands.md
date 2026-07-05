@@ -514,3 +514,21 @@ must resolve inside the current profile root.
 `booktx translation search` supports `--match any` (default, compatibility) and `--match all` for requiring every populated positive group, plus `--source-regex`, `--target-regex`, `--exclude-source`, `--exclude-source-regex`, and `--write-block ingest/name.block.txt`. Generated correction blocks are editable target-only blocks suitable for `translation revise-block`; the companion `.sources.txt` file is reference-only.
 
 In isolated profile-root mode, generated and submitted block paths must be profile-local relative paths. Absolute paths, `..` traversal, and escaping paths are rejected.
+
+### Context pack termbase import
+
+`booktx context import-pack` is dry-run by default. `--write` commits context changes. Pack termbase entries are not written unless `--write-termbase` is also supplied, for example:
+
+```bash
+booktx context import-pack ./book4 --profile de_glm_5_2 --file series-context.de.json --write --write-termbase --termbase-scope project
+```
+
+Use `booktx termbase status ./book4 --profile de_glm_5_2 --scope effective` after import. Existing tasks created before context or termbase changes can be stale; create fresh tasks after policy changes.
+
+### Source-analysis candidate to termbase
+
+Promote a reviewed source-analysis candidate without hand-editing JSON:
+
+```bash
+booktx termbase promote-candidate ./book CAND-... --profile PROFILE --scope profile --preferred "TARGET" --preferred-policy required --severity error --approve --write
+```

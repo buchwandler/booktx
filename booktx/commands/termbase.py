@@ -14,6 +14,7 @@ from booktx.workflows.termbase import (
     termbase_audit_workflow,
     termbase_export_workflow,
     termbase_import_workflow,
+    termbase_promote_candidate_workflow,
     termbase_promote_context_workflow,
     termbase_scan_source_workflow,
     termbase_status_workflow,
@@ -351,6 +352,51 @@ def termbase_audit_cmd(
             soft_wrap=True,
             markup=False,
         )
+
+
+@termbase_app.command(name="promote-candidate")
+def termbase_promote_candidate_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    candidate_id: str = typer.Argument(..., help="Source-analysis candidate id."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    scope: str = typer.Option(
+        "profile", "--scope", help="Destination scope: project or profile."
+    ),
+    preferred: list[str] = typer.Option(
+        [], "--preferred", help="Repeatable preferred targets."
+    ),
+    preferred_policy: str = typer.Option(
+        "required", "--preferred-policy", help="off|advisory|required."
+    ),
+    severity: str = typer.Option("error", "--severity", help="info|warn|error."),
+    approve: bool = typer.Option(False, "--approve", help="Create as approved."),
+    write: bool = typer.Option(False, "--write", help="Commit the promotion."),
+    language: str | None = typer.Option(None, "--language", help="Language shard key."),
+) -> None:
+    try:
+        payload = termbase_promote_candidate_workflow(
+            project_dir,
+            profile=profile,
+            candidate_id=candidate_id,
+            scope=scope,
+            preferred=preferred,
+            preferred_policy=preferred_policy,
+            severity=severity,
+            approve=approve,
+            write=write,
+            language=language,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    action = "promoted" if write else "would promote"
+    console.print(
+        f"{action} {candidate_id} to {payload['entry_id']} "
+        f"({payload['scope']} {payload['language_key']}, {payload['status']})"
+    )
+    console.print(payload["path"], soft_wrap=True, markup=False)
 
 
 @termbase_app.command(name="promote-context")

@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass, field
 from functools import cache
 from hashlib import sha256
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -336,13 +337,13 @@ def _bundled_generic_lemmas(language: str) -> frozenset[str]:
     lang = (language or "").lower().split("-")[0]
     if lang != "en":
         return frozenset()
-    path = Path(__file__).with_name("data") / f"common_lemmas_{lang}.txt"
+    resource = resources.files("booktx").joinpath("data", f"common_lemmas_{lang}.txt")
     try:
-        raw = path.read_text("utf-8")
+        raw = resource.read_text("utf-8")
     except OSError as exc:  # pragma: no cover - packaging/runtime guard
         raise _err(
             "source_analysis_common_lemmas_missing",
-            f"bundled generic-lemma data is unavailable: {path.name}",
+            f"bundled generic-lemma data is unavailable: {resource.name}",
         ) from exc
     values = [line.strip().casefold() for line in raw.splitlines()]
     return frozenset(value for value in values if value and not value.startswith("#"))
@@ -2320,7 +2321,6 @@ def read_snapshot(
     relative marker without exposing parent paths here. The hint never contains
     absolute or parent paths.
     """
-    from pathlib import Path
 
     p = Path(path)  # type: ignore[arg-type]
     if not p.is_file():

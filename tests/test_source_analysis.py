@@ -468,6 +468,9 @@ class TestSimpleEngine:
         assert common_word_set("xx") == frozenset()
         meta = common_words_metadata("xx")
         assert meta["source"] == "none"
+        assert "version" in meta
+        assert common_word_set("en")
+        assert "the" in common_word_set("en")
         proj = load_source_project(project_dir)
         report = build_source_analysis(proj)
         # English corpus still produces a report; this asserts the engine runs.

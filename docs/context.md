@@ -208,3 +208,9 @@ When a glossary rejection is caused by a short term inside a longer source phras
 Example: `wasp` is a short glossary term. When the source contains `Wasp hunter`, the short `wasp` entry triggers. Translating this as `Wespe-Jäger` (forcing `Wespe` into a malformed German compound) is grammatically wrong and passes validation for the wrong reason. Instead, use an apposition like `der Jäger, eine Wespe, ...`, add a longer glossary entry for `Wasp hunter`, or add `Wespe-Jäger` as a forbidden target.
 
 `glossary_target_missing` findings include the matched source span, the source phrase context, glossary notes, and a phrase-collision hint when applicable. Both `translate insert`, `judge insert`, `validate`, and `lint-block` produce consistent findings through shared diagnostics.
+
+## Starting the next book in a series
+
+For a new book in an existing series, export policy from the completed profile with `booktx context export-pack`, import it into the new book with a dry run first, then apply it with `--write` only after reviewing conflicts. Do not copy `context.md` manually. If the pack contains reusable termbase entries, writing them is opt-in with `--write-termbase` and requires `--write`; use `--termbase-scope project` for series-wide shards or `profile` for local overrides.
+
+After import, render the context and show `booktx context questionnaire` to the human reviewer. Do not run `booktx context mark-ready` until the human approves the imported answers and any source-analysis additions.

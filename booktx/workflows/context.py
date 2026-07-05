@@ -52,6 +52,7 @@ from booktx.context_organization import (
 )
 from booktx.context_packs import (
     ContextPackError,
+    ContextPackImportFinding,
     ContextPackImportResult,
     SeriesContextPack,
     export_context_pack,
@@ -995,6 +996,89 @@ def export_context_pack_workflow(
     }
 
 
+def _import_pack_termbase_entries(
+    runtime: RuntimeContext,
+    pack: SeriesContextPack,
+    *,
+    write: bool,
+    scope: str,
+) -> ContextPackImportResult:
+    """Plan or write pack termbase entries into a project/profile shard."""
+    from booktx.config import profile_termbase_path, project_termbase_path
+    from booktx.termbase import (
+        TranslationTermbase,
+        canonical_language_key,
+        infer_mutation_language_key,
+        load_termbase_shard,
+        write_termbase_shard,
+    )
+
+    if scope == "profile" and runtime.project.profile_config is None:
+        raise _err(
+            "import_pack_termbase_profile",
+            "--termbase-scope profile requires a selected profile",
+        )
+    language_key = infer_mutation_language_key(runtime.project)
+    path = (
+        project_termbase_path(runtime.project, language_key)
+        if scope == "project"
+        else profile_termbase_path(runtime.project, language_key)
+    )
+    existing = load_termbase_shard(path) if path.is_file() else None
+    if existing is None:
+        key = canonical_language_key(language_key)
+        parts = key.split("-", 1)
+        existing = TranslationTermbase(
+            language_key=key,
+            source_language=pack.source_language,
+            target_language=parts[0],
+            target_locale=key if len(parts) > 1 else "",
+            entries=[],
+        )
+    merged = {entry.id: entry for entry in existing.entries}
+    findings: list[ContextPackImportFinding] = []
+    changed = False
+    for entry in pack.termbase_entries:
+        current = merged.get(entry.id)
+        if current is None:
+            merged[entry.id] = entry
+            changed = True
+            findings.append(
+                ContextPackImportFinding(
+                    section="termbase",
+                    key=entry.id,
+                    action="add",
+                    message=f"add termbase entry {entry.id} to {scope} shard",
+                )
+            )
+        elif current.model_dump(mode="json") == entry.model_dump(mode="json"):
+            findings.append(
+                ContextPackImportFinding(
+                    section="termbase",
+                    key=entry.id,
+                    action="skip",
+                    message=f"termbase entry already present: {entry.id}",
+                )
+            )
+        else:
+            findings.append(
+                ContextPackImportFinding(
+                    section="termbase",
+                    key=entry.id,
+                    action="conflict",
+                    message=f"termbase entry id conflict: {entry.id}",
+                )
+            )
+    if write and changed and not any(f.action == "conflict" for f in findings):
+        write_termbase_shard(
+            path,
+            existing.model_copy(
+                update={"entries": sorted(merged.values(), key=lambda item: item.id)}
+            ),
+        )
+    return ContextPackImportResult.from_findings(findings, changed=changed)
+
+
 def import_context_pack_workflow(
     runtime: RuntimeContext,
     *,
@@ -1002,6 +1086,8 @@ def import_context_pack_workflow(
     write: bool,
     init_missing_context: bool,
     conflict: str,
+    write_termbase: bool = False,
+    termbase_scope: str = "project",
 ) -> tuple[SeriesContextPack, ContextPackImportResult, bool]:
     """Plan (or commit) a context-pack import; return pack, result, and wrote flag."""
     if conflict not in {"fail", "keep-local", "replace"}:
@@ -1013,6 +1099,15 @@ def import_context_pack_workflow(
         pack = read_context_pack(pack_path)
     except ContextPackError as exc:
         raise BooktxError(exc.code, str(exc)) from exc
+    if termbase_scope not in {"project", "profile"}:
+        raise _err(
+            "import_pack_termbase_scope", "--termbase-scope must be project or profile"
+        )
+    if write_termbase and not write:
+        raise _err(
+            "import_pack_termbase_write",
+            "--write-termbase requires --write; dry runs never write termbase shards",
+        )
     try:
         if write:
             _planned_ctx, result = import_context_pack(
@@ -1032,6 +1127,14 @@ def import_context_pack_workflow(
             wrote = False
     except ContextPackError as exc:
         raise BooktxError(exc.code, str(exc)) from exc
+    if pack.termbase_entries:
+        termbase_result = _import_pack_termbase_entries(
+            runtime, pack, write=write and write_termbase, scope=termbase_scope
+        )
+        result = ContextPackImportResult.from_findings(
+            [*result.findings, *termbase_result.findings],
+            changed=result.changed or termbase_result.changed,
+        )
     return pack, result, wrote
 
 

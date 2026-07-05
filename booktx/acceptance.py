@@ -39,6 +39,7 @@ from booktx.config import (
     load_translation_store,
     write_translation_store,
 )
+from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import utc_timestamp
 from booktx.models import TranslatedRecord
 from booktx.progress import count_words
@@ -157,6 +158,16 @@ def _enforce_applicable_termbase_freshness(proj: Project, task: object) -> None:
     """Block stale tasks whose applicable termbase snapshot changed."""
     import warnings
 
+    mandatory_stored = getattr(task, "mandatory_glossary_sha256", None)
+    if (
+        mandatory_stored is not None
+        and live_mandatory_glossary_sha256(proj) != mandatory_stored
+    ):
+        raise _err(
+            "task_context_policy_stale",
+            f"task {getattr(task, 'task_id', '<unknown>')} predates mandatory ",
+            "glossary changes; create a fresh task before inserting translations",
+        )
     stored = getattr(task, "applicable_termbase_sha256", None)
     if stored is None:
         warnings.warn(

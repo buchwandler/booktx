@@ -277,3 +277,11 @@ the selected candidate exactly during insert.
 ## glossary_alignment_ambiguous
 
 This warning means a source record contains both a longer glossary occurrence and a shorter standalone occurrence, and a target form could belong to either. Review the companion source block from `translation search --write-block` or `context audit-term --write-block`, then revise deliberately. Use `--fail-on-warnings` to block final validation until the ambiguity has been reviewed.
+
+## Stale tasks after policy import
+
+If insert reports that a task predates context, glossary, or applicable termbase changes, discard the old task and request a fresh one. Check `booktx termbase status --scope effective` and rerun `booktx context status` before creating the replacement task.
+
+## Starting a next book safely
+
+Run context-pack import as a dry run first, use `--write-termbase` only intentionally, run source analysis with `--sync-profiles`, and stop for human approval before `context mark-ready`.

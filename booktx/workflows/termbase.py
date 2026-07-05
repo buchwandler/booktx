@@ -49,6 +49,7 @@ __all__ = [
     "termbase_audit_workflow",
     "termbase_export_workflow",
     "termbase_import_workflow",
+    "termbase_promote_candidate_workflow",
     "termbase_promote_context_workflow",
     "termbase_scan_source_workflow",
     "termbase_status_workflow",
@@ -714,6 +715,95 @@ def termbase_audit_workflow(
         entry_ids=set(entry_ids) or None,
     )
     return result.model_dump(mode="json")
+
+
+def termbase_promote_candidate_workflow(
+    project_dir: Path,
+    *,
+    profile: str | None,
+    candidate_id: str,
+    scope: str,
+    preferred: list[str],
+    preferred_policy: str,
+    severity: str,
+    approve: bool,
+    write: bool,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """Promote one source-analysis candidate into a termbase shard."""
+    if scope not in {"project", "profile"}:
+        raise _err("termbase_scope_invalid", "--scope must be project or profile")
+    if preferred_policy not in {"off", "advisory", "required"}:
+        raise _err(
+            "termbase_preferred_policy",
+            "--preferred-policy must be off, advisory, or required",
+        )
+    if severity not in {"info", "warn", "error"}:
+        raise _err("termbase_severity", "--severity must be info, warn, or error")
+    runtime = resolve_runtime(project_dir, profile=profile, require_profile=True)
+    _require_mutation_scope(runtime, scope=scope)
+    from booktx.source_analysis import read_canonical_report
+    from booktx.source_analysis_context import find_candidate
+
+    report = read_canonical_report(runtime.project)
+    if report is None:
+        raise _err(
+            "source_analysis_missing",
+            "no canonical source analysis; run `booktx source analyze . --write`",
+        )
+    candidate = find_candidate(report, candidate_id)
+    language_key = infer_mutation_language_key(runtime.project, language)
+    path, shard = _scope_shard(
+        runtime,
+        scope=scope,  # type: ignore[arg-type]
+        language_key=language_key,
+        allow_global_exact_override=True,
+    )
+    existing = shard or _empty_shard(
+        language_key, source_language=runtime.project.config.source_language
+    )
+    entry_id = f"SA-{candidate.id}"
+    if any(entry.id == entry_id for entry in existing.entries):
+        raise _err(
+            "termbase_entry_exists", f"termbase entry already exists: {entry_id}"
+        )
+    now = utc_timestamp()
+    entry = TermbaseEntry(
+        id=entry_id,
+        status="approved" if approve else "draft",
+        kind="world_term"
+        if candidate.review_bucket == "binding_glossary"
+        else "word_sense",
+        source=candidate.text,
+        source_variants=[
+            value
+            for value in [*candidate.source_variants, *candidate.surface_forms]
+            if value != candidate.text
+        ],
+        source_language=runtime.project.config.source_language or "en",
+        target_preferred=preferred,
+        preferred_policy=preferred_policy,  # type: ignore[arg-type]
+        target_language=existing.target_language,
+        target_locale=existing.target_locale,
+        sense=candidate.category_hint or candidate.kind,
+        rationale=candidate.reason,
+        severity=severity,  # type: ignore[arg-type]
+        created_at=now,
+        updated_at=now,
+        created_by_kind="user" if approve else "unknown",
+    )
+    if write:
+        write_termbase_shard(
+            path, existing.model_copy(update={"entries": [*existing.entries, entry]})
+        )
+    return {
+        "scope": scope,
+        "language_key": language_key,
+        "entry_id": entry.id,
+        "status": entry.status,
+        "path": _display_termbase_path(path, runtime),
+        "dry_run": not write,
+    }
 
 
 def termbase_promote_context_workflow(

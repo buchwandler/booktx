@@ -42,6 +42,7 @@ from booktx.config import (
     translation_task_source_block_path,
 )
 from booktx.context import ensure_context_view_snapshot
+from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
 from booktx.models import TranslationTask, TranslationTaskRecord
 from booktx.path_display import display_path
@@ -448,6 +449,9 @@ def create_translation_task(
     applicable_termbase, applicable_termbase_sha256 = (
         collect_applicable_termbase_for_record_sources(project, record_sources)
     )
+    mandatory_glossary_fingerprint = (
+        live_mandatory_glossary_sha256(project) if unit == "paragraph" else None
+    )
     task = TranslationTask(
         task_id=make_task_id(chapter.chapter_id, record_ids[0], record_ids),
         unit=unit,  # type: ignore[arg-type]
@@ -464,6 +468,7 @@ def create_translation_task(
         context_view_sha256=context_view_sha256,
         context_view_path=context_view_path,
         applicable_termbase_sha256=applicable_termbase_sha256,
+        mandatory_glossary_sha256=mandatory_glossary_fingerprint,
         context_notes_scope=context_notes_scope,
         context_target_chapter_id=context_target_chapter_id,
         context_notes_through_chapter_id=context_notes_through_chapter_id,
