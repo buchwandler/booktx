@@ -6,6 +6,35 @@
     "internal": false,
     "kind": "added",
     "order": 1,
+    "record_revision": 3,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": [
+      "git:42b8efc2289081c4c2bc739b3d4800d27aeed658",
+      "git:1ef361618aa6daeb8e2c0faefa8ee683d4658115",
+      "git:20fbc797cd876531a620d304debae07c3efb8cb5",
+      "git:34ffe0220bd7fd1cd35b95efd71b47317845f5c7",
+      "git:dc816186e82a450afb83df1453ea6b85a173d293",
+      "git:ef159f0e77aec2ef163cf54143dabc7718869ac6"
+    ],
+    "sources": [
+      "git:42b8efc2289081c4c2bc739b3d4800d27aeed658",
+      "git:1ef361618aa6daeb8e2c0faefa8ee683d4658115",
+      "git:20fbc797cd876531a620d304debae07c3efb8cb5",
+      "git:34ffe0220bd7fd1cd35b95efd71b47317845f5c7",
+      "git:dc816186e82a450afb83df1453ea6b85a173d293",
+      "git:ef159f0e77aec2ef163cf54143dabc7718869ac6"
+    ],
+    "status": "accepted",
+    "summary": "Added a judge workflow to select or merge translation output between sibling profiles"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0001",
+    "internal": false,
+    "kind": "added",
+    "order": 1,
     "record_revision": 2,
     "release_version": "v0.2.0",
     "scopes": [],
@@ -48,6 +77,29 @@
     "internal": false,
     "kind": "added",
     "order": 2,
+    "record_revision": 1,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": [
+      "git:3d1ee3ba861ae1acf0e9fa617152aa5e39dea163",
+      "git:018e0767247d9ced4d84771a2380bce4134d407f",
+      "git:8dbbe88630c37213d1600daa2f2ad471521bd6ef"
+    ],
+    "sources": [
+      "git:3d1ee3ba861ae1acf0e9fa617152aa5e39dea163",
+      "git:018e0767247d9ced4d84771a2380bce4134d407f",
+      "git:8dbbe88630c37213d1600daa2f2ad471521bd6ef"
+    ],
+    "status": "accepted",
+    "summary": "Added source analysis with a translation-risk review queue, candidate promotion into context, and profile-snapshot sync"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0002",
+    "internal": false,
+    "kind": "added",
+    "order": 2,
     "record_revision": 2,
     "release_version": "v0.2.0",
     "scopes": [],
@@ -82,6 +134,21 @@
     "source_refs": ["git:8c8202d207e1c931705b9d8e93ac1b0e7d884fc3"],
     "status": "accepted",
     "summary": "Added context export-pack and import-pack commands for sharing series-wide policy (style, global rules, glossary, approved answers) across book profiles"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0003",
+    "internal": false,
+    "kind": "added",
+    "order": 3,
+    "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": ["git:3a8629a8843431ec574bd6a51d1e1932b3310262"],
+    "sources": ["git:3a8629a8843431ec574bd6a51d1e1932b3310262"],
+    "status": "accepted",
+    "summary": "Added a source-policy interview workflow that turns analysis candidates into a guided interview ledger"
   },
   {
     "audience": null,
@@ -135,6 +202,27 @@
     "internal": false,
     "kind": "added",
     "order": 4,
+    "record_revision": 3,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": [
+      "git:b7d288129937f9a72658683ba2d70baeeb0c8d85",
+      "git:5062c013e605d19dcfade3341075794965b4e583"
+    ],
+    "sources": [
+      "git:b7d288129937f9a72658683ba2d70baeeb0c8d85",
+      "git:5062c013e605d19dcfade3341075794965b4e583"
+    ],
+    "status": "accepted",
+    "summary": "Added termbase and glossary commands for reusable cross-book lexical preferences"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0004",
+    "internal": false,
+    "kind": "added",
+    "order": 4,
     "record_revision": 2,
     "release_version": "v0.2.0",
     "scopes": [],
@@ -172,6 +260,27 @@
     ],
     "status": "accepted",
     "summary": "Added booktx chapters detection with --audit comparing the EPUB table of contents against extracted chapter spans and the chapter map"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0005",
+    "internal": false,
+    "kind": "added",
+    "order": 5,
+    "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": [
+      "git:689061e7369aea04d2d9f0618bd98c7870d0eaee",
+      "git:77b2d3243536a7bc79e60331dae34ac400e05723"
+    ],
+    "sources": [
+      "git:689061e7369aea04d2d9f0618bd98c7870d0eaee",
+      "git:77b2d3243536a7bc79e60331dae34ac400e05723"
+    ],
+    "status": "accepted",
+    "summary": "Added same-book multi-profile context sync for merging glossary and context sections between sibling profiles"
   },
   {
     "audience": null,
@@ -227,6 +336,29 @@
     "kind": "added",
     "order": 6,
     "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": [
+      "git:19ee77018989b20208966386cc1d16eba92a2845",
+      "git:a7f95e5759a35216cb8b53811b332bfa8dbe1c51",
+      "git:37409b5e96dec6f0906c902f8356664022f8d42c"
+    ],
+    "sources": [
+      "git:19ee77018989b20208966386cc1d16eba92a2845",
+      "git:a7f95e5759a35216cb8b53811b332bfa8dbe1c51",
+      "git:37409b5e96dec6f0906c902f8356664022f8d42c"
+    ],
+    "status": "accepted",
+    "summary": "Added a context organization doctor for tidying context source-of-truth"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0006",
+    "internal": false,
+    "kind": "added",
+    "order": 6,
+    "record_revision": 2,
     "release_version": "v0.2.0",
     "scopes": [],
     "source_refs": ["git:8a2fa654bad274e4749c373c68d23f861e2c022e"],
@@ -272,6 +404,21 @@
     "kind": "added",
     "order": 7,
     "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": ["git:eb2e994b4c1aed89338f2f34bac9693b054ad25d"],
+    "sources": ["git:eb2e994b4c1aed89338f2f34bac9693b054ad25d"],
+    "status": "accepted",
+    "summary": "Added a translate lint-block command to validate block submissions for record coverage before insertion"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0007",
+    "internal": false,
+    "kind": "added",
+    "order": 7,
+    "record_revision": 2,
     "release_version": "v0.2.0",
     "scopes": [],
     "source_refs": ["git:35f8a1d1f66d3e646b93c734a0c5eeaad7689f6a"],
@@ -305,6 +452,21 @@
     "source_refs": ["git:aa8e4741193c8b69e8fd15a057aeb6609a8f5abf"],
     "status": "accepted",
     "summary": "Fixed translation validation to detect quotation mismatches in translated targets"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0008",
+    "internal": false,
+    "kind": "changed",
+    "order": 8,
+    "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": ["git:e7697c6e8d3f714bb060faa1576067037ddc112c"],
+    "sources": ["git:e7697c6e8d3f714bb060faa1576067037ddc112c"],
+    "status": "accepted",
+    "summary": "Changed glossary phrase-collision detection during validation and added diagnostics"
   },
   {
     "audience": null,
@@ -358,6 +520,21 @@
   },
   {
     "audience": null,
+    "breaking": true,
+    "entry_id": "entry-0009",
+    "internal": false,
+    "kind": "changed",
+    "order": 9,
+    "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": ["git:19f4cc856ebe4edbb851ce5a8d08f078e8f5c8ca"],
+    "sources": ["git:19f4cc856ebe4edbb851ce5a8d08f078e8f5c8ca"],
+    "status": "accepted",
+    "summary": "Removed the profile select command and --select flag; project-root profile commands require --profile"
+  },
+  {
+    "audience": null,
     "breaking": false,
     "entry_id": "entry-0009",
     "internal": false,
@@ -388,6 +565,21 @@
     "audience": null,
     "breaking": false,
     "entry_id": "entry-0010",
+    "internal": false,
+    "kind": "fixed",
+    "order": 10,
+    "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": ["git:145a3fcbdd671ec688e39ebb993201aae1ee66bb"],
+    "sources": ["git:145a3fcbdd671ec688e39ebb993201aae1ee66bb"],
+    "status": "accepted",
+    "summary": "Fixed judge run error reporting and added a continuous-integration test workflow"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0010",
     "internal": true,
     "kind": "internal",
     "order": 10,
@@ -411,6 +603,31 @@
     "source_refs": ["git:ded607582ebe214149cfe1270797adc5b71a02c5"],
     "status": "accepted",
     "summary": "Improved check and review workflow with enhanced validation"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0011",
+    "internal": true,
+    "kind": "internal",
+    "order": 11,
+    "record_revision": 2,
+    "release_version": "v0.4.0",
+    "scopes": [],
+    "source_refs": [
+      "git:faf33a9b5ba1cf8ec0ca2981f17a4d0c409aa6c9",
+      "git:b91fb58482079b3725e4e1be5ea2eb151cf86f68",
+      "git:5a7bece8cfe5cd45acf90b40c885b7b06c593707",
+      "git:f467268f142fdecbff431b5edc37adc5bb5930af"
+    ],
+    "sources": [
+      "git:faf33a9b5ba1cf8ec0ca2981f17a4d0c409aa6c9",
+      "git:b91fb58482079b3725e4e1be5ea2eb151cf86f68",
+      "git:5a7bece8cfe5cd45acf90b40c885b7b06c593707",
+      "git:f467268f142fdecbff431b5edc37adc5bb5930af"
+    ],
+    "status": "accepted",
+    "summary": "Fixed test coverage, type-check, and path issues across judge, context, source analysis, and termbase modules"
   },
   {
     "audience": null,
