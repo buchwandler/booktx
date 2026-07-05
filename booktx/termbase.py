@@ -114,7 +114,7 @@ def _validate_regex(pattern: str, *, field_name: str) -> str:
     for snippet in _UNSAFE_REGEX_SNIPPETS:
         if snippet in cleaned:
             msg = f"{field_name} uses regex feature not allowed in termbase rules"
-        raise ValueError(msg)
+            raise ValueError(msg)
     try:
         re.compile(cleaned)
     except re.error as exc:

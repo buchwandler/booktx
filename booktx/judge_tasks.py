@@ -411,6 +411,7 @@ def create_judge_task(
             source_views=source_views,
             source_record=source_record,
             chunk_id=source_view.chunk_id,
+            termbase_snapshots=applicable_termbase.get(record_ref, []),
         )
         if require_all_sources and missing_profiles:
             raise ValueError(

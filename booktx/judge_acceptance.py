@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 # ruff: noqa: E501
@@ -43,7 +43,10 @@ from booktx.models import (
     Record,
     TranslatedRecord,
 )
-from booktx.termbase_tasking import applicable_termbase_sha256_for_record_sources
+from booktx.termbase_tasking import (
+    applicable_termbase_sha256_for_record_sources,
+    validate_termbase_record_pair,
+)
 from booktx.translation_store import (
     EffectiveCandidateError,
     effective_candidate_selection,
@@ -86,6 +89,7 @@ class SubmittedJudgeRecord:
 class JudgeInsertResult:
     accepted_records: int
     version_refs: list[str]
+    record_findings: list[Finding] = field(default_factory=list)
 
 
 def _normalize_newlines(text: str) -> str:
@@ -566,14 +570,16 @@ def _validate_and_resolve_target(
     raw_target = item.target.strip("\n")
 
     if selected_candidate is not None:
-        if item.decision_kind == "copy" and any(
+        candidate_blocks_copy = any(
             finding.rule in {"glossary_target_missing", "forbidden_term_used"}
+            or (finding.severity == "error" and finding.rule.startswith("termbase."))
             for finding in selected_candidate.validation_findings
-        ):
+        )
+        if item.decision_kind == "copy" and candidate_blocks_copy:
             raise _err(
                 "judge_candidate_validation",
                 f"record {item.id} selected candidate {selected_candidate.label} ",
-                "violates the selection profile glossary ",
+                "violates the selection profile glossary or termbase policy ",
                 "and cannot be copied unchanged",
             )
         # Self-check: the candidate target hash must match its own payload.
@@ -640,6 +646,16 @@ def _validate_and_resolve_target(
             context=validation_context,
         )
     )
+    if task_record.applicable_termbase:
+        findings.extend(
+            validate_termbase_record_pair(
+                source_text=source_record.source,
+                target_text=target_text,
+                snapshots=task_record.applicable_termbase,
+                chunk_id=source_chunk.chunk_id,
+                record_id=source_record.id,
+            )
+        )
     return target_text, findings
 
 
@@ -699,6 +715,7 @@ def accept_judge_submission(
     errors = _error_findings(findings)
     if errors:
         raise SubmissionValidationError(errors)
+    non_blocking_findings = [f for f in findings if f not in errors]
 
     for item in submitted:
         task_record = task_records[item.id]
@@ -770,4 +787,5 @@ def accept_judge_submission(
     return JudgeInsertResult(
         accepted_records=len(submitted),
         version_refs=accepted_versions,
+        record_findings=non_blocking_findings,
     )

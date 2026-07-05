@@ -38,9 +38,11 @@ from booktx.workflows.judge import (
     create_judge_profile_workflow,
     create_next_judge_task_workflow,
     create_record_judge_task_workflow,
+    finish_chapter_plan_workflow,
     judge_task_block_paths,
     judge_task_decisions_path,
     judge_task_json_path,
+    prefill_judge_policy_fixes_workflow,
     prepare_judge_isolation_workflow,
     reset_judge_ingest_workflow,
     sweep_identical_judge_records_workflow,
@@ -446,6 +448,9 @@ def _print_judge_status_payload(payload: dict[str, object]) -> None:
         console.print(
             f"next command: {payload['next_command']}", soft_wrap=True, markup=False
         )
+    sweep_hint = payload.get("sweep_hint")
+    if sweep_hint:
+        console.print(f"identical sweep: {sweep_hint}", soft_wrap=True, markup=False)
 
 
 def _first_missing_chapter(payload: dict[str, object]) -> str | None:
@@ -1068,6 +1073,16 @@ def judge_insert(
     console.print(f"accepted: {payload['accepted_records']} record(s)")
     if payload["version_refs"]:
         console.print("versions: " + ", ".join(payload["version_refs"]))
+    record_findings = payload.get("record_findings") or []
+    warn_findings = [f for f in record_findings if f["severity"] == "warn"]
+    if warn_findings:
+        console.print(f"qa: {len(warn_findings)} warning(s)")
+        for finding in warn_findings:
+            console.print(
+                f"  warning: {finding['record_id']}: {finding['message']}",
+                soft_wrap=True,
+                markup=False,
+            )
     chapter_id = payload.get("chapter_id") or ""
     status_payload = build_judge_status_workflow(
         proj,
@@ -1130,3 +1145,93 @@ def judge_reset_ingest(
             soft_wrap=True,
             markup=False,
         )
+
+
+@judge_app.command(name="prefill-policy-fixes")
+def judge_prefill_policy_fixes(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    judge_task_id: str = typer.Option(..., "--judge-task-id", help="Judge task id."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Selection profile name."
+    ),
+    write: bool = typer.Option(
+        False,
+        "--write",
+        help="Write <task>.decisions.txt and <task>.policy-hints.txt.",
+    ),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    try:
+        payload = prefill_judge_policy_fixes_workflow(
+            runtime.project,
+            judge_task_id=judge_task_id,
+            write=write,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(f"judge task: {payload['judge_task_id']}")
+    console.print(f"prefilled decisions: {len(payload['decisions'])} record(s)")
+    console.print(f"policy hints: {len(payload['hints'])} record(s)")
+    if write:
+        if payload["decisions_path"]:
+            console.print(
+                f"wrote: {_render_judge_path(Path(payload['decisions_path']), runtime)}",
+                soft_wrap=True,
+                markup=False,
+            )
+        if payload["hints_path"]:
+            console.print(
+                f"wrote: {_render_judge_path(Path(payload['hints_path']), runtime)}",
+                soft_wrap=True,
+                markup=False,
+            )
+    else:
+        console.print(
+            "next: booktx judge prefill-policy-fixes . "
+            f"--judge-task-id {judge_task_id} --write",
+            soft_wrap=True,
+            markup=False,
+        )
+
+
+@judge_app.command(name="finish-chapter-plan")
+def judge_finish_chapter_plan(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    chapter: str = typer.Option(..., "--chapter", help="Chapter id to plan."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Selection profile name."
+    ),
+    sources: str | None = typer.Option(
+        None, "--sources", help="Comma-separated source profiles."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    _require_chunks(runtime.project)
+    _require_no_source_drift(runtime.project)
+    _require_ready_context(runtime.project)
+    sources_csv = None if runtime.mode.kind == "profile-root" else sources
+    try:
+        status_payload = build_judge_status_workflow(
+            runtime.project,
+            runtime,
+            bundle=_project_status_snapshot(runtime.project),
+            sources_csv=sources_csv,
+        )
+        payload = finish_chapter_plan_workflow(
+            runtime.project,
+            runtime,
+            chapter=chapter,
+            status_payload=status_payload,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if as_json:
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    for line in payload["plan_lines"]:
+        console.print(line, soft_wrap=True, markup=False)

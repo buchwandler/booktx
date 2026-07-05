@@ -2954,3 +2954,742 @@ def test_judge_task_render_does_not_truncate_inside_record_policy_block(tmp_path
     assert trim_block.count("## ") == trim_block.count("DECISION:")
     # Trimming removed whole records, not partial ones.
     assert 1 <= trim_block.count("## ") <= full_records
+
+
+def _mandate_termbase(
+    project_dir: Path,
+    profile: str,
+    source: str,
+    target: str,
+    *forbidden: str,
+    entry_id: str = "LEX-TEST",
+    preferred_policy: str = "required",
+    severity: str = "error",
+) -> None:
+    args = [
+        "termbase",
+        "add",
+        str(project_dir),
+        "--profile",
+        profile,
+        "--scope",
+        "project",
+        "--id",
+        entry_id,
+        "--source",
+        source,
+        "--preferred",
+        target,
+        "--preferred-policy",
+        preferred_policy,
+        "--severity",
+        severity,
+        "--approve",
+    ]
+    for value in forbidden:
+        args.extend(["--forbid", value])
+    res = runner.invoke(app, args)
+    assert res.exit_code == 0, res.output
+
+
+def test_judge_candidate_shows_termbase_forbidden_target(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(tmp_path / "global-termbase"))
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    _mandate_termbase(project_dir, "de_judge", "Lowlands", "Tieflande", "Niederlande")
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Niederlande antworten."
+    )
+
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+
+    task = load_judge_task(
+        load_profile_project(project_dir, "de_judge"), _judge_task_id(project_dir)
+    )
+    assert task is not None
+    lowlands = next(record for record in task.records if record.id == lowlands_record)
+    candidate_a = next(
+        candidate for candidate in lowlands.candidates if candidate.profile == "de_a"
+    )
+    termbase_findings = [
+        finding
+        for finding in candidate_a.validation_findings
+        if finding.rule == "termbase.forbidden_target"
+    ]
+    assert termbase_findings, (
+        "candidate A should carry a termbase.forbidden_target finding "
+        "for the forbidden target"
+    )
+    assert termbase_findings[0].severity == "error"
+
+
+def test_judge_insert_copy_rejects_termbase_forbidden_target(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(tmp_path / "global-termbase"))
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    _mandate_termbase(project_dir, "de_judge", "Lowlands", "Tieflande", "Niederlande")
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Niederlande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_json_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    ingest.write_text(
+        json.dumps(
+            {
+                "judge_task_id": task_id,
+                "records": [
+                    {
+                        "id": lowlands_record,
+                        "selected": "A",
+                        "decision_kind": "copy",
+                        "target": "Niederlande antworten.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "termbase policy" in res.output
+
+
+def test_judge_insert_edited_accepts_termbase_required_target(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(tmp_path / "global-termbase"))
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    _mandate_termbase(project_dir, "de_judge", "Lowlands", "Tieflande", "Niederlande")
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Niederlande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_json_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    ingest.write_text(
+        json.dumps(
+            {
+                "judge_task_id": task_id,
+                "records": [
+                    {
+                        "id": lowlands_record,
+                        "selected": "A",
+                        "decision_kind": "edited",
+                        "target": "Die Tieflande antworten.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+
+
+def test_judge_task_stale_after_applicable_termbase_change(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(tmp_path / "global-termbase"))
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    _mandate_termbase(project_dir, "de_judge", "Lowlands", "Tieflande", "Niederlande")
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Tieflande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+
+    # Change the applicable termbase after the task was created.
+    shard = (
+        load_profile_project(project_dir, "de_judge").booktx_dir
+        / "termbase"
+        / "de.json"
+    )
+    payload = json.loads(shard.read_text("utf-8"))
+    payload["entries"][0]["rationale"] = "Updated termbase instruction."
+    shard.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    ingest = judge_ingest_json_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    ingest.write_text(
+        json.dumps(
+            {
+                "judge_task_id": task_id,
+                "records": [
+                    {
+                        "id": lowlands_record,
+                        "selected": "A",
+                        "decision_kind": "copy",
+                        "target": "Tieflande antworten.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "predates applicable termbase changes" in res.output
+
+
+def _prefill_artifact_paths(project_dir: Path, task_id: str) -> tuple[Path, Path]:
+    decisions_path = judge_ingest_decisions_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    hints_path = decisions_path.with_name(
+        decisions_path.stem.removesuffix(".decisions") + ".policy-hints.txt"
+    )
+    return decisions_path, hints_path
+
+
+def test_judge_prefill_policy_fixes_copies_only_clean_candidate(tmp_path: Path):
+    project_dir, _record_ids = _judge_project(tmp_path)
+    empire_record = _record_id_for_text(project_dir, "Empire")
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    # Empire: a single clean candidate -> deterministic copy.
+    _write_source_candidate(
+        project_dir, "de_a", empire_record, "Das Imperium rueckt vor."
+    )
+    # Lowlands: two candidates -> ambiguous -> policy hint.
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Die Tieflande antworten."
+    )
+    _write_source_candidate(
+        project_dir, "de_b", lowlands_record, "Die Niederlande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "prefill-policy-fixes",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--write",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+    decisions_path, hints_path = _prefill_artifact_paths(project_dir, task_id)
+    decisions_text = decisions_path.read_text("utf-8")
+    hints_text = hints_path.read_text("utf-8")
+    # Only the clean single-candidate record is copied.
+    assert f"## {empire_record}" in decisions_text
+    assert "decision_kind: copy" in decisions_text
+    assert "selected: A" in decisions_text
+    # The ambiguous multi-candidate record is deferred to manual judging.
+    assert f"## {lowlands_record}" not in decisions_text
+    assert f"## {lowlands_record}" in hints_text
+
+
+def test_judge_prefill_policy_fixes_literal_forbidden_replacement(tmp_path: Path):
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "Lowlands",
+            "--profile",
+            "de_judge",
+            "--target",
+            "Tieflande",
+            "--forbid",
+            "Niederlande",
+        ],
+    )
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Die Niederlande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "prefill-policy-fixes",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--write",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+    decisions_path, _hints_path = _prefill_artifact_paths(project_dir, task_id)
+    decisions_text = decisions_path.read_text("utf-8")
+    # The single forbidden literal is deterministically replaced.
+    assert f"## {lowlands_record}" in decisions_text
+    assert "decision_kind: edited" in decisions_text
+    assert "Die Tieflande antworten." in decisions_text
+    # The forbidden literal must not survive into the edited TARGET.
+    assert "TARGET:\nDie Niederlande" not in decisions_text
+
+
+def test_judge_prefill_policy_fixes_refuses_multiple_occurrences(tmp_path: Path):
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "Lowlands",
+            "--profile",
+            "de_judge",
+            "--target",
+            "Tieflande",
+            "--forbid",
+            "Niederlande",
+        ],
+    )
+    # The forbidden literal occurs twice -> replacement is ambiguous.
+    _write_source_candidate(
+        project_dir,
+        "de_a",
+        lowlands_record,
+        "Niederlande und Niederlande antworten.",
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "prefill-policy-fixes",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--write",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+    decisions_path, hints_path = _prefill_artifact_paths(project_dir, task_id)
+    decisions_text = decisions_path.read_text("utf-8")
+    hints_text = hints_path.read_text("utf-8")
+    assert f"## {lowlands_record}" not in decisions_text
+    assert f"## {lowlands_record}" in hints_text
+
+
+def test_judge_prefill_policy_fixes_refuses_inline_xhtml_unsafe_change(tmp_path: Path):
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "Lowlands",
+            "--profile",
+            "de_judge",
+            "--target",
+            "Tieflande",
+            "--forbid",
+            "Niederlande",
+        ],
+    )
+    # The candidate carries an inline-XHTML span token (__TAG_001__) that the
+    # source lacks; auto-editing around inline markup is unsafe, so the
+    # edited target still fails validation and the record is deferred.
+    _write_source_candidate(
+        project_dir,
+        "de_a",
+        lowlands_record,
+        "Die __TAG_001__ Niederlande antworten.",
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "prefill-policy-fixes",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--write",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+    decisions_path, hints_path = _prefill_artifact_paths(project_dir, task_id)
+    decisions_text = decisions_path.read_text("utf-8")
+    hints_text = hints_path.read_text("utf-8")
+    assert f"## {lowlands_record}" not in decisions_text
+    assert f"## {lowlands_record}" in hints_text
+
+
+def test_judge_status_prints_sweep_hint_when_multiple_chapters_remaining(
+    tmp_path: Path,
+):
+    project_dir, _chapters = _multi_chapter_judge_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "status",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert "identical sweep:" in res.output
+    assert "sweep-identical" in res.output
+
+
+def test_judge_finish_chapter_plan_profile_root_paths_are_local(tmp_path: Path):
+    project_dir, record_ids = _judge_project(tmp_path)
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    # Prepare a profile root (isolated snapshot mode).
+    runner.invoke(
+        app,
+        [
+            "judge",
+            "prepare-isolation",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--write",
+        ],
+    )
+    profile_root = project_dir / "translations" / "de_judge"
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "finish-chapter-plan",
+            str(profile_root),
+            "--chapter",
+            "0001",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    # All paths/commands must be profile-root-local.
+    assert "../" not in res.output
+    assert "--profile" not in res.output
+    # Use the local project argument, not absolute paths or sibling names.
+    assert str(project_dir) not in res.output
+    assert "." in res.output
+
+
+def test_judge_insert_edited_rejects_missing_opening_german_quote(tmp_path: Path):
+    # Source enclosed in recognized curly-quoted pair \u201c...\u201d.
+    project_dir = tmp_path / "book"
+    src = tmp_path / "novel.md"
+    src.write_text("# One\n\n\u201cThe Lowlands answer.\u201d\n", encoding="utf-8")
+    runner.invoke(
+        app,
+        ["init", str(project_dir), "--source-file", str(src), "--source-lang", "en"],
+    )
+    assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
+    _create_translation_profile(project_dir, "de_a")
+    _create_selection_profile(project_dir, "de_judge", ["de_a"])
+    _ready_context(project_dir, "de_a")
+    _ready_context(project_dir, "de_judge")
+    quoted_record = _record_id_for_text(project_dir, "Lowlands")
+    # Candidate target: opening curly quote missing.
+    _write_source_candidate(
+        project_dir, "de_a", quoted_record, "Niederlande antworten.\u201d"
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_json_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    ingest.write_text(
+        json.dumps(
+            {
+                "judge_task_id": task_id,
+                "records": [
+                    {
+                        "id": quoted_record,
+                        "selected": "A",
+                        "decision_kind": "edited",
+                        "target": "Niederlande antworten.\u201d",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert res.exit_code != 0
+    assert "quotation" in res.output
+
+
+def test_judge_insert_prints_qa_summary_with_warnings(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(tmp_path / "global-termbase"))
+    project_dir, _record_ids = _judge_project(tmp_path)
+    lowlands_record = _record_id_for_text(project_dir, "Lowlands")
+    # Warning-level termbase rule: candidate violates it, insert still succeeds.
+    _mandate_termbase(
+        project_dir,
+        "de_judge",
+        "Lowlands",
+        "Tieflande",
+        "Niederlande",
+        severity="warn",
+        preferred_policy="off",
+    )
+    _write_source_candidate(
+        project_dir, "de_a", lowlands_record, "Die Niederlande antworten."
+    )
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--sources",
+            "de_a,de_b",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task_id = _judge_task_id(project_dir)
+    ingest = judge_ingest_json_path(
+        load_profile_project(project_dir, "de_judge"), task_id
+    )
+    ingest.write_text(
+        json.dumps(
+            {
+                "judge_task_id": task_id,
+                "records": [
+                    {
+                        "id": lowlands_record,
+                        "selected": "A",
+                        "decision_kind": "edited",
+                        "target": "Die Niederlande antworten.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res = runner.invoke(
+        app,
+        [
+            "judge",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_judge",
+            "--judge-task-id",
+            task_id,
+            "--file",
+            str(ingest),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    assert "qa:" in res.output
+    assert "warning:" in res.output

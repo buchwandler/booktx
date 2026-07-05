@@ -330,3 +330,15 @@ def test_unclosed_comment_within_4kib_is_malformed(tmp_path):
     path = tmp_path / AGENTS_FILENAME
     write_text_atomic(path, "<!-- booktx-agents-md\nschema: booktx.agents-md.v1\n")
     assert inspect_agents_md(path).state == "managed-malformed"
+
+
+def test_agents_md_judge_section_puts_no_loop_rule_before_commands():
+    text = render_agents_md(**ISO_SELECTION_KWARGS)
+    loop_pos = text.find("shell loop")
+    assert loop_pos != -1, "no-loop rule not found in judge section"
+    commands_pos = text.find("When the user says `continue`")
+    assert commands_pos != -1, "command examples not found"
+    assert loop_pos < commands_pos, (
+        "no-loop rule must appear before the judge command examples"
+    )
+    assert "|| true" in text

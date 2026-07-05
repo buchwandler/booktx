@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 # ruff: noqa: E501
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -18,6 +19,7 @@ from booktx.config import (
     write_profile_config,
 )
 from booktx.context import (
+    TranslationContext,
     load_context,
     unapproved_required_questions,
     unresolved_required_questions,
@@ -46,8 +48,19 @@ from booktx.judge_store import (
     selected_record_ids,
 )
 from booktx.judge_tasks import create_judge_task, render_judge_ingest
-from booktx.models import JudgeTask, SelectionConfig
+from booktx.models import (
+    JudgeTask,
+    JudgeTaskCandidate,
+    JudgeTaskRecord,
+    Record,
+    SelectionConfig,
+    TranslatedRecord,
+)
+from booktx.placeholders import TOKEN_RE, collect_tokens
 from booktx.termbase import publish_termbase_snapshot
+from booktx.termbase_match import iter_boundary_matches
+from booktx.termbase_tasking import validate_termbase_record_pair
+from booktx.validate import Severity, load_validation_context, validate_record_pair
 from booktx.workflows.context import mark_ready_workflow
 from booktx.workflows.profile import create_profile_workflow
 
@@ -69,6 +82,8 @@ __all__ = [
     "accept_identical_judge_records_workflow",
     "reset_judge_ingest_workflow",
     "prepare_judge_isolation_workflow",
+    "prefill_judge_policy_fixes_workflow",
+    "finish_chapter_plan_workflow",
 ]
 
 
@@ -327,6 +342,28 @@ def _build_status_next_command(
     )
 
 
+def _build_sweep_hint_command(
+    runtime: RuntimeContext,
+    proj: Project,
+    source_profiles: list[str],
+    from_chapter: str,
+    to_chapter: str,
+    source_access: Literal["live", "snapshot"],
+) -> str:
+    """Format a profile-root-safe ``judge sweep-identical`` hint command."""
+    if source_access == "snapshot":
+        return (
+            f"booktx judge sweep-identical . --from-chapter {from_chapter} "
+            f"--to-chapter {to_chapter}"
+        )
+    sources_arg = ",".join(source_profiles)
+    return (
+        f"booktx judge sweep-identical . --profile {proj.profile} "
+        f"--sources {sources_arg} --from-chapter {from_chapter} "
+        f"--to-chapter {to_chapter}"
+    )
+
+
 def build_chapter_next_command(
     proj: Project,
     runtime: RuntimeContext,
@@ -450,6 +487,26 @@ def build_judge_status_workflow(
             blocked_by.append("snapshot_missing")
         elif snapshot_state == "invalid":
             blocked_by.append("snapshot_invalid")
+    incomplete_chapters = [
+        entry["chapter_id"]
+        for entry in chapters
+        if int(entry.get("missing_records", 0)) > 0
+    ]
+    sweep_hint = ""
+    if (
+        context_info["ready"]
+        and not blocked_by
+        and snapshot_usable
+        and len(incomplete_chapters) >= 2
+    ):
+        sweep_hint = _build_sweep_hint_command(
+            runtime,
+            proj,
+            source_profiles,
+            incomplete_chapters[0],
+            incomplete_chapters[-1],
+            source_access,
+        )
     return {
         "profile": proj.profile or "",
         "source_profiles": source_profiles,
@@ -459,6 +516,7 @@ def build_judge_status_workflow(
         "records_with_candidate_gaps": candidate_gaps,
         "chapters": chapters,
         "next_command": next_command,
+        "sweep_hint": sweep_hint,
         "mode": runtime.mode.kind,
         "source_access": source_access,
         "context": context_info,
@@ -624,6 +682,15 @@ def accept_judge_submission_workflow(
     return {
         "accepted_records": result.accepted_records,
         "version_refs": result.version_refs,
+        "record_findings": [
+            {
+                "severity": f.severity,
+                "rule": f.rule,
+                "message": f.message,
+                "record_id": f.record_id,
+            }
+            for f in result.record_findings
+        ],
         "chapter_id": task.chapter_id,
         "judge_task_id": task.judge_task_id,
     }
@@ -829,3 +896,290 @@ def sweep_identical_judge_records_workflow(
         "stopped_chapter": stopped_chapter,
         "write": write,
     }
+
+
+def _prefill_dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in values:
+        value = raw.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+@dataclass(slots=True)
+class _PrefillDecision:
+    record_id: str
+    selected: str
+    decision_kind: Literal["copy", "edited"]
+    target: str
+    reason: str
+
+
+@dataclass(slots=True)
+class _PrefillHint:
+    record_id: str
+    summary: str
+
+
+def _prefill_forbidden_hits(
+    target: str, record: JudgeTaskRecord
+) -> list[tuple[str, str, bool]]:
+    """Literal forbidden targets present in ``target`` with their replacement.
+
+    Returns ``(forbidden_value, approved_replacement, case_sensitive)`` tuples.
+    Only entries with exactly one approved replacement are considered, so an
+    ambiguous entry never produces a hit.
+    """
+    hits: list[tuple[str, str, bool]] = []
+    for entry in record.applicable_glossary:
+        approved = _prefill_dedupe([entry.target or "", *entry.target_variants])
+        if len(approved) != 1:
+            continue
+        replacement = approved[0]
+        for forbidden in _prefill_dedupe(entry.forbidden_targets):
+            if iter_boundary_matches(
+                target, forbidden, case_sensitive=entry.case_sensitive
+            ):
+                hits.append((forbidden, replacement, entry.case_sensitive))
+    for snapshot in record.applicable_termbase:
+        approved = _prefill_dedupe(snapshot.target_preferred)
+        if len(approved) != 1:
+            continue
+        replacement = approved[0]
+        for forbidden in _prefill_dedupe(snapshot.target_forbidden):
+            if iter_boundary_matches(
+                target, forbidden, case_sensitive=snapshot.case_sensitive
+            ):
+                hits.append((forbidden, replacement, snapshot.case_sensitive))
+    return hits
+
+
+def _prefill_span_overlaps_token(text: str, span: tuple[int, int]) -> bool:
+    for match in TOKEN_RE.finditer(text):
+        if span[0] < match.end() and match.start() < span[1]:
+            return True
+    return False
+
+
+def _prefill_edited_target_blocks(
+    record: JudgeTaskRecord,
+    edited: str,
+    validation_context: TranslationContext | None,
+) -> bool:
+    """True when the edited target would fail judge-insert validation."""
+    source_record = Record(id=record.id, source=record.source)
+    translated = TranslatedRecord(id=record.id, target=edited)
+    findings = list(
+        validate_record_pair(
+            source_record, translated, record.chunk_id, validation_context
+        )
+    )
+    findings.extend(
+        validate_termbase_record_pair(
+            source_text=record.source,
+            target_text=edited,
+            snapshots=record.applicable_termbase,
+            chunk_id=record.chunk_id,
+            record_id=record.id,
+        )
+    )
+    blocking_rules = {"glossary_target_missing", "forbidden_term_used"}
+    return any(
+        finding.severity == Severity.ERROR or finding.rule in blocking_rules
+        for finding in findings
+    )
+
+
+def _prefill_try_repair(
+    record: JudgeTaskRecord,
+    candidate: JudgeTaskCandidate,
+    validation_context: TranslationContext | None,
+) -> _PrefillDecision | None:
+    target = candidate.target
+    hits = _prefill_forbidden_hits(target, record)
+    if len(hits) != 1:
+        return None
+    forbidden, replacement, case_sensitive = hits[0]
+    matches = list(
+        iter_boundary_matches(target, forbidden, case_sensitive=case_sensitive)
+    )
+    if len(matches) != 1:
+        return None
+    span = matches[0].span()
+    # XHTML/placeholder safety: never auto-edit a span that touches a
+    # placeholder token (inline non-translatable spans encode XHTML markup).
+    if _prefill_span_overlaps_token(target, span):
+        return None
+    edited = target[: span[0]] + replacement + target[span[1] :]
+    if collect_tokens(target) != collect_tokens(edited):
+        return None
+    if _prefill_edited_target_blocks(record, edited, validation_context):
+        return None
+    return _PrefillDecision(
+        record_id=record.id,
+        selected=candidate.label,
+        decision_kind="edited",
+        target=edited,
+        reason=f"replaced forbidden target {forbidden!r} with approved {replacement!r}",
+    )
+
+
+def _build_prefill_decisions(
+    proj: Project, task: JudgeTask
+) -> tuple[list[_PrefillDecision], list[_PrefillHint]]:
+    decisions: list[_PrefillDecision] = []
+    hints: list[_PrefillHint] = []
+    validation_context = load_validation_context(
+        proj, context_view_path=task.context_view_path
+    )
+    for record in task.records:
+        if not record.candidates:
+            hints.append(_PrefillHint(record.id, "no candidates"))
+            continue
+        if len(record.candidates) != 1:
+            hints.append(
+                _PrefillHint(record.id, "multiple candidates; choose manually")
+            )
+            continue
+        candidate = record.candidates[0]
+        if not candidate.validation_findings:
+            decisions.append(
+                _PrefillDecision(
+                    record_id=record.id,
+                    selected=candidate.label,
+                    decision_kind="copy",
+                    target="",
+                    reason="single clean candidate",
+                )
+            )
+            continue
+        decision = _prefill_try_repair(record, candidate, validation_context)
+        if decision is not None:
+            decisions.append(decision)
+        else:
+            hints.append(_PrefillHint(record.id, "policy conflict; judge manually"))
+    return decisions, hints
+
+
+def _render_prefill_decisions(
+    task: JudgeTask, decisions: list[_PrefillDecision]
+) -> str:
+    lines: list[str] = [
+        "# booktx judge decisions (prefilled policy fixes)",
+        f"judge_task_id: {task.judge_task_id}",
+        "# Only deterministic records are included; judge the rest manually.",
+        "",
+    ]
+    for decision in decisions:
+        lines.extend(
+            [
+                f"## {decision.record_id}",
+                f"selected: {decision.selected}",
+                f"decision_kind: {decision.decision_kind}",
+                f"reason: {decision.reason}",
+                "TARGET:",
+                decision.target,
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_prefill_policy_hints(task: JudgeTask, hints: list[_PrefillHint]) -> str:
+    lines: list[str] = [
+        "# booktx judge policy hints",
+        f"judge_task_id: {task.judge_task_id}",
+        "# These records need manual judging; no deterministic fix was safe.",
+        "",
+    ]
+    for hint in hints:
+        lines.extend([f"## {hint.record_id}", f"hint: {hint.summary}", ""])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def prefill_judge_policy_fixes_workflow(
+    proj: Project,
+    *,
+    judge_task_id: str,
+    write: bool,
+) -> dict[str, Any]:
+    """Prefill deterministic glossary/termbase repair decisions for a judge task.
+
+    Writes ``<task>.decisions.txt`` for records that have a single clean
+    candidate (copied) or a single candidate whose only policy issue is one
+    literal forbidden target with exactly one approved replacement, a single
+    occurrence, a placeholder/XHTML-safe swap, and a validation-passing result
+    (edited). Every other record is summarized in
+    ``<task>.policy-hints.txt`` for manual judging.
+    """
+    task = load_judge_task(proj, judge_task_id)
+    if task is None:
+        raise _err("judge_task_not_found", f"judge task not found: {judge_task_id}")
+    decisions, hints = _build_prefill_decisions(proj, task)
+    decisions_text = _render_prefill_decisions(task, decisions)
+    hints_text = _render_prefill_policy_hints(task, hints)
+    decisions_path = Path(judge_ingest_decisions_path(proj, task.judge_task_id))
+    hints_path = decisions_path.with_name(
+        decisions_path.stem.removesuffix(".decisions") + ".policy-hints.txt"
+    )
+    written_decisions = ""
+    written_hints = ""
+    if write:
+        # Always overwrite both artifacts so the output reflects the prefill
+        # result rather than the original ``judge next`` ingest template.
+        write_text_atomic(decisions_path, decisions_text)
+        written_decisions = str(decisions_path)
+        write_text_atomic(hints_path, hints_text)
+        written_hints = str(hints_path)
+    return {
+        "judge_task_id": judge_task_id,
+        "decisions": [decision.record_id for decision in decisions],
+        "hints": [hint.record_id for hint in hints],
+        "decisions_path": written_decisions,
+        "hints_path": written_hints,
+        "write": write,
+    }
+
+
+def finish_chapter_plan_workflow(
+    proj: Project,
+    runtime: RuntimeContext,
+    *,
+    chapter: str,
+    status_payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a deterministic finish-the-chapter plan with profile-local paths.
+
+    The plan lists an identical-sweep step, a judge-next step, the edit/insert
+    step, and a stop condition. Every printed command uses the project
+    argument ``.`` and never references sibling profiles, absolute paths, or
+    parent directories.
+    """
+    source_profiles = list(status_payload.get("source_profiles") or [])
+    source_access = status_payload.get("source_access")
+    if source_access not in {"live", "snapshot"}:
+        source_access = "live"
+    sweep_cmd = _build_sweep_hint_command(
+        runtime, proj, source_profiles, chapter, chapter, source_access
+    )
+    next_cmd = build_chapter_next_command(
+        proj, runtime, chapter=chapter, status_payload=status_payload
+    )
+    if not next_cmd:
+        next_cmd = (
+            f"booktx judge next . --unit chapter --chapter {chapter} "
+            "--max-records 8 --format decisions"
+        )
+    plan_lines = [
+        f"chapter {chapter} finish plan:",
+        f"1. sweep identical records: {sweep_cmd}",
+        f"2. judge remaining records: {next_cmd}",
+        "3. edit judge-ingest/TASK.decisions.txt and submit with the "
+        "printed `booktx judge insert . ...` command.",
+        f"stop condition: chapter {chapter} has no missing records.",
+    ]
+    return {"chapter": chapter, "plan_lines": plan_lines}
