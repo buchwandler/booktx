@@ -864,6 +864,7 @@ def termbase_promote_context_workflow(
             category="phrase",
             notes=(entry.sense or entry.rationale).strip(),
             enforce="error",
+            case_sensitive=entry.case_sensitive,
         )
     if as_question or (not as_advisory and len(entry.target_preferred) != 1):
         ctx = load_context(runtime.project)
@@ -912,6 +913,7 @@ def termbase_promote_context_workflow(
         source_variant=entry.source_variants,
         target_variant=[],
         require_target=False,
+        case_sensitive=entry.case_sensitive,
         allow_disable_enforcement=False,
         create=True,
     )

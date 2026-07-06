@@ -41,9 +41,12 @@ from booktx.config import (
     translation_ingest_path,
     translation_task_source_block_path,
 )
-from booktx.context import ensure_context_view_snapshot
+from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.glossary_match import (
+    entry_is_binding,
     live_mandatory_glossary_sha256,
+    source_glossary_matches,
+    target_terms,
 )
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
 from booktx.models import TranslationTask, TranslationTaskRecord
@@ -324,10 +327,44 @@ def write_task_source_block(project: Project, task: TranslationTask) -> Path:
                 f"# {snapshot.entry_id} | {snapshot.source} | {preferred} | {forbidden} | {note}".rstrip()
             )
         parts.append("")
+    try:
+        context = load_context(project)
+        glossary = list(context.glossary) if context is not None else []
+    except FileNotFoundError:
+        glossary = []
+
     for idx, record in enumerate(task.records):
         if idx:
             parts.append("")
         parts.append(f">>> {record.id}")
+        for span in source_glossary_matches(record.source, glossary):
+            if span.shadowed:
+                continue
+            entry = glossary[span.entry_index]
+            if not entry_is_binding(entry):
+                continue
+            approved = " / ".join(target_terms(entry)) or "(none)"
+            forbidden = " / ".join(entry.forbidden_targets) or "(none)"
+            policy: list[str] = []
+            if entry.require_target:
+                policy.append("required")
+            if entry.forbidden_targets:
+                policy.append("forbidden")
+            policy_text = ", ".join(policy) or "binding"
+            match_policy = (
+                "case-sensitive" if entry.case_sensitive else "case-insensitive"
+            )
+            parts.append(
+                "# glossary: "
+                f"{entry.source} -> {approved}; "
+                f"{policy_text}; forbidden: {forbidden}; "
+                f"target match is literal, boundary-aware, {match_policy}"
+            )
+        if "\u2013" in record.source or "\u2014" in record.source:
+            parts.append(
+                "# style: source contains an en/em dash; preserve a German dash cue "
+                "(– or —) in the target unless the meaning is truly removed"
+            )
         for snapshot in record.applicable_termbase:
             note = snapshot.sense or snapshot.rationale
             parts.append(f"# termbase: {snapshot.entry_id} — {note}".rstrip(" —"))

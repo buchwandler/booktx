@@ -14,7 +14,7 @@ from booktx.config import (
     load_project,
     translation_store_path,
 )
-from booktx.context import load_context, write_context
+from booktx.context import GlossaryEntry, load_context, write_context
 
 runner = CliRunner()
 
@@ -1571,6 +1571,88 @@ def test_translate_next_writes_source_block_file(tmp_path: Path):
         assert record["source"] in text
 
 
+def test_translate_next_source_block_flags_required_glossary_and_dash(tmp_path: Path):
+    src = tmp_path / "book.md"
+    src.write_text("He studied Commonweal beds – then gave up.\n", encoding="utf-8")
+    project_dir = tmp_path / "book"
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--target",
+            "de",
+            "--source-file",
+            str(src),
+            "--chunk-size",
+            "2",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
+    init_res = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    assert init_res.exit_code == 0, init_res.output
+    proj = load_project(project_dir, profile="de_default")
+    ctx = load_context(proj)
+    ctx.glossary.append(
+        GlossaryEntry(
+            source="Commonweal",
+            target="Commonweal",
+            require_target=True,
+            category="place",
+            status="approved",
+            enforce="error",
+        )
+    )
+    write_context(proj, ctx)
+    ready_res = runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--force",
+            "--reason",
+            "test setup",
+        ],
+    )
+    assert ready_res.exit_code == 0, ready_res.output
+
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    source_block = project_dir / task["source_block_path"]
+    text = source_block.read_text("utf-8")
+
+    assert "# glossary: Commonweal -> Commonweal; required" in text
+    assert "target match is literal, boundary-aware" in text
+    assert "# style: source contains an en/em dash" in text
+
+
 def test_translate_insert_missing_file_is_concise(tmp_path: Path):
     project_dir = _make_project(tmp_path)
 
@@ -2395,6 +2477,39 @@ def test_translate_insert_rejects_missing_final_quote(tmp_path: Path):
     after = _store_path(project_dir)
     after_text = after.read_text("utf-8") if after.is_file() else None
     assert after_text == before_text
+
+
+def test_translate_insert_normalizes_ascii_german_closing_quote(tmp_path: Path):
+    project_dir = _make_quoted_project(tmp_path)
+    task, record = _first_task_record(project_dir)
+    record_id = record["id"]
+
+    block = f'>>> {record_id}\n„Sie werden keine Rücksicht auf mich nehmen."\n'
+    insert_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task["task_id"],
+            "--stdin",
+            "--format",
+            "block",
+        ],
+        input=block,
+    )
+
+    assert insert_res.exit_code == 0, insert_res.output
+    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    active = store["records"][record_id]["active_version"]
+    [version] = [
+        v for v in store["records"][record_id]["versions"] if v["version_ref"] == active
+    ]
+    assert version["target"].endswith("“")
+    assert '"' not in version["target"]
 
 
 def test_translate_revise_record_rejects_missing_final_quote(tmp_path: Path):

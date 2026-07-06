@@ -104,6 +104,31 @@ def test_parse_block_submission_preserves_internal_comments():
     assert parsed.records[1].target == "second"
 
 
+def test_submission_parsers_normalize_only_ascii_german_closers_outside_tags():
+    target = '<span title="unchanged">„Hallo."</span>'
+    expected = '<span title="unchanged">„Hallo.“</span>'
+
+    json_parsed = parse_json_submission(
+        json.dumps({"records": [{"id": "r1", "target": target}]})
+    )
+    tsv_parsed = parse_tsv_submission(f"r1\t{target}\n")
+    block_parsed = parse_block_submission(f">>> r1\n{target}\n")
+    direct_parsed = resolve_submission(
+        record_id="r1",
+        target=target,
+        input_format="json",
+        stdin=False,
+        json_file=None,
+        input_file=None,
+    )
+
+    assert json_parsed.records[0].target == expected
+    assert tsv_parsed.records[0].target == expected
+    assert block_parsed.records[0].target == expected
+    assert direct_parsed.records[0].target == expected
+    assert parse_tsv_submission('r1\t"plain"\n').records[0].target == '"plain"'
+
+
 def test_read_submission_file_missing_raises_booktx_error(tmp_path: Path):
     from booktx.config import BooktxError
 

@@ -1791,6 +1791,110 @@ def test_context_reset_term_can_clear_require_target(tmp_path: Path):
     assert entry["require_target"] is False
 
 
+def test_context_reset_term_can_set_case_sensitive(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Commonweal",
+            "--target",
+            "Commonweal",
+            "--require-target",
+            "--case-sensitive",
+            "--create",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "Commonweal")
+    assert entry["case_sensitive"] is True
+
+    preserve = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Commonweal",
+            "--notes",
+            "preserve case policy",
+        ],
+    )
+    assert preserve.exit_code == 0, preserve.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "Commonweal")
+    assert entry["case_sensitive"] is True
+
+    disable = runner.invoke(
+        app,
+        [
+            "context",
+            "reset-term",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Commonweal",
+            "--no-case-sensitive",
+        ],
+    )
+    assert disable.exit_code == 0, disable.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "Commonweal")
+    assert entry["case_sensitive"] is False
+
+
+def test_context_mandate_term_can_set_case_sensitive(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    res = runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Commonweal",
+            "--target",
+            "Commonweal",
+            "--case-sensitive",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    data = json.loads(_ctx_json(project_dir).read_text("utf-8"))
+    entry = next(g for g in data["glossary"] if g["source"] == "Commonweal")
+    assert entry["case_sensitive"] is True
+    assert entry["require_target"] is True
+
+
 # --- chapter-note --replace-all --------------------------------------------
 
 

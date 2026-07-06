@@ -1046,6 +1046,11 @@ def test_glossary_missing_target_explains_source_phrase_context(tmp_path: Path) 
     assert "Wasp hunter" in finding.message
     assert "possible phrase collision" in finding.message
     assert "longer glossary entry" in finding.message
+    assert (
+        "literal, boundary-delimited expressions (case-insensitive)" in finding.message
+    )
+    assert "inflected or derived forms do not count" in finding.message
+    assert "configured as target variants" in finding.message
     assert finding.source == "The Wasp hunter was still at Nivit's place."
     assert finding.target == "Der Wespenjäger war noch bei Nivit."
 

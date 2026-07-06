@@ -736,6 +736,7 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
     source_variant: list[str] | None,
     target_variant: list[str] | None,
     require_target: bool | None,
+    case_sensitive: bool | None,
     allow_disable_enforcement: bool,
     create: bool,
 ) -> str:
@@ -759,7 +760,7 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
         cleaned_forbidden = _clean_forbidden_targets(
             forbid or [],
             approved_target=target,
-            case_sensitive=False,
+            case_sensitive=bool(case_sensitive),
         )
         if applied_enforce == "off":
             _die_disable_enforcement_guard(
@@ -778,6 +779,7 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
                 category=applied_category,
                 status="approved" if target else "open",
                 notes=applied_notes,
+                case_sensitive=bool(case_sensitive),
                 enforce=applied_enforce,  # type: ignore[arg-type]
             )
         )
@@ -806,6 +808,8 @@ def reset_term_workflow(  # noqa: C901 - long form mirrors original
         existing.target_variants = _clean_variant_list(target_variant)
     if require_target is not None:
         existing.require_target = require_target
+    if case_sensitive is not None:
+        existing.case_sensitive = case_sensitive
     if enforce is not None:
         existing.enforce = enforce  # type: ignore[assignment]
     if existing.enforce == "off":
@@ -833,6 +837,7 @@ def mandate_term_workflow(
     category: str | None,
     notes: str | None,
     enforce: str,
+    case_sensitive: bool,
 ) -> str:
     """Record a binding user terminology decision (always enforced)."""
     if enforce == "off":
@@ -847,7 +852,7 @@ def mandate_term_workflow(
     cleaned_forbidden = _clean_forbidden_targets(
         forbid or [],
         approved_target=target,
-        case_sensitive=False,
+        case_sensitive=case_sensitive,
     )
     replacement = GlossaryEntry(
         source=source,
@@ -859,6 +864,7 @@ def mandate_term_workflow(
         category=applied_category,
         status="approved" if target else "open",
         notes=applied_notes,
+        case_sensitive=case_sensitive,
         enforce=enforce,  # type: ignore[arg-type]
     )
     ctx.glossary = [e for e in ctx.glossary if e.source != source]

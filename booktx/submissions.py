@@ -22,6 +22,7 @@ from booktx.acceptance import SubmittedRecord
 from booktx.config import _err
 from booktx.models import TranslatedRecord
 from booktx.record_refs import parse_version_ref
+from booktx.text_normalization import normalize_submitted_target
 
 if TYPE_CHECKING:
     pass
@@ -133,7 +134,12 @@ def parse_json_submission(text: str) -> ParsedSubmission:
                 "invalid_json_submission",
                 "each submitted record must contain string fields 'id' and 'target'",
             )
-        parsed.append(SubmittedRecord(id=record.id.strip(), target=record.target))
+        parsed.append(
+            SubmittedRecord(
+                id=record.id.strip(),
+                target=normalize_submitted_target(record.target),
+            )
+        )
     task_id = payload.get("task_id")
     return ParsedSubmission(
         parsed,
@@ -160,7 +166,12 @@ def parse_tsv_submission(text: str) -> ParsedSubmission:
             raise _err(
                 "malformed_tsv", f"malformed TSV line {line_no}: missing record id"
             )
-        parsed.append(SubmittedRecord(id=record_id.strip(), target=target))
+        parsed.append(
+            SubmittedRecord(
+                id=record_id.strip(),
+                target=normalize_submitted_target(target),
+            )
+        )
     return ParsedSubmission(parsed)
 
 
@@ -183,7 +194,7 @@ def parse_block_submission(text: str) -> ParsedSubmission:
         lines = list(current_lines)
         while lines and (not lines[-1].strip() or lines[-1].lstrip().startswith("#")):
             lines.pop()
-        target = _trim_blank_edge_lines(lines)
+        target = normalize_submitted_target(_trim_blank_edge_lines(lines))
         if not target:
             raise _err("empty_block_target", f"empty target for record {current_id}")
         parsed.append(SubmittedRecord(id=current_id, target=target))
@@ -294,7 +305,9 @@ def resolve_submission(
                 "incomplete_record_pair",
                 "--record-id and --target must be supplied together",
             )
-        return ParsedSubmission([SubmittedRecord(id=record_id, target=target)])
+        return ParsedSubmission(
+            [SubmittedRecord(id=record_id, target=normalize_submitted_target(target))]
+        )
     if json_file is not None:
         return parse_json_submission(
             read_submission_file(json_file, ingest_hint=ingest_hint)

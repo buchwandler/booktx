@@ -81,6 +81,7 @@ def _write_termbase(
     *,
     rationale: str = "Avoid literal mould.",
     preferred: list[str] | None = None,
+    case_sensitive: bool = False,
 ) -> Path:
     root = tmp_path / "global-termbase"
     monkeypatch.setenv("BOOKTX_TERMBASE_DIR", str(root))
@@ -109,6 +110,7 @@ def _write_termbase(
                         ],
                         "sense": "stale doctrine",
                         "rationale": rationale,
+                        "case_sensitive": case_sensitive,
                         "created_by_kind": "user",
                     }
                 ],
@@ -373,7 +375,12 @@ def test_promote_context_defaults_to_question_for_ambiguous_entry(
 def test_promote_context_defaults_to_advisory_for_single_preferred(
     monkeypatch, tmp_path: Path
 ):
-    _write_termbase(monkeypatch, tmp_path, preferred=["schäbige Prinzipien"])
+    _write_termbase(
+        monkeypatch,
+        tmp_path,
+        preferred=["schäbige Prinzipien"],
+        case_sensitive=True,
+    )
     project_dir = _make_project(tmp_path)
 
     res = runner.invoke(
@@ -397,6 +404,42 @@ def test_promote_context_defaults_to_advisory_for_single_preferred(
     )
     assert glossary.target == "schäbige Prinzipien"
     assert glossary.require_target is False
+    assert glossary.case_sensitive is True
+
+
+def test_promote_context_binding_preserves_case_sensitivity(
+    monkeypatch, tmp_path: Path
+):
+    _write_termbase(
+        monkeypatch,
+        tmp_path,
+        preferred=["schäbige Prinzipien"],
+        case_sensitive=True,
+    )
+    project_dir = _make_project(tmp_path)
+
+    res = runner.invoke(
+        app,
+        [
+            "termbase",
+            "promote-context",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--entry",
+            "LEX-MOULDY",
+            "--as-binding",
+        ],
+    )
+
+    assert res.exit_code == 0, res.output
+    ctx = load_context(load_project(project_dir, profile="de_default"))
+    assert ctx is not None
+    glossary = next(
+        entry for entry in ctx.glossary if entry.source == "mouldy principles"
+    )
+    assert glossary.require_target is True
+    assert glossary.case_sensitive is True
 
 
 def test_write_review_reruns_same_pass_from_active_review(monkeypatch, tmp_path: Path):

@@ -182,6 +182,12 @@ def format_glossary_missing_message(
         f"in source phrase `{phrase_excerpt}`."
     )
     parts.append(f"approved target missing: {' / '.join(approved)}")
+    match_policy = "case-sensitive" if entry.case_sensitive else "case-insensitive"
+    parts.append(
+        "target matching policy: approved targets are matched as literal, "
+        f"boundary-delimited expressions ({match_policy}); inflected or derived "
+        "forms do not count unless they are configured as target variants."
+    )
     if entry.notes:
         parts.append(f"glossary note: {entry.notes}")
 

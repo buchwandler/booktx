@@ -103,6 +103,7 @@ from booktx.progress import (
 from booktx.record_refs import parse_record_ref, resolve_record_range
 from booktx.status import build_status_snapshot
 from booktx.submissions import resolve_submission
+from booktx.text_normalization import normalize_submitted_target
 from booktx.todo_resume import (
     resolve_translation_todo,
     resume_translation_todo,
@@ -1607,9 +1608,9 @@ def translate_set_record_workflow(
         _die(f"record {record_id} is not part of task {task.task_id}")
 
     if target is not None:
-        target_text = target
+        target_text = normalize_submitted_target(target)
     elif stdin:
-        target_text = sys.stdin.read()
+        target_text = normalize_submitted_target(sys.stdin.read())
         # Drop a single trailing newline (common shell/heredoc artifact) while
         # preserving all internal multiline text.
         if target_text.endswith("\r\n"):

@@ -851,6 +851,11 @@ def context_reset_term(  # noqa: C901 - long form mirrors original
         "--require-target/--no-require-target",
         help="Require an approved target form when the source term occurs.",
     ),
+    case_sensitive: bool | None = typer.Option(
+        None,
+        "--case-sensitive/--no-case-sensitive",
+        help="Set literal source/target matching case sensitivity.",
+    ),
     allow_disable_enforcement: bool = typer.Option(
         False,
         "--allow-disable-enforcement",
@@ -879,6 +884,7 @@ def context_reset_term(  # noqa: C901 - long form mirrors original
             source_variant=source_variant,
             target_variant=target_variant,
             require_target=require_target,
+            case_sensitive=case_sensitive,
             allow_disable_enforcement=allow_disable_enforcement,
             create=create,
         )
@@ -913,6 +919,11 @@ def context_mandate_term(
         "--enforce",
         help="Enforcement level (defaults to error; cannot be off).",
     ),
+    case_sensitive: bool = typer.Option(
+        False,
+        "--case-sensitive/--no-case-sensitive",
+        help="Set literal source/target matching case sensitivity.",
+    ),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
@@ -932,6 +943,7 @@ def context_mandate_term(
             category=category,
             notes=notes,
             enforce=enforce,
+            case_sensitive=case_sensitive,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
