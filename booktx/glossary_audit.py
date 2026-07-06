@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from booktx.config import Project, load_translation_store
 from booktx.context import GlossaryEntry, load_context
 from booktx.glossary_match import (
+    TermSpan,
     source_glossary_matches,
     target_terms,
 )
@@ -36,7 +37,9 @@ if TYPE_CHECKING:
 __all__ = [
     "GlossaryAuditRecord",
     "GlossaryAuditResult",
+    "GlossaryEntryEvaluation",
     "audit_glossary_term",
+    "evaluate_glossary_entries",
     "evaluate_glossary_entry",
     "render_ingest_block",
     "render_source_block",
@@ -45,7 +48,7 @@ __all__ = [
 
 @dataclass(slots=True)
 class GlossaryEntryEvaluation:
-    matched_span: object
+    matched_span: TermSpan
     evaluation: TermbaseRuleEvaluation
 
 
@@ -131,31 +134,49 @@ def _glossary_entry_to_termbase(entry: GlossaryEntry) -> TermbaseEntry:
     )
 
 
+def evaluate_glossary_entries(
+    *,
+    glossary: list[GlossaryEntry],
+    source_text: str,
+    target: str,
+) -> dict[int, list[GlossaryEntryEvaluation]]:
+    """Evaluate every active, non-shadowed glossary span in one source record."""
+    active_spans = [
+        span
+        for span in source_glossary_matches(source_text, glossary)
+        if not span.shadowed
+    ]
+    occurrence_by_entry: dict[int, int] = {}
+    result: dict[int, list[GlossaryEntryEvaluation]] = {}
+    for span in active_spans:
+        occurrence_index = occurrence_by_entry.get(span.entry_index, 0)
+        occurrence_by_entry[span.entry_index] = occurrence_index + 1
+        entry = glossary[span.entry_index]
+        result.setdefault(span.entry_index, []).append(
+            GlossaryEntryEvaluation(
+                matched_span=span,
+                evaluation=evaluate_entry_policy(
+                    target,
+                    _glossary_entry_to_termbase(entry),
+                    source_match=span.matched_term,
+                    source_span=(span.start, span.end),
+                    occurrence_index=occurrence_index,
+                )[0],
+            )
+        )
+    return result
+
+
 def evaluate_glossary_entry(
     *,
     entry: GlossaryEntry,
     source_text: str,
     target: str,
 ) -> list[GlossaryEntryEvaluation]:
-    adapted = _glossary_entry_to_termbase(entry)
-    spans = [
-        span
-        for span in source_glossary_matches(source_text, [entry])
-        if not span.shadowed
-    ]
-    return [
-        GlossaryEntryEvaluation(
-            matched_span=span,
-            evaluation=evaluate_entry_policy(
-                target,
-                adapted,
-                source_match=span.matched_term,
-                source_span=(span.start, span.end),
-                occurrence_index=index,
-            )[0],
-        )
-        for index, span in enumerate(spans)
-    ]
+    """Compatibility wrapper for intentional single-entry audits."""
+    return evaluate_glossary_entries(
+        glossary=[entry], source_text=source_text, target=target
+    ).get(0, [])
 
 
 def audit_glossary_term(

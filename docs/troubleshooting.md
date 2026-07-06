@@ -278,9 +278,19 @@ the selected candidate exactly during insert.
 
 This warning means a source record contains both a longer glossary occurrence and a shorter standalone occurrence, and a target form could belong to either. Review the companion source block from `translation search --write-block` or `context audit-term --write-block`, then revise deliberately. Use `--fail-on-warnings` to block final validation until the ambiguity has been reviewed.
 
+For a contained phrase collision, add the longer binding source phrase. Booktx
+enforces only longest non-shadowed spans, so
+`Mole Cricket-kinden -> Maulwurfsgrillenart` suppresses
+`Cricket-kinden -> Grillenart` only inside that phrase. It does not suppress a
+separate standalone `Cricket-kinden` occurrence.
+
 ## Stale tasks after policy import
 
-If insert reports that a task predates context, glossary, or applicable termbase changes, discard the old task and request a fresh one. Check `booktx termbase status --scope effective` and rerun `booktx context status` before creating the replacement task.
+If insert reports that a task predates context, glossary, or applicable
+termbase changes, discard the old task and request a fresh one. Binding glossary
+changes stale paragraph, batch, chapter, and todo-created tasks. Check
+`booktx termbase status --scope effective`, rerun `booktx context status`, and
+use `booktx translate todo-resume` when continuing a todo.
 
 ## Starting a next book safely
 

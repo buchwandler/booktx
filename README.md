@@ -501,6 +501,18 @@ booktx context mandate-term . "tenday" \
   --category "calendar"
 ```
 
+Longer mandatory phrases shadow contained shorter source terms. For example:
+
+```bash
+booktx context mandate-term . "Mole Cricket-kinden" \
+  --target "Maulwurfsgrillenart" --category "kinden"
+```
+
+This permits the natural compound without requiring the shorter
+`Cricket-kinden -> Grillenart` target token for that contained occurrence.
+Standalone shorter occurrences remain enforced. Any mandatory glossary change
+requires a fresh translation task, including batch and todo-created tasks.
+
 `reset-term` and `add-term` also accept `--source-variant`,
 `--target-variant`, and `--require-target`. Use
 `--allow-disable-enforcement` to intentionally set `--enforce off` on a

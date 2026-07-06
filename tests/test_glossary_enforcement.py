@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 
 from booktx.cli import app
 from booktx.config import (
+    BooktxError,
     init_project,
     load_project,
     load_translation_task,
@@ -895,7 +896,7 @@ def test_scenario11_stale_task_blocks_submission(tmp_path: Path) -> None:
     proj = load_project(project_dir, profile="de_default")
     task = load_translation_task(proj, task_payload["task_id"])
     assert task is not None
-    assert task.mandatory_glossary_sha256 is None
+    assert task.mandatory_glossary_sha256 is not None
 
     # Change the binding glossary decision after task creation.
     ctx = load_context(proj)
@@ -905,14 +906,15 @@ def test_scenario11_stale_task_blocks_submission(tmp_path: Path) -> None:
     write_context(proj, ctx)
 
     bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
-    accept_translation_records(
-        proj,
-        [SubmittedRecord(id=first_id, target="Er trat eine Dekade später zurück.")],
-        bundle=bundle,
-        task=task,
-        submission_translation_version=task.translation_version,
-        enforce_task_version=True,
-    )
+    with pytest.raises(BooktxError, match="predates mandatory glossary changes"):
+        accept_translation_records(
+            proj,
+            [SubmittedRecord(id=first_id, target="Er trat eine Dekade später zurück.")],
+            bundle=bundle,
+            task=task,
+            submission_translation_version=task.translation_version,
+            enforce_task_version=True,
+        )
 
 
 def test_scenario11_chapter_note_change_does_not_stale(tmp_path: Path) -> None:
@@ -1048,6 +1050,45 @@ def test_glossary_missing_target_explains_source_phrase_context(tmp_path: Path) 
     assert finding.target == "Der Wespenjäger war noch bei Nivit."
 
 
+def test_phrase_collision_hint_prefers_left_modifier_phrase(tmp_path: Path) -> None:
+    chunk = Chunk(
+        chunk_id="0001",
+        source_language="en",
+        target_language="de",
+        records=[
+            Record(
+                id="0001-000001",
+                source="One of the great Mole Cricket-kinden turned.",
+            )
+        ],
+    )
+    entry = GlossaryEntry(
+        source="Cricket-kinden",
+        target="Grillenart",
+        require_target=True,
+        category="kinden",
+        enforce="error",
+    )
+    proj_path = _write_project(tmp_path, chunk=chunk, glossary_entries=[entry])
+    _write_store_and_ledger(
+        proj_path,
+        chunk=chunk,
+        record=_store_record(
+            chunk=chunk,
+            record_id="0001-000001",
+            active_version="1.1",
+            versions=[("1.1", "Eine Maulwurfsgrillenart drehte sich um.")],
+        ),
+        tracked_refs={"1.1"},
+    )
+
+    report = validate_project(load_project(proj_path, profile="de_default"))
+    finding = next(f for f in report.findings if f.rule == "glossary_target_missing")
+
+    assert "Mole Cricket-kinden" in finding.message
+    assert "entry for `Cricket-kinden turned`" not in finding.message
+
+
 def test_longer_wasp_hunter_phrase_shadows_short_wasp_entry() -> None:
     short = GlossaryEntry(source="wasp", target="Wespe", require_target=True)
     phrase = GlossaryEntry(
@@ -1065,6 +1106,56 @@ def test_longer_wasp_hunter_phrase_shadows_short_wasp_entry() -> None:
     phrase_span = next(s for s in spans if s.entry_index == 1)
     assert short_span.shadowed is True
     assert phrase_span.shadowed is False
+
+
+def test_qa_scan_respects_longer_glossary_shadow(tmp_path: Path) -> None:
+    from booktx.qa_scan import qa_scan
+    from booktx.status import build_status_snapshot
+
+    chunk = Chunk(
+        chunk_id="0001",
+        source_language="en",
+        target_language="de",
+        records=[
+            Record(
+                id="0001-000001",
+                source="One of the great Mole Cricket-kinden turned.",
+            )
+        ],
+    )
+    entries = [
+        GlossaryEntry(
+            source="Cricket-kinden",
+            target="Grillenart",
+            require_target=True,
+            enforce="error",
+        ),
+        GlossaryEntry(
+            source="Mole Cricket-kinden",
+            target="Maulwurfsgrillenart",
+            require_target=True,
+            enforce="error",
+        ),
+    ]
+    proj_path = _write_project(tmp_path, chunk=chunk, glossary_entries=entries)
+    _write_store_and_ledger(
+        proj_path,
+        chunk=chunk,
+        record=_store_record(
+            chunk=chunk,
+            record_id="0001-000001",
+            active_version="1.1",
+            versions=[("1.1", "Eine Maulwurfsgrillenart drehte sich um.")],
+        ),
+        tracked_refs={"1.1"},
+    )
+    proj = load_project(proj_path, profile="de_default")
+    (proj.source_dir / "source.md").write_text("# source\n", encoding="utf-8")
+    bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
+
+    result = qa_scan(proj, bundle, forbidden=True, glossary=True)
+
+    assert result.findings == []
 
 
 def test_forbidden_wespe_jaeger_rejects_literal_compound(tmp_path: Path) -> None:

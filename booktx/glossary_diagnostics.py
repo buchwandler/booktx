@@ -8,6 +8,8 @@ whether the failure originates from ``translate insert``, ``judge insert``,
 
 from __future__ import annotations
 
+import re
+
 from booktx.context import GlossaryEntry
 from booktx.glossary_match import TermSpan, source_glossary_matches
 
@@ -27,6 +29,32 @@ _PHRASE_COLLISION_CATEGORIES = frozenset({"insect", "kinden", "people", "term", 
 _STANDALONE_NOTE_MARKERS = frozenset(
     {"standalone", "compound", "unaffected", "compounds"}
 )
+_SOURCE_TOKEN_RE = re.compile(r"[^\W\d_]+(?:[-'][^\W\d_]+)*", re.UNICODE)
+_LEFT_MODIFIER_STOPWORDS = frozenset({"A", "An", "The"})
+
+
+def _capitalized_left_phrase(matched: TermSpan, source_text: str) -> str | None:
+    """Extend a match over adjacent capitalized modifiers on its left."""
+    prefix = source_text[: matched.start]
+    cursor = len(prefix)
+    modifiers: list[str] = []
+    while cursor:
+        token_match = None
+        for candidate in _SOURCE_TOKEN_RE.finditer(prefix, 0, cursor):
+            token_match = candidate
+        if token_match is None or prefix[token_match.end() : cursor].strip():
+            break
+        components = re.split(r"[-']", token_match.group())
+        if token_match.group() in _LEFT_MODIFIER_STOPWORDS or not all(
+            component and component[0].isupper() for component in components
+        ):
+            break
+        modifiers.append(token_match.group())
+        cursor = token_match.start()
+    if not modifiers:
+        return None
+    modifiers.reverse()
+    return " ".join([*modifiers, matched.matched_term])
 
 
 def source_phrase_window(
@@ -56,7 +84,8 @@ def detect_phrase_collision(
     A collision is likely when:
 
     1. The matched source term is short (≤ 2 whitespace-delimited tokens).
-    2. Another source token follows immediately after the match.
+    2. A plausible capitalized modifier precedes the match, or another source
+       token follows immediately after it.
     3. No *longer* glossary entry shadowed this short span.
     4. The entry category is one of the "short-term" categories.
     5. Either the entry notes mention standalone/compound/unaffected words,
@@ -65,15 +94,6 @@ def detect_phrase_collision(
     """
     matched_tokens = matched.matched_term.split()
     if len(matched_tokens) > 2:
-        return None
-
-    # Check that a source token follows the match with only whitespace in between.
-    rest = source_text[matched.end :]
-    if not rest or not rest[0].isspace():
-        return None
-    # There must be a non-whitespace token after the space(s).
-    stripped = rest.lstrip()
-    if not stripped or not stripped[0].isalnum():
         return None
 
     # Check no longer entry shadowed this span.
@@ -102,6 +122,22 @@ def detect_phrase_collision(
     is_upper_in_prose = starts_upper and matched.start > 0
 
     if not has_standalone_marker and not is_upper_in_prose:
+        return None
+
+    left_phrase = _capitalized_left_phrase(matched, source_text)
+    if left_phrase is not None:
+        return (
+            f"possible phrase collision: `{matched.matched_term}` is contained "
+            f"in `{left_phrase}`. A longer glossary entry for `{left_phrase}` "
+            f"would shadow the shorter `{entry.source}` rule."
+        )
+
+    # Fall back to a following token when there is no plausible left modifier.
+    rest = source_text[matched.end :]
+    if not rest or not rest[0].isspace():
+        return None
+    stripped = rest.lstrip()
+    if not stripped or not stripped[0].isalnum():
         return None
 
     # Build the phrase excerpt for the hint.

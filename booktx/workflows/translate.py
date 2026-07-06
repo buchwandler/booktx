@@ -740,6 +740,7 @@ def translate_todo_next_workflow(
             "baseline_ref": todo.baseline_ref,
             "baseline_sha256": todo.baseline_sha256,
             "context_sha256": todo.context_sha256,
+            "mandatory_glossary_sha256": todo.mandatory_glossary_sha256,
             "source_sha256": todo.source_sha256,
             "chapters": [
                 {

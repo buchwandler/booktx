@@ -16,7 +16,6 @@ from typer.testing import CliRunner
 
 from booktx.acceptance import (
     AcceptResult,
-    SubmissionValidationError,
     SubmittedRecord,
     accept_one_record,
     accept_translation_records,
@@ -147,10 +146,94 @@ def test_accept_one_record_persists_and_reports_chapter(tmp_path: Path):
     assert result.target_words >= 1
     assert result.version_ref == "1.1"
     assert result.chapter_id  # mapped to a chapter
-
     store = json.loads(translation_store_path(proj).read_text("utf-8"))
     assert store["records"][rid]["active_version"] == "1.1"
     assert store["records"][rid]["versions"][0]["target"] == "Alice traf Bob."
+
+
+def test_translate_insert_respects_longer_glossary_shadow(tmp_path: Path) -> None:
+    project_dir = _make_project(tmp_path)
+    proj = load_project(project_dir, profile="de_default")
+    chunk_path = sorted(proj.chunks_dir.glob("*.json"))[0]
+    chunk_payload = json.loads(chunk_path.read_text("utf-8"))
+    chunk_payload["records"][0]["source"] = (
+        "One of the great Mole Cricket-kinden turned and nodded."
+    )
+    chunk_path.write_text(json.dumps(chunk_payload), encoding="utf-8")
+    ctx = load_context(proj)
+    assert ctx is not None
+    ctx.glossary.extend(
+        [
+            GlossaryEntry(
+                source="Cricket-kinden",
+                target="Grillenart",
+                require_target=True,
+                enforce="error",
+            ),
+            GlossaryEntry(
+                source="Mole Cricket-kinden",
+                target="Maulwurfsgrillenart",
+                require_target=True,
+                enforce="error",
+            ),
+        ]
+    )
+    write_context(proj, ctx)
+
+    next_result = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "paragraph",
+            "--json",
+        ],
+    )
+    assert next_result.exit_code == 0, next_result.output
+    task = json.loads(next_result.output)
+    ingest_path = project_dir / task["ingest_path"]
+    ingest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "profile": "de_default",
+                "task_id": task["task_id"],
+                "translation_version": task["translation_version"],
+                "records": [
+                    {
+                        "id": task["records"][0]["id"],
+                        "target": (
+                            "Einer der großen Männer der Maulwurfsgrillenart "
+                            "drehte sich um und nickte."
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    insert_result = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task["task_id"],
+            "--json-file",
+            str(ingest_path),
+        ],
+    )
+
+    assert insert_result.exit_code == 0, insert_result.output
+    assert "glossary_target_missing" not in insert_result.output
 
 
 def test_batch_and_single_record_share_implementation(tmp_path: Path):
@@ -310,7 +393,7 @@ def test_task_validation_uses_task_context_view_before_live_context(tmp_path: Pa
     ctx.glossary[0].forbidden_targets = []
     write_context(proj, ctx)
 
-    with pytest.raises(SubmissionValidationError):
+    with pytest.raises(BooktxError, match="predates mandatory glossary changes"):
         accept_translation_records(
             proj,
             [SubmittedRecord(id=task.records[0].id, target="Die Niederlande")],

@@ -313,7 +313,7 @@ def test_todo_next_creates_durable_files(tmp_path: Path):
     assert payload["chapters_requested"] == 2
     assert payload["batch_words"] == 800
     assert payload["version"] == 1
-    assert payload.get("mandatory_glossary_sha256") is None
+    assert payload.get("mandatory_glossary_sha256") is not None
 
     json_path = project_dir / payload["json_path"]
     md_path = project_dir / payload["markdown_path"]
@@ -444,6 +444,7 @@ def test_todo_next_json_shape_is_stable(tmp_path: Path):
         "baseline_ref",
         "baseline_sha256",
         "context_sha256",
+        "mandatory_glossary_sha256",
         "source_sha256",
         "chapters",
         "json_path",
@@ -1252,7 +1253,9 @@ def test_insert_after_glossary_change_keeps_todo_resume_hint(tmp_path: Path):
         ],
     )
 
-    assert insert_res.exit_code == 0
+    assert insert_res.exit_code != 0
+    assert "predates mandatory" in insert_res.output
+    assert "glossary changes" in insert_res.output
     assert "booktx translate todo-resume ." in insert_res.output
     assert "--todo-id" in insert_res.output
     assert todo["todo_id"] in insert_res.output

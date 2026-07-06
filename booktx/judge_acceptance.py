@@ -22,16 +22,12 @@ from booktx.config import (
 )
 from booktx.context import TranslationContext
 from booktx.errors import BooktxError
+from booktx.glossary_audit import evaluate_glossary_entries
 from booktx.glossary_diagnostics import (
     format_glossary_missing_message,
     source_phrase_window,
 )
 from booktx.glossary_match import (
-    TermSpan,
-    applicable_entry_indexes,
-    contains_term,
-    source_glossary_matches,
-    target_contains_approved,
     target_terms,
 )
 from booktx.models import (
@@ -265,22 +261,19 @@ def _binding_glossary_findings(
     from booktx.validate import Finding
 
     findings: list[Finding] = []
-    spans = source_glossary_matches(source_record.source, context.glossary)
-    active_spans_by_entry: dict[int, list[TermSpan]] = {}
-    for span in spans:
-        if not span.shadowed:
-            active_spans_by_entry.setdefault(span.entry_index, []).append(span)
+    evaluations_by_entry = evaluate_glossary_entries(
+        glossary=context.glossary,
+        source_text=source_record.source,
+        target=target_text,
+    )
 
     for idx, entry in enumerate(context.glossary):
-        if entry.enforce == "off" or idx not in applicable_entry_indexes(
-            source_record.source, context.glossary
-        ):
+        evaluations = evaluations_by_entry.get(idx, [])
+        if entry.enforce == "off" or not evaluations:
             continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
-        for forbidden in entry.forbidden_targets:
-            if contains_term(
-                target_text, forbidden, case_sensitive=entry.case_sensitive
-            ):
+        for evaluation in evaluations:
+            for forbidden in evaluation.evaluation.forbidden_target_found:
                 findings.append(
                     Finding(
                         chunk_id=chunk_id,
@@ -292,9 +285,16 @@ def _binding_glossary_findings(
                 )
         if entry.require_target:
             approved = target_terms(entry)
-            if approved and not target_contains_approved(target_text, entry):
-                spans_for_entry = active_spans_by_entry.get(idx, [])
-                matched = spans_for_entry[0] if spans_for_entry else None
+            missing = [
+                item
+                for item in evaluations
+                if not (
+                    item.evaluation.required_target_found
+                    or item.evaluation.allowed_target_found
+                )
+            ]
+            if approved and missing:
+                matched = missing[0].matched_span
                 if matched is not None:
                     phrase_excerpt = source_phrase_window(
                         source_record.source, matched.start, matched.end

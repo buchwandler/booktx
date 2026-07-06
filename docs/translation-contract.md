@@ -122,10 +122,17 @@ Review candidates are stored under `translations/<profile>/reviews/`.
 
 ## Glossary phrase collisions
 
-When a glossary rejection is caused by a short term inside a longer source phrase, do not distort the target sentence merely to satisfy the literal target token. Prefer one of:
+When a shorter source term is contained inside a longer configured source
+phrase, enforcement uses only the longest non-shadowed source span. A separate
+standalone occurrence of the shorter term remains active. Do not distort the
+target sentence merely to satisfy the shorter literal target token. Prefer one
+of:
 
 1. natural apposition or rephrasing that contains the approved target naturally;
 2. a longer source phrase glossary entry, which shadows the shorter entry;
 3. an explicit forbidden target for the bad correction pattern.
 
-Example: `wasp` triggers for source `Wasp hunter`. Translating as `Wespe-Jäger` passes validation for the wrong reason and produces malformed German. Use apposition (`der Jäger, eine Wespe, ...`), add a phrase glossary entry, or forbid `Wespe-Jäger` as a target.
+Example: a binding `Mole Cricket-kinden -> Maulwurfsgrillenart` entry shadows
+`Cricket-kinden -> Grillenart` for that contained occurrence, allowing the
+natural German compound. Create the longer decision with `context mandate-term`.
+Apposition is only a fallback when no longer phrase decision exists.

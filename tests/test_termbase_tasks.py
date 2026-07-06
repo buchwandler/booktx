@@ -183,7 +183,7 @@ def test_translation_task_persists_applicable_termbase(monkeypatch, tmp_path: Pa
     project_dir = _make_project(tmp_path)
     task, task_id = _task_for_project(project_dir)
 
-    assert task.mandatory_glossary_sha256 is None
+    assert task.mandatory_glossary_sha256 is not None
     assert task.applicable_termbase_sha256
     matching_record = next(
         record for record in task.records if record.applicable_termbase

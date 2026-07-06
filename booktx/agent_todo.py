@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from booktx.context import baseline_payload, load_context
+from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.models import (
     TranslationTodo,
     TranslationTodoChapter,
@@ -203,6 +204,7 @@ def build_translation_todo(
         baseline_ref=baseline_ref,
         baseline_sha256=baseline_sha256,
         context_sha256=context_sha256,
+        mandatory_glossary_sha256=live_mandatory_glossary_sha256(project),
         source_sha256=source_sha256,
         start_totals=bundle.snapshot.totals,
         chapters=todo_chapters,

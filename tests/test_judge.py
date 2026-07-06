@@ -27,14 +27,15 @@ from booktx.config import (
     write_profile_config,
     write_translation_store,
 )
-from booktx.context import load_context
+from booktx.context import GlossaryEntry, TranslationContext, load_context
+from booktx.judge_acceptance import _binding_glossary_findings
 from booktx.judge_sources import (
     judge_sources_manifest_sha256,
     load_snapshot_judge_source_views,
     validate_judge_sources_snapshot,
     validate_snapshot_source_subset,
 )
-from booktx.models import SelectionConfig, TranslationReviewCandidate
+from booktx.models import Record, SelectionConfig, TranslationReviewCandidate
 from booktx.progress import load_source_records
 from booktx.status import build_status_snapshot
 from booktx.translation_store import (
@@ -45,6 +46,40 @@ from booktx.translation_store import (
 from booktx.versioning import resolve_current_version
 
 runner = CliRunner(env={"COLUMNS": "120"})
+
+
+def test_judge_glossary_findings_respect_longer_phrase_shadow() -> None:
+    context = TranslationContext(
+        source_language="en",
+        target_language="de",
+        glossary=[
+            GlossaryEntry(
+                source="Cricket-kinden",
+                target="Grillenart",
+                require_target=True,
+                enforce="error",
+            ),
+            GlossaryEntry(
+                source="Mole Cricket-kinden",
+                target="Maulwurfsgrillenart",
+                require_target=True,
+                enforce="error",
+            ),
+        ],
+    )
+
+    findings = _binding_glossary_findings(
+        Record(
+            id="0001-000001",
+            source="One of the great Mole Cricket-kinden turned.",
+        ),
+        target_text="Eine Maulwurfsgrillenart drehte sich um.",
+        chunk_id="0001",
+        context=context,
+    )
+
+    assert findings == []
+
 
 DOC = """\
 # One

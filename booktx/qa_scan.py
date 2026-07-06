@@ -12,10 +12,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from booktx.config import Project, load_translation_store
-from booktx.glossary_audit import evaluate_glossary_entry
+from booktx.glossary_audit import (
+    GlossaryEntryEvaluation,
+    evaluate_glossary_entries,
+)
 from booktx.glossary_match import (
     entry_is_binding,
-    source_glossary_matches,
 )
 from booktx.translation_store import effective_target_candidate
 
@@ -271,18 +273,15 @@ def _check_glossary_targets(
     target_only: bool,
     glossary_entries: list[GlossaryEntry],
     include_advisory: bool,
+    evaluations_by_entry: dict[int, list[GlossaryEntryEvaluation]],
 ) -> None:
     """Check approved glossary entries against target for missing/advisory terms."""
-    for entry in glossary_entries:
+    for idx, entry in enumerate(glossary_entries):
         if entry.status != "approved" or entry.target is None:
             continue
         if entry.enforce == "off":
             continue
-        evaluations = evaluate_glossary_entry(
-            entry=entry,
-            source_text=source_text,
-            target=target,
-        )
+        evaluations = evaluations_by_entry.get(idx, [])
         if not evaluations:
             continue
         if entry.require_target:
@@ -345,33 +344,18 @@ def _collect_record_findings(
     """Run all enabled checks for one record and return the findings."""
     findings: list[QaScanFinding] = []
 
-    spans = (
-        source_glossary_matches(source_text, glossary_entries)
-        if glossary_entries
-        else []
+    evaluations_by_entry = evaluate_glossary_entries(
+        glossary=glossary_entries, source_text=source_text, target=target
     )
-    shadowed_by_entry = {span.entry_index for span in spans if span.shadowed}
     if forbidden:
         for idx, entry in enumerate(glossary_entries):
             if entry.enforce == "off" or not entry.forbidden_targets:
                 continue
-            ambiguous_terms = set()
-            evaluations = evaluate_glossary_entry(
-                entry=entry,
-                source_text=source_text,
-                target=target,
-            )
+            evaluations = evaluations_by_entry.get(idx, [])
             if not evaluations:
                 continue
-            if idx in shadowed_by_entry:
-                ambiguous_terms.update(entry.forbidden_targets)
             for evaluation in evaluations:
                 for ft in evaluation.evaluation.forbidden_target_found:
-                    rule = (
-                        "glossary_alignment_ambiguous"
-                        if ft in ambiguous_terms
-                        else "forbidden_target"
-                    )
                     findings.append(
                         _finding(
                             record_id,
@@ -379,9 +363,9 @@ def _collect_record_findings(
                             source_text,
                             target,
                             target_only,
-                            rule=rule,
+                            rule="forbidden_target",
                             term=ft,
-                            severity="warn" if rule.endswith("ambiguous") else "error",
+                            severity="error",
                         )
                     )
 
@@ -395,6 +379,7 @@ def _collect_record_findings(
             target_only,
             glossary_entries,
             include_advisory,
+            evaluations_by_entry,
         )
 
     if target_contains is not None and target_contains.lower() in target.lower():

@@ -11,6 +11,7 @@ from booktx.cli import app
 from booktx.config import init_project, load_project
 from booktx.context import (
     ChapterContext,
+    TranslationContext,
     context_markdown_path,
     default_context,
     write_context,
@@ -36,11 +37,18 @@ def _src_chunk() -> Chunk:
     )
 
 
-def _write_project(tmp_path: Path, target: str = "die Niederlande") -> Path:
+def _write_project(
+    tmp_path: Path,
+    target: str = "die Niederlande",
+    *,
+    source: str | None = None,
+) -> Path:
     proj = init_project(tmp_path / "book", target_language="de")
     proj.chunks_dir.mkdir(parents=True, exist_ok=True)
     proj.translated_dir.mkdir(parents=True, exist_ok=True)
     chunk = _src_chunk()
+    if source is not None:
+        chunk.records[0].source = source
     (proj.chunks_dir / "0001.json").write_text(
         chunk.model_dump_json(), encoding="utf-8"
     )
@@ -54,6 +62,82 @@ def _write_project(tmp_path: Path, target: str = "die Niederlande") -> Path:
         encoding="utf-8",
     )
     return proj.root
+
+
+def _mole_cricket_context() -> TranslationContext:
+    shared = {
+        "require_target": True,
+        "forbidden_targets": [],
+        "enforce": "error",
+        "category": "kinden",
+        "status": "approved",
+        "notes": "",
+        "examples": [],
+        "case_sensitive": False,
+    }
+    return TranslationContext(
+        source_language="en",
+        target_language="de",
+        glossary=[
+            {"source": "Cricket-kinden", "target": "Grillenart", **shared},
+            {
+                "source": "Mole Cricket-kinden",
+                "target": "Maulwurfsgrillenart",
+                **shared,
+            },
+        ],
+    )
+
+
+def test_required_glossary_longer_phrase_shadows_shorter_entry(
+    tmp_path: Path,
+) -> None:
+    proj_path = _write_project(
+        tmp_path,
+        source="One of the great Mole Cricket-kinden turned and nodded.",
+        target="Einer der großen Männer der Maulwurfsgrillenart drehte sich um.",
+    )
+    proj = load_project(proj_path, profile="de_default")
+    write_context(proj, _mole_cricket_context())
+
+    report = validate_project(proj)
+
+    assert report.passed, [finding.as_dict() for finding in report.findings]
+
+
+def test_required_glossary_standalone_shorter_still_applies(
+    tmp_path: Path,
+) -> None:
+    proj_path = _write_project(
+        tmp_path,
+        source="Mole Cricket-kinden and Cricket-kinden were present.",
+        target="Maulwurfsgrillenart waren anwesend.",
+    )
+    proj = load_project(proj_path, profile="de_default")
+    write_context(proj, _mole_cricket_context())
+
+    report = validate_project(proj)
+    missing = [f for f in report.findings if f.rule == "glossary_target_missing"]
+
+    assert not report.passed
+    assert len(missing) == 1
+    assert "Cricket-kinden" in missing[0].message
+
+
+def test_required_glossary_longer_and_standalone_shorter_both_pass(
+    tmp_path: Path,
+) -> None:
+    proj_path = _write_project(
+        tmp_path,
+        source="Mole Cricket-kinden and Cricket-kinden were present.",
+        target="Maulwurfsgrillenart und Grillenart waren anwesend.",
+    )
+    proj = load_project(proj_path, profile="de_default")
+    write_context(proj, _mole_cricket_context())
+
+    report = validate_project(proj)
+
+    assert report.passed, [finding.as_dict() for finding in report.findings]
 
 
 def _write_context(proj_path: Path, enforce: str = "error") -> None:

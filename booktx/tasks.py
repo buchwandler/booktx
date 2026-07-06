@@ -44,7 +44,6 @@ from booktx.config import (
 from booktx.context import ensure_context_view_snapshot
 from booktx.glossary_match import (
     live_mandatory_glossary_sha256,
-    mandatory_glossary_sha256,
 )
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
 from booktx.models import TranslationTask, TranslationTaskRecord
@@ -452,14 +451,7 @@ def create_translation_task(
     applicable_termbase, applicable_termbase_sha256 = (
         collect_applicable_termbase_for_record_sources(project, record_sources)
     )
-    mandatory_glossary_fingerprint = None
-    if unit == "paragraph":
-        live_fingerprint = live_mandatory_glossary_sha256(project)
-        # This compatibility fingerprint detects a binding glossary being
-        # introduced after task creation. Existing binding policy is captured
-        # by the immutable task context and applicable-termbase snapshot.
-        if live_fingerprint == mandatory_glossary_sha256([]):
-            mandatory_glossary_fingerprint = live_fingerprint
+    mandatory_glossary_fingerprint = live_mandatory_glossary_sha256(project)
     task = TranslationTask(
         task_id=make_task_id(chapter.chapter_id, record_ids[0], record_ids),
         unit=unit,  # type: ignore[arg-type]

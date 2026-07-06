@@ -46,13 +46,15 @@ from booktx.context import (
     render_context_markdown,
 )
 from booktx.epub_manifest import load_epub_template_from_manifest
-from booktx.glossary_audit import evaluate_glossary_entry
+from booktx.glossary_audit import (
+    GlossaryEntryEvaluation,
+    evaluate_glossary_entries,
+)
 from booktx.glossary_diagnostics import (
     format_glossary_missing_message,
     source_phrase_window,
 )
 from booktx.glossary_match import (
-    source_glossary_matches,
     target_terms,
 )
 from booktx.judge_provenance import audit_revision_provenance
@@ -618,9 +620,32 @@ def validate_record_pair(
         )
     findings.extend(_check_placeholders_preserved(source_rec, target_rec, chunk_id))
     findings.extend(_check_protected_names_preserved(source_rec, target_rec, chunk_id))
-    findings.extend(_check_forbidden_terms(source_rec, target_rec, chunk_id, context))
+    glossary_evaluations = (
+        evaluate_glossary_entries(
+            glossary=context.glossary,
+            source_text=source_rec.source,
+            target=target_rec.target,
+        )
+        if context is not None
+        else {}
+    )
     findings.extend(
-        _check_required_glossary_targets(source_rec, target_rec, chunk_id, context)
+        _check_forbidden_terms(
+            source_rec,
+            target_rec,
+            chunk_id,
+            context,
+            glossary_evaluations,
+        )
+    )
+    findings.extend(
+        _check_required_glossary_targets(
+            source_rec,
+            target_rec,
+            chunk_id,
+            context,
+            glossary_evaluations,
+        )
     )
     findings.extend(_check_inline_xhtml(source_rec, target_rec, chunk_id))
     findings.extend(_check_outer_quotation_preserved(source_rec, target_rec, chunk_id))
@@ -632,6 +657,7 @@ def _check_forbidden_terms(
     target_rec: TranslatedRecord,
     chunk_id: str,
     context: TranslationContext | None,
+    evaluations_by_entry: dict[int, list[GlossaryEntryEvaluation]],
 ) -> list[Finding]:
     """Check glossary forbidden target terms for one record pair.
 
@@ -641,18 +667,12 @@ def _check_forbidden_terms(
     if context is None:
         return []
     findings: list[Finding] = []
-    spans = source_glossary_matches(source_rec.source, context.glossary)
-    shadowed_entries = {span.entry_index for span in spans if span.shadowed}
     for idx, entry in enumerate(context.glossary):
         if entry.enforce == "off" or not entry.forbidden_targets:
             continue
         severity = Severity.ERROR if entry.enforce == "error" else Severity.WARN
         entry_findings: list[Finding] = []
-        for evaluation in evaluate_glossary_entry(
-            entry=entry,
-            source_text=source_rec.source,
-            target=target_rec.target,
-        ):
+        for evaluation in evaluations_by_entry.get(idx, []):
             if evaluation.evaluation.status != "forbidden_target":
                 continue
             for forbidden in evaluation.evaluation.forbidden_target_found:
@@ -665,14 +685,6 @@ def _check_forbidden_terms(
                         record_id=target_rec.id,
                     )
                 )
-        if idx in shadowed_entries and entry_findings:
-            for finding in entry_findings:
-                finding.severity = Severity.WARN
-                finding.rule = "glossary_alignment_ambiguous"
-                finding.message = (
-                    f"source-to-target alignment ambiguous for {entry.source}:"
-                    f" {finding.message}"
-                )
         findings.extend(entry_findings)
     return findings
 
@@ -682,6 +694,7 @@ def _check_required_glossary_targets(
     target_rec: TranslatedRecord,
     chunk_id: str,
     context: TranslationContext | None,
+    evaluations_by_entry: dict[int, list[GlossaryEntryEvaluation]],
 ) -> list[Finding]:
     """Positively enforce approved glossary targets for one record pair.
 
@@ -700,11 +713,7 @@ def _check_required_glossary_targets(
     for _idx, entry in enumerate(context.glossary):
         if entry.enforce == "off" or not entry.require_target:
             continue
-        evaluations = evaluate_glossary_entry(
-            entry=entry,
-            source_text=source_rec.source,
-            target=target_rec.target,
-        )
+        evaluations = evaluations_by_entry.get(_idx, [])
         missing = [
             evaluation
             for evaluation in evaluations

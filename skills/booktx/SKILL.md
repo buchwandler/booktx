@@ -721,6 +721,10 @@ After a mandatory glossary change, audit the effective output:
 booktx context audit-term . "tenday" --profile de_deepseekv4_flash
 ```
 
+Mandatory glossary changes stale every existing translation task, including
+batch and todo-created tasks. Resume the todo or request a fresh task before
+inserting; do not submit against the old immutable context snapshot.
+
 To generate a safe correction-block template for violating records:
 
 ```bash
@@ -770,13 +774,24 @@ Glossary entries are binding only when `enforce != "off"` and `require_target` o
 
 ### Glossary phrase collisions
 
-When a glossary rejection is caused by a short term inside a longer source phrase, do not distort the target sentence merely to satisfy the literal target token. Prefer one of:
+When a shorter source term is contained inside a longer configured source
+phrase, booktx enforces only the longest non-shadowed source span. Add the
+longer binding decision with `context mandate-term`; a separate standalone
+occurrence of the shorter term in the same record remains binding.
+
+Do not distort the target sentence merely to satisfy the shorter literal target
+token. Prefer one of:
 
 1. natural apposition or rephrasing that contains the approved target naturally;
 2. a longer source phrase glossary entry, which shadows the shorter entry;
 3. an explicit forbidden target for the bad correction pattern.
 
-Example: `wasp` triggers for source `Wasp hunter`. Translating as `Wespe-Jäger` (forcing `Wespe` into a malformed German compound) passes validation for the wrong reason. Use apposition (`der Jäger, eine Wespe, ...`), add a phrase glossary entry for `Wasp hunter`, or forbid `Wespe-Jäger` as a target. The `glossary_target_missing` finding includes matched source context and a phrase-collision hint to guide this decision.
+Example: configure `Mole Cricket-kinden -> Maulwurfsgrillenart` so it shadows
+`Cricket-kinden -> Grillenart` for the contained occurrence. The natural German
+compound then satisfies the longer rule; apposition is only a fallback when no
+longer phrase decision exists. The `glossary_target_missing` finding includes
+matched source context and prefers a plausible capitalized left phrase in its
+collision hint.
 
 ## Judge / selection profiles
 
