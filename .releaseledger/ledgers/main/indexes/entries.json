@@ -73,6 +73,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0001",
+    "internal": false,
+    "kind": "added",
+    "order": 1,
+    "record_revision": 1,
+    "release_version": "v0.4.1",
+    "scopes": [],
+    "source_refs": ["git:be56789"],
+    "status": "accepted",
+    "summary": "Added series commands for managing workflows across related book profiles in a series"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0002",
     "internal": false,
     "kind": "added",
@@ -138,6 +152,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0002",
+    "internal": false,
+    "kind": "fixed",
+    "order": 2,
+    "record_revision": 1,
+    "release_version": "v0.4.1",
+    "scopes": [],
+    "source_refs": ["git:c682528"],
+    "status": "accepted",
+    "summary": "Fixed case-sensitivity mismatches in glossary matching, context lookups, and submission validation"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0003",
     "internal": false,
     "kind": "added",
@@ -194,6 +222,20 @@
     "source_refs": ["git:37361b7ca6b81ba568432a269bc635cf4e5361bd"],
     "status": "accepted",
     "summary": "Added EPUB output target-language metadata and a deterministic best-effort hyphenation stylesheet configurable via the [epub_output] hyphenation policy"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0003",
+    "internal": false,
+    "kind": "fixed",
+    "order": 3,
+    "record_revision": 1,
+    "release_version": "v0.4.1",
+    "scopes": [],
+    "source_refs": ["git:a9e1743"],
+    "status": "accepted",
+    "summary": "Fixed longer glossary terms incorrectly interfering with shorter-term matching during translation validation"
   },
   {
     "audience": null,

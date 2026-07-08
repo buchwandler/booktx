@@ -61,7 +61,7 @@ docs = [
 booktx = "booktx.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/buchwandler/booktx"
+Homepage = "https://buchwandler.de/tools/booktx/"
 Repository = "https://github.com/buchwandler/booktx"
 Issues = "https://github.com/buchwandler/booktx/issues"
 Changelog = "https://github.com/buchwandler/booktx/blob/main/CHANGELOG.md"

@@ -31,7 +31,6 @@ from booktx.epub_manifest import sha256_path
 from booktx.errors import _err
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
 from booktx.runtime import resolve_runtime
-from booktx.source_analysis_context import clear_context_readiness, prefill_contexts
 from booktx.tasks import project_relative
 from booktx.versioning import resolve_identity
 from booktx.workflows.context import (
@@ -1026,6 +1025,7 @@ def prepare_series_book(request: SeriesPrepareRequest) -> SeriesPrepareResult:
             path=str(project.booktx_dir / "source-analysis.json"),
         )
     )
+    from booktx.source_analysis_context import clear_context_readiness, prefill_contexts
 
     prefill = prefill_contexts(
         project,
