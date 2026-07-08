@@ -199,7 +199,7 @@ def test_tomli_w_available() -> None:
 
 
 def test_github_org_consistent() -> None:
-    """README Codecov badge must point at the same org as pyproject URLs."""
+    """README github.com/<org>/booktx references must match pyproject Repository URL."""
     import re
 
     readme = (ROOT / "README.md").read_text("utf-8")
@@ -212,7 +212,7 @@ def test_github_org_consistent() -> None:
     with (ROOT / "pyproject.toml").open("rb") as fh:
         pyproject = tomllib.load(fh)
 
-    homepage = pyproject["project"]["urls"]["Homepage"]
+    homepage = pyproject["project"]["urls"]["Repository"]
     org_from_pyproject = homepage.split("github.com/")[-1].split("/")[0]
 
     org_from_readme = re.findall(r"(?:github\.com|gh)/([\w.-]+)/booktx", readme)
