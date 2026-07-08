@@ -144,6 +144,9 @@ several books in the same series, export a series context pack from one
 approved profile and import it into another with `booktx context export-pack`
 and `booktx context import-pack`. The pack carries reusable policy only; it
 never carries records, tasks, stores, ledgers, identity, or chapter contexts.
+For the normal "next book in the same series" workflow, prefer
+`booktx series prepare` so init/extract/profile creation/import/source-analysis
+and the human review stop are orchestrated together.
 
 For sibling profiles inside the **same** book project, use `booktx context sync`
 from project-root collaborative mode instead of repeatedly exporting and

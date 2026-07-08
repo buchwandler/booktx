@@ -383,6 +383,20 @@ booktx context export-pack ./book1 --profile PROFILE \
 booktx context import-pack ./book2 --profile PROFILE \
   --file ./soa.en-de.booktx-context-pack.json --write
 
+# Prepare the next book in a series:
+booktx series prepare ./book5 \
+  --source-file ./book5/book5.epub \
+  --from-book ./book4 \
+  --from-profile PROFILE \
+  --profile PROFILE \
+  --series-id shadows-of-apt \
+  --title "Shadows of the Apt / German policy" \
+  --target de \
+  --target-locale de-DE \
+  --model zai/glm-5.2@high \
+  --write
+booktx series recipe write ./book5 --profile PROFILE --series-id shadows-of-apt --title "Shadows of the Apt / German policy" --output ../soa.de.booktx-series.toml
+
 # Same-book sibling profile policy sync:
 booktx context sync ./demo \
   --from PROFILE \
@@ -615,4 +629,29 @@ When the user reports a bad context-sensitive translation:
 
 ### Starting the next book in a series
 
-Export reusable policy from the completed book with `booktx context export-pack`, initialize and extract the new book, create the target profile, then run `booktx context import-pack` as a dry run before applying it. Termbase entries in a pack are opt-in: they are written only with both `--write` and `--write-termbase`, plus `--termbase-scope project|profile`. After import, run source analysis with `--write --sync-profiles`, review any new questions, and get human approval before `context mark-ready`. Write isolated-agent instructions only after project-root preparation.
+Prefer the orchestration command:
+
+```bash
+booktx series prepare ./book5 \
+  --source-file ./book5/book5.epub \
+  --from-book ./book4 \
+  --from-profile de_glm_5_2 \
+  --profile de_glm_5_2 \
+  --series-id shadows-of-the-apt \
+  --title "Shadows of the Apt German series context" \
+  --target de \
+  --target-locale de-DE \
+  --model zai/glm-5.2@high \
+  --write \
+  --write-termbase \
+  --termbase-scope project
+```
+
+`booktx series prepare` stops before translation and before automatic
+`context mark-ready`. Review the generated context/questionnaire, approve any
+new source-analysis questions, then run `booktx context mark-ready` followed by
+`booktx agents write ... --mode isolated`.
+
+The manual `context export-pack` / `init` / `extract` / `profile create` /
+`context import-pack` / `source analyze` / `context prefill` sequence still
+works unchanged when you need full control.

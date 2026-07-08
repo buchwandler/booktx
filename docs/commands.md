@@ -75,6 +75,72 @@ booktx context sync ./book \
 books. `context sync` reuses the same merge semantics for sibling profiles
 inside one book project and is rejected in isolated profile-root mode.
 
+## Series setup commands
+
+Use `booktx series prepare` for the normal "start the next book in a series"
+workflow:
+
+```bash
+booktx series prepare ./book5 \
+  --source-file ./book5/book5.epub \
+  --from-book ./book4 \
+  --from-profile de_glm_5_2 \
+  --profile de_glm_5_2 \
+  --series-id shadows-of-the-apt \
+  --title "Shadows of the Apt German series context" \
+  --target de \
+  --target-locale de-DE \
+  --model zai/glm-5.2@high \
+  --write \
+  --write-termbase \
+  --termbase-scope project
+```
+
+`booktx series prepare` is dry-run by default. `--write` performs the setup,
+writes `.booktx/reports/series-prepare.json` and `.md`, and stops before
+translation and before automatic `context mark-ready`.
+
+Review handoff:
+
+```bash
+booktx context questionnaire ./book5 --profile de_glm_5_2 --stdout
+booktx context status ./book5 --profile de_glm_5_2
+booktx context render ./book5 --profile de_glm_5_2 --write
+booktx context mark-ready ./book5 --profile de_glm_5_2
+booktx agents write ./book5 --mode isolated --profile de_glm_5_2
+```
+
+Pack mode replaces `--from-book`:
+
+```bash
+booktx series prepare ./book5 \
+  --source-file ./book5/book5.epub \
+  --pack ./series-context.de.json \
+  --profile de_glm_5_2 \
+  --series-id shadows-of-the-apt \
+  --title "Shadows of the Apt German series context" \
+  --target de \
+  --target-locale de-DE \
+  --model zai/glm-5.2@high \
+  --write
+```
+
+Write a reusable recipe once, then reuse it for the next book:
+
+```bash
+booktx series recipe write ./book5 \
+  --profile de_glm_5_2 \
+  --series-id shadows-of-the-apt \
+  --title "Shadows of the Apt German series context" \
+  --output ../shadows-of-the-apt.de.booktx-series.toml
+
+booktx series prepare ./book6 \
+  --source-file ./book6/book6.epub \
+  --from-book ./book5 \
+  --recipe ../shadows-of-the-apt.de.booktx-series.toml \
+  --write
+```
+
 ## Chapter detection and audit
 
 ```bash
@@ -138,6 +204,7 @@ booktx source analyze ./book --write --sync-profiles             # also refresh 
 booktx source analysis ./book/translations/PROFILE             # read the current profile snapshot
 booktx context prefill ./book --profile PROFILE --from-source-analysis
 booktx context prefill ./book --profile PROFILE --from-source-analysis --include-advisory --write
+booktx context prefill ./book --profile PROFILE --from-source-analysis --consolidate-imported-policy --write
 booktx context promote-candidate ./book CAND-... --profile PROFILE --as-question --write
 booktx source ignore-candidate ./book CAND-... --reason "ordinary vocabulary" --write
 booktx source review-candidate ./book CAND-... --reason "checked, no glossary decision needed" --write

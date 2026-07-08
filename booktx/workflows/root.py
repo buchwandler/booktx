@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -67,6 +68,37 @@ from booktx.validate import (
 
 root_app = typer.Typer()
 doctor_app = typer.Typer(help="Diagnostic commands.")
+
+
+@dataclass(frozen=True)
+class ExtractWorkflowResult:
+    project: Project
+    source: Path
+    format: str
+    chunk_count: int
+    record_count: int
+    warning_message: str = ""
+    epub_audit_warning: str = ""
+    chapter_audit_report: Path | None = None
+
+
+@dataclass(frozen=True)
+class ChapterAuditWorkflowResult:
+    project: Project
+    report_path: Path | None
+    toc_entry_count: int = 0
+    numbered_toc_count: int = 0
+    mapped_numbered_chapter_count: int = 0
+    extracted_document_count: int = 0
+    finding_count: int = 0
+    error_count: int = 0
+    warning_count: int = 0
+    missing_numbered_titles: tuple[str, ...] = ()
+
+    @property
+    def has_blocking_errors(self) -> bool:
+        return self.error_count > 0
+
 
 # --- init --------------------------------------------------------------------
 
@@ -306,25 +338,14 @@ def _guard_extract_repeatability_and_rechunk(
 # --- extract -----------------------------------------------------------------
 
 
-@root_app.command()
-def extract(
-    project_dir: Path = typer.Argument(..., help="Project directory."),
-    force_rechunk: bool = typer.Option(
-        False,
-        "--force-rechunk",
-        help="Allow a risky chunk-size rechunk when chunk-local ids would be renumbered.",
-    ),
-) -> None:
-    """Extract translatable chunks into ``.booktx/chunks/``.
-
-    Idempotent: ``chunks/`` is rebuilt each run; ``translated/`` is left intact.
-    """
-    try:
-        proj = load_project(project_dir)
-        source = find_source_file(proj)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
-        return
+def extract_project_workflow(
+    project_dir: Path | Project,
+    *,
+    force_rechunk: bool = False,
+) -> ExtractWorkflowResult:
+    """Extract translatable chunks into ``.booktx/chunks/`` without CLI output."""
+    proj = load_project(project_dir) if isinstance(project_dir, Path) else project_dir
+    source = find_source_file(proj)
 
     names = _load_names_list(proj)
     fmt = proj.config.format
@@ -336,8 +357,7 @@ def extract(
         extraction = extract_epub(str(source), protected_terms=names)
         spans = extraction.spans
     else:  # pragma: no cover
-        _die(f"Unsupported format {fmt!r}")
-        return
+        raise BooktxError("unsupported_format", f"Unsupported format {fmt!r}")
 
     chunks = spans_to_chunks(
         spans,
@@ -374,7 +394,6 @@ def extract(
     try:
         for filename, text in chunk_texts.items():
             write_text_atomic(tmp_chunks / filename, text)
-        # Remove the previous chunks dir and move the temp one into place.
         if proj.chunks_dir.exists():
             shutil.rmtree(proj.chunks_dir)
         tmp_chunks.replace(proj.chunks_dir)
@@ -383,10 +402,13 @@ def extract(
         raise
 
     record_count = sum(len(c.records) for c in chunks)
+    chapter_audit_report: Path | None = None
     epub_audit_warning = ""
     if fmt == "epub":
         _save_epub_manifest(proj, source, extraction, len(chunks), record_count)
-        epub_audit_warning = _write_epub_chapter_map_and_audit(proj)
+        epub_audit_warning, chapter_audit_report = _write_epub_chapter_map_and_audit(
+            proj
+        )
     elif fmt == "markdown":
         from booktx.config import write_manifest
         from booktx.models import Manifest, ManifestSource
@@ -410,14 +432,50 @@ def extract(
                 names_sha256=names_sha256,
             ),
         )
-    console.print(
-        f"[green]Extracted[/green] {len(chunks)} chunk(s), "
-        f"{record_count} record(s) into {proj.chunks_dir}"
+
+    return ExtractWorkflowResult(
+        project=proj,
+        source=source,
+        format=fmt,
+        chunk_count=len(chunks),
+        record_count=record_count,
+        warning_message=warning_message or "",
+        epub_audit_warning=epub_audit_warning,
+        chapter_audit_report=chapter_audit_report,
     )
-    if warning_message:
-        console.print(f"[yellow]warning:[/yellow] {warning_message}", soft_wrap=True)
-    if epub_audit_warning:
-        console.print(f"[yellow]warning:[/yellow] {epub_audit_warning}", soft_wrap=True)
+
+
+@root_app.command()
+def extract(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    force_rechunk: bool = typer.Option(
+        False,
+        "--force-rechunk",
+        help="Allow a risky chunk-size rechunk when chunk-local ids would be renumbered.",
+    ),
+) -> None:
+    """Extract translatable chunks into ``.booktx/chunks/``.
+
+    Idempotent: ``chunks/`` is rebuilt each run; ``translated/`` is left intact.
+    """
+    try:
+        result = extract_project_workflow(project_dir, force_rechunk=force_rechunk)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+
+    console.print(
+        f"[green]Extracted[/green] {result.chunk_count} chunk(s), "
+        f"{result.record_count} record(s) into {result.project.chunks_dir}"
+    )
+    if result.warning_message:
+        console.print(
+            f"[yellow]warning:[/yellow] {result.warning_message}", soft_wrap=True
+        )
+    if result.epub_audit_warning:
+        console.print(
+            f"[yellow]warning:[/yellow] {result.epub_audit_warning}", soft_wrap=True
+        )
         console.print("[dim]details: booktx chapters . --audit[/dim]", soft_wrap=True)
 
 
@@ -475,10 +533,10 @@ def _save_epub_manifest(
     _ = (json, NamesFile)  # touch imports for clarity
 
 
-def _write_epub_chapter_map_and_audit(proj: Project) -> str:
+def _write_epub_chapter_map_and_audit(proj: Project) -> tuple[str, Path | None]:
     """Detect and persist the chapter map and audit after EPUB extraction.
 
-    Returns a one-line warning string when the audit has findings, or "". The
+    Returns the one-line warning string and the written report path. The
     extraction itself stays successful: this is a completeness signal, not a
     policy gate, so preview/truncated EPUBs with warning-only findings still
     extract cleanly.
@@ -488,9 +546,9 @@ def _write_epub_chapter_map_and_audit(proj: Project) -> str:
     chapter_map = detect_chapters(proj)
     write_chapter_map(proj, chapter_map)
     result = audit_epub_chapter_map(proj, chapter_map=chapter_map)
-    write_audit_report(proj, result)
+    out_path = write_audit_report(proj, result)
     if not result.findings:
-        return ""
+        return "", out_path
     bits: list[str] = []
     if result.error_findings:
         bits.append(f"{len(result.error_findings)} error(s)")
@@ -499,7 +557,8 @@ def _write_epub_chapter_map_and_audit(proj: Project) -> str:
     return (
         "EPUB chapter audit: "
         + ", ".join(bits)
-        + " (visible TOC vs extracted chapters)."
+        + " (visible TOC vs extracted chapters).",
+        out_path,
     )
 
 
@@ -511,6 +570,33 @@ def _chapter_map_for_workflow(proj: Project) -> ChapterMap:
         chapter_map = detect_chapters(proj)
         write_chapter_map(proj, chapter_map)
     return chapter_map
+
+
+def audit_chapters_workflow(project_dir: Path | Project) -> ChapterAuditWorkflowResult:
+    """Run the EPUB chapter audit and return a structured result."""
+    from booktx.epub_toc_audit import audit_epub_chapter_map, write_audit_report
+
+    proj = load_project(project_dir) if isinstance(project_dir, Path) else project_dir
+    if proj.config.format != "epub":
+        return ChapterAuditWorkflowResult(project=proj, report_path=None)
+
+    chapter_map = load_chapter_map(proj)
+    if chapter_map is None:
+        chapter_map = detect_chapters(proj)
+    result = audit_epub_chapter_map(proj, chapter_map=chapter_map)
+    out_path = write_audit_report(proj, result)
+    return ChapterAuditWorkflowResult(
+        project=proj,
+        report_path=out_path,
+        toc_entry_count=len(result.toc_entries),
+        numbered_toc_count=result.numbered_toc_count,
+        mapped_numbered_chapter_count=result.mapped_numbered_chapter_count,
+        extracted_document_count=result.extracted_document_count,
+        finding_count=len(result.findings),
+        error_count=len(result.error_findings),
+        warning_count=len(result.warning_findings),
+        missing_numbered_titles=tuple(result.missing_numbered_titles),
+    )
 
 
 # --- next --------------------------------------------------------------------
@@ -661,11 +747,7 @@ def chapters_cmd(
 
 
 def _run_chapter_audit(proj: Project, *, as_json: bool = False) -> None:
-    from booktx.epub_toc_audit import (
-        audit_epub_chapter_map,
-        write_audit_report,
-    )
-
+    audit = audit_chapters_workflow(proj)
     if proj.config.format != "epub":
         if as_json:
             console.print_json('{"error": "chapter audit is EPUB-only"}')
@@ -674,22 +756,21 @@ def _run_chapter_audit(proj: Project, *, as_json: bool = False) -> None:
         return
     chapter_map = load_chapter_map(proj)
     if chapter_map is None:
-        # Read-only audit: detect without persisting so chapter-map.json is
-        # not mutated by --audit.
         chapter_map = detect_chapters(proj)
+    from booktx.epub_toc_audit import audit_epub_chapter_map
+
     result = audit_epub_chapter_map(proj, chapter_map=chapter_map)
-    out_path = write_audit_report(proj, result)
     if as_json:
         console.print_json(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
         return
     console.print("EPUB chapter audit")
-    console.print(f"toc entries: {len(result.toc_entries)}")
-    console.print(f"numbered TOC chapters: {result.numbered_toc_count}")
-    console.print(f"numbered chapters in map: {result.mapped_numbered_chapter_count}")
-    console.print(f"extracted documents: {result.extracted_document_count}")
-    if result.missing_numbered_titles:
-        preview = ", ".join(result.missing_numbered_titles[:12])
-        suffix = "" if len(result.missing_numbered_titles) <= 12 else ", ..."
+    console.print(f"toc entries: {audit.toc_entry_count}")
+    console.print(f"numbered TOC chapters: {audit.numbered_toc_count}")
+    console.print(f"numbered chapters in map: {audit.mapped_numbered_chapter_count}")
+    console.print(f"extracted documents: {audit.extracted_document_count}")
+    if audit.missing_numbered_titles:
+        preview = ", ".join(audit.missing_numbered_titles[:12])
+        suffix = "" if len(audit.missing_numbered_titles) <= 12 else ", ..."
         console.print(f"missing numbered chapters: {preview}{suffix}")
     if not result.findings:
         console.print("findings: none")
@@ -705,7 +786,8 @@ def _run_chapter_audit(proj: Project, *, as_json: bool = False) -> None:
                 f"{finding.code}: {finding.message}",
                 soft_wrap=True,
             )
-    console.print(f"report: {out_path}")
+    if audit.report_path is not None:
+        console.print(f"report: {audit.report_path}")
 
 
 @root_app.command(name="next-chapter")
@@ -1247,4 +1329,9 @@ def doctor_isolation_cmd(
         raise typer.Exit(code=1)
 
 
-__all__ = ["root_app", "doctor_app"]
+__all__ = [
+    "audit_chapters_workflow",
+    "doctor_app",
+    "extract_project_workflow",
+    "root_app",
+]

@@ -67,6 +67,48 @@ booktx context import-md ./book --profile PROFILE --write
 
 Prefer `booktx context chapter-note` for future chapter summaries.
 
+## `series_prepare_pack_source_conflict` / `series_prepare_pack_source_missing`
+
+`booktx series prepare` requires exactly one policy source:
+
+```bash
+booktx series prepare ./book5 --source-file ./book5/book.epub --from-book ./book4 ...
+```
+
+or:
+
+```bash
+booktx series prepare ./book5 --source-file ./book5/book.epub --pack ./series-context.json ...
+```
+
+Do not pass both `--from-book` and `--pack`, and do not omit both.
+
+## `series_prepare_profile_conflict`
+
+The target profile already exists but does not match the requested
+target/locale/model (or explicit actor/harness override). Re-run with a
+compatible profile configuration, choose another profile name, or explicitly
+recreate it:
+
+```bash
+booktx series prepare ... --replace-profile --write
+```
+
+## `series_prepare_chapter_audit_failed`
+
+The EPUB chapter audit found blocking TOC/map mismatches during series setup.
+Inspect the generated report and fix the source before continuing:
+
+```bash
+booktx chapters ./book5 --audit
+```
+
+## `series_prepare_isolated_mode`
+
+`booktx series prepare` is a project-root workflow. Do not run it from
+`translations/<profile>/`. Move to the project root or parent directory first,
+then rerun the command there.
+
 ## Source drift after extraction
 
 If the source file changed since the last `booktx extract`, the recorded

@@ -87,6 +87,14 @@ def context_prefill(
         "--gate-readiness",
         help="Create required questions that gate context readiness.",
     ),
+    consolidate_imported_policy: bool = typer.Option(
+        False,
+        "--consolidate-imported-policy",
+        help=(
+            "Collapse duplicate imported-policy review buckets into "
+            "smaller delta questions."
+        ),
+    ),
     write: bool = typer.Option(False, "--write", help="Commit planned changes."),
 ) -> None:
     """Prefill open context recommendations (dry run by default)."""
@@ -120,6 +128,7 @@ def context_prefill(
             write=write,
             include_advisory=include_advisory,
             gate_readiness=gate_readiness,
+            consolidate_imported_policy=consolidate_imported_policy,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)

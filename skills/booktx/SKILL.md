@@ -928,4 +928,35 @@ every record requires an explicit copy or edited judge decision.
 
 ## Starting the next book in a series
 
-Use context packs, not manual file copies. Dry-run `booktx context import-pack` first. Write pack termbase entries only when explicitly intended with `--write --write-termbase --termbase-scope project|profile`. Run source analysis with profile snapshot sync, prefill context, and stop for human approval before `context mark-ready`. After readiness, run `booktx termbase status --scope effective`, write isolated-agent instructions, and start translation only from the profile root.
+Prefer `booktx series prepare` from the project root or parent directory when it
+is available:
+
+```bash
+booktx series prepare ./book5 \
+  --source-file ./book5/book5.epub \
+  --from-book ./book4 \
+  --from-profile de_glm_5_2 \
+  --profile de_glm_5_2 \
+  --series-id shadows-of-the-apt \
+  --title "Shadows of the Apt German series context" \
+  --target de \
+  --target-locale de-DE \
+  --model zai/glm-5.2@high \
+  --write
+```
+
+Rules:
+
+1. Do not tell the user to run the full manual checklist unless `series prepare`
+   is unavailable or the user explicitly wants advanced/manual mode.
+2. After `series prepare`, inspect `.booktx/reports/series-prepare.md`,
+   `booktx context questionnaire ... --stdout`, and `booktx context status ...`
+   before approving anything.
+3. Do not run `booktx context mark-ready` until the user approves the new
+   source-analysis/context questions.
+4. Only after context is ready should you write isolated `AGENTS.md` and start
+   translation from the profile root.
+
+The manual `context export-pack` / `init` / `extract` / `profile create` /
+`context import-pack` / `source analyze` / `context prefill` path still works
+unchanged for advanced control.

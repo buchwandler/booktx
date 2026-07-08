@@ -17,6 +17,7 @@ from booktx.commands.judge import judge_app
 from booktx.commands.profile import profile_app
 from booktx.commands.review import review_app
 from booktx.commands.root import doctor_app, root_app
+from booktx.commands.series import series_app
 from booktx.commands.source import source_app
 from booktx.commands.termbase import termbase_app
 from booktx.commands.translate import translate_app
@@ -42,6 +43,7 @@ app.add_typer(source_app, name="source")
 app.add_typer(doctor_app, name="doctor")
 app.add_typer(review_app, name="review")
 app.add_typer(judge_app, name="judge")
+app.add_typer(series_app, name="series")
 app.add_typer(version_app, name="version")
 app.add_typer(profile_app, name="profile")
 app.add_typer(epub_app, name="epub")

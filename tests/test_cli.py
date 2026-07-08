@@ -876,6 +876,7 @@ def test_command_tree_top_level_snapshot():
         "profile",
         "qa-scan",
         "review",
+        "series",
         "source",
         "status",
         "translate",
@@ -920,6 +921,10 @@ def test_command_tree_group_snapshots():
             "todo-next",
             "todo-resume",
             "todo-status",
+        },
+        "series": {
+            "prepare",
+            "recipe",
         },
         "source": {
             "analysis",
@@ -1033,6 +1038,17 @@ def test_fixed_commands_present_in_tree():
     assert {"configure", "revise-record", "todo-next"} <= sub["review"]
     assert {"search", "revise-record"} <= sub["translate"]
     assert {"inspect", "grep", "extract-text"} <= sub["epub"]
+
+
+def test_series_recipe_subcommand_is_registered():
+    import typer
+
+    group = typer.main.get_command(app)
+    series = group.commands["series"]
+    assert hasattr(series, "commands")
+    recipe = series.commands["recipe"]
+    assert hasattr(recipe, "commands")
+    assert set(recipe.commands.keys()) == {"write"}
 
 
 def test_cli_help_runs_for_each_group():

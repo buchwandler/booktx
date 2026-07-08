@@ -175,6 +175,103 @@ def _normalized_entry_terms(entry: GlossaryEntry) -> set[str]:
     return {entry.source.casefold(), *(v.casefold() for v in entry.source_variants)}
 
 
+def _candidate_is_already_glossary_covered(
+    context: TranslationContext, candidate: SourceCandidate
+) -> bool:
+    normalized = candidate.normalized.casefold()
+    return any(
+        normalized in _normalized_entry_terms(entry) for entry in context.glossary
+    )
+
+
+def _imported_topic_questions(
+    context: TranslationContext, topic: str
+) -> list[ContextQuestion]:
+    return [
+        question
+        for question in context.questions
+        if question.origin == "source_analysis"
+        and question.topic == topic
+        and question.answer_source == "imported"
+    ]
+
+
+def _question_candidate_terms(question: ContextQuestion) -> set[str]:
+    question_text = question.question
+    if ":" in question_text:
+        question_text = question_text.split(":", 1)[1]
+    return {
+        part.strip().casefold() for part in question_text.split(",") if part.strip()
+    }
+
+
+def _question_hyphen_suffixes(question: ContextQuestion) -> set[str]:
+    suffixes: set[str] = set()
+    for term in _question_candidate_terms(question):
+        if "-" in term:
+            suffixes.add(term.rsplit("-", 1)[1])
+    return suffixes
+
+
+def _partition_bucket_candidates(
+    context: TranslationContext,
+    report: SourceAnalysisReport,
+    *,
+    topic: str,
+    candidate_ids: list[str],
+    family_match: bool,
+) -> tuple[list[str], list[str], list[str]]:
+    glossary_covered: list[str] = []
+    imported_policy_covered: list[str] = []
+    needs_review: list[str] = []
+    imported_questions = _imported_topic_questions(context, topic)
+    imported_terms = {
+        term
+        for question in imported_questions
+        for term in _question_candidate_terms(question)
+    }
+    for candidate_id in candidate_ids:
+        candidate = find_candidate(report, candidate_id)
+        candidate_term = candidate.normalized.casefold()
+        if _candidate_is_already_glossary_covered(context, candidate):
+            glossary_covered.append(candidate_id)
+            continue
+        if candidate_term in imported_terms:
+            imported_policy_covered.append(candidate_id)
+            continue
+        needs_review.append(candidate_id)
+    return glossary_covered, imported_policy_covered, needs_review
+
+
+def _consolidated_reason(
+    report: SourceAnalysisReport,
+    *,
+    glossary_covered: list[str],
+    imported_policy_covered: list[str],
+    needs_review: list[str],
+    fallback: str,
+) -> str:
+    if not (glossary_covered or imported_policy_covered):
+        return fallback
+    sections: list[str] = ["Imported policy already covers part of this review bucket."]
+    if glossary_covered:
+        labels = ", ".join(
+            find_candidate(report, item).text for item in glossary_covered[:8]
+        )
+        sections.append(f"Already covered by binding glossary: {labels}")
+    if imported_policy_covered:
+        labels = ", ".join(
+            find_candidate(report, item).text for item in imported_policy_covered[:8]
+        )
+        sections.append(f"Covered by imported policy: {labels}")
+    if needs_review:
+        labels = ", ".join(
+            find_candidate(report, item).text for item in needs_review[:8]
+        )
+        sections.append(f"Genuinely new candidates needing review: {labels}")
+    return " ".join(sections)
+
+
 def _prefill_glossary_candidate(
     context: TranslationContext,
     candidate: SourceCandidate,
@@ -289,6 +386,7 @@ def _prefill_one(
     *,
     include_advisory: bool,
     gate_readiness: bool = False,
+    consolidate_imported_policy: bool = False,
 ) -> ProfilePrefillResult:
     result = ProfilePrefillResult(profile=profile)
     binding_ids: list[str] = []
@@ -316,51 +414,129 @@ def _prefill_one(
         ):
             continue
         _prefill_glossary_candidate(context, candidate, result)
+    binding_glossary_covered: list[str] = []
+    binding_imported_covered: list[str] = []
+    if consolidate_imported_policy:
+        (
+            binding_glossary_covered,
+            binding_imported_covered,
+            binding_ids,
+        ) = _partition_bucket_candidates(
+            context,
+            report,
+            topic="source-analysis binding glossary",
+            candidate_ids=binding_ids,
+            family_match=True,
+        )
     _ensure_source_analysis_question(
         context,
         report,
         result,
         topic="source-analysis binding glossary",
         candidate_ids=binding_ids,
-        question="Review binding glossary candidates",
+        question=(
+            "Review new binding glossary candidates not already covered by "
+            "imported policy"
+            if consolidate_imported_policy
+            and (binding_glossary_covered or binding_imported_covered)
+            else "Review binding glossary candidates"
+        ),
         recommendation=(
             "Confirm which terms need a binding glossary decision, then "
             "promote each approved term with `booktx context promote-candidate`."
         ),
-        recommendation_reason=(
-            "Source analysis found likely world-building or terminology "
-            "candidates that should be reviewed before translation."
+        recommendation_reason=_consolidated_reason(
+            report,
+            glossary_covered=binding_glossary_covered,
+            imported_policy_covered=binding_imported_covered,
+            needs_review=binding_ids,
+            fallback=(
+                "Source analysis found likely world-building or terminology "
+                "candidates that should be reviewed before translation."
+            ),
         ),
         required=gate_readiness,
     )
+    name_glossary_covered: list[str] = []
+    name_imported_covered: list[str] = []
+    if consolidate_imported_policy:
+        (
+            name_glossary_covered,
+            name_imported_covered,
+            name_ids,
+        ) = _partition_bucket_candidates(
+            context,
+            report,
+            topic="source-analysis names",
+            candidate_ids=name_ids,
+            family_match=False,
+        )
     _ensure_source_analysis_question(
         context,
         report,
         result,
         topic="source-analysis names",
         candidate_ids=name_ids,
-        question="Review translation policy for recurring names and titles",
+        question=(
+            "Review new recurring names and titles not already covered by "
+            "imported policy"
+            if consolidate_imported_policy
+            and (name_glossary_covered or name_imported_covered)
+            else "Review translation policy for recurring names and titles"
+        ),
         recommendation=(
             "Decide which names remain unchanged, which need transliteration, "
             "and which should become glossary-backed policy."
         ),
-        recommendation_reason="Source analysis found recurring title/name candidates.",
+        recommendation_reason=_consolidated_reason(
+            report,
+            glossary_covered=name_glossary_covered,
+            imported_policy_covered=name_imported_covered,
+            needs_review=name_ids,
+            fallback="Source analysis found recurring title/name candidates.",
+        ),
         required=gate_readiness,
     )
+    rare_glossary_covered: list[str] = []
+    rare_imported_covered: list[str] = []
+    if consolidate_imported_policy:
+        (
+            rare_glossary_covered,
+            rare_imported_covered,
+            rare_ids,
+        ) = _partition_bucket_candidates(
+            context,
+            report,
+            topic="source-analysis rare terms",
+            candidate_ids=rare_ids,
+            family_match=False,
+        )
     _ensure_source_analysis_question(
         context,
         report,
         result,
         topic="source-analysis rare terms",
         candidate_ids=rare_ids,
-        question="Review rare or invented-looking source terms",
+        question=(
+            "Review new rare or invented-looking terms not already covered "
+            "by imported policy"
+            if consolidate_imported_policy
+            and (rare_glossary_covered or rare_imported_covered)
+            else "Review rare or invented-looking source terms"
+        ),
         recommendation=(
             "Confirm whether these rare terms need a glossary decision, a "
             "name-policy note, or an explicit ignore/review decision."
         ),
-        recommendation_reason=(
-            "Source analysis kept rare singleton or low-frequency candidates "
-            "because they look translation-relevant."
+        recommendation_reason=_consolidated_reason(
+            report,
+            glossary_covered=rare_glossary_covered,
+            imported_policy_covered=rare_imported_covered,
+            needs_review=rare_ids,
+            fallback=(
+                "Source analysis kept rare singleton or low-frequency candidates "
+                "because they look translation-relevant."
+            ),
         ),
         required=gate_readiness,
     )
@@ -375,6 +551,7 @@ def prefill_contexts(
     write: bool,
     include_advisory: bool = False,
     gate_readiness: bool = False,
+    consolidate_imported_policy: bool = False,
 ) -> PrefillResult:
     decisions = load_decisions(project)
     ignored = {
@@ -399,6 +576,7 @@ def prefill_contexts(
                 profile,
                 include_advisory=include_advisory,
                 gate_readiness=gate_readiness,
+                consolidate_imported_policy=consolidate_imported_policy,
             )
             planned.append((profile_project, context, result))
             output.profiles.append(result)

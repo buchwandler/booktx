@@ -79,11 +79,39 @@ booktx never decides translation policy by itself. An agent may propose context 
 
 ## Next book in a series
 
-1. Check the completed source profile: `booktx status BOOK3` and `booktx context status BOOK3 --profile PROFILE`.
-2. Export a context pack from the completed profile.
-3. Initialize and extract the new book, then create the matching profile.
-4. Run `booktx context import-pack BOOK --profile PROFILE --file PACK --init-missing-context --conflict fail` as a dry run.
-5. Re-run with `--write`; add `--write-termbase --termbase-scope project` only when reusable termbase entries should be imported.
-6. Render context, print the questionnaire, and wait for human approval before `context mark-ready`.
-7. Run `booktx source analyze BOOK --write --sync-profiles`, prefill context from source analysis, review any new questions, then mark ready.
-8. Write isolated-agent instructions and start translation only from the profile root.
+Normal path:
+
+```bash
+booktx series prepare ./book5 \
+  --source-file ./book5/book5.epub \
+  --from-book ./book4 \
+  --from-profile de_glm_5_2 \
+  --profile de_glm_5_2 \
+  --series-id shadows-of-the-apt \
+  --title "Shadows of the Apt German series context" \
+  --target de \
+  --target-locale de-DE \
+  --model zai/glm-5.2@high \
+  --write \
+  --write-termbase \
+  --termbase-scope project
+```
+
+Then review the generated context and finish the human gate:
+
+```bash
+booktx context questionnaire ./book5 --profile de_glm_5_2 --stdout
+booktx context status ./book5 --profile de_glm_5_2
+booktx context render ./book5 --profile de_glm_5_2 --write
+booktx context mark-ready ./book5 --profile de_glm_5_2
+booktx agents write ./book5 --mode isolated --profile de_glm_5_2
+```
+
+Advanced/manual path:
+
+1. Export a context pack from the completed profile.
+2. Initialize and extract the new book, then create the matching profile.
+3. Run `booktx context import-pack` as a dry run, then re-run with `--write`.
+4. Run `booktx source analyze --write --sync-profiles`.
+5. Run `booktx context prefill --from-source-analysis --consolidate-imported-policy --write`.
+6. Review the context questionnaire, then mark ready and write isolated agent instructions.
