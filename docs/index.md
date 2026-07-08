@@ -33,7 +33,9 @@ translation-contract
 markdown
 epub
 architecture
+architecture/canonical-store-split
 api
 development
+mypy-baseline
 troubleshooting
 ```

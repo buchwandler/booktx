@@ -152,7 +152,7 @@ def _project_status_snapshot(proj: Project) -> StatusBundle:
 
 def _die(message: str, code: int = 1) -> None:
     """Print an error and exit with ``code``."""
-    console.print(f"[red]error:[/red] {message}")
+    console.print(f"[red]error:[/red] {message}", soft_wrap=True)
     raise typer.Exit(code=code)
 
 
