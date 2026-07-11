@@ -87,6 +87,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0001",
+    "internal": false,
+    "kind": "added",
+    "order": 1,
+    "record_revision": 1,
+    "release_version": "v0.4.2",
+    "scopes": [],
+    "source_refs": ["git:c1bc2d7"],
+    "status": "accepted",
+    "summary": "Added grammar correction judge profile with acceptance workflow, revision-focused selection mode, and agents.md generation for grammar profiles"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0002",
     "internal": false,
     "kind": "added",
@@ -166,6 +180,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0002",
+    "internal": false,
+    "kind": "fixed",
+    "order": 2,
+    "record_revision": 1,
+    "release_version": "v0.4.2",
+    "scopes": [],
+    "source_refs": ["git:da662f0"],
+    "status": "accepted",
+    "summary": "Fixed command boundary test violation in judge module import guard"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0003",
     "internal": false,
     "kind": "added",
@@ -236,6 +264,20 @@
     "source_refs": ["git:a9e1743"],
     "status": "accepted",
     "summary": "Fixed longer glossary terms incorrectly interfering with shorter-term matching during translation validation"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0003",
+    "internal": false,
+    "kind": "fixed",
+    "order": 3,
+    "record_revision": 1,
+    "release_version": "v0.4.2",
+    "scopes": [],
+    "source_refs": ["git:47d8c81"],
+    "status": "accepted",
+    "summary": "Fixed missing documentation links and Windows test compatibility"
   },
   {
     "audience": null,

@@ -68,5 +68,19 @@
     "status": "planned",
     "title": "Release v0.4.1",
     "version": "v0.4.1"
+  },
+  {
+    "artifact_count": 0,
+    "boundary_ref": null,
+    "changelog_file": null,
+    "entry_count": 3,
+    "previous_version": "v0.4.1",
+    "record_revision": 4,
+    "released_at": "2026-07-11",
+    "source_count": null,
+    "source_refs": [],
+    "status": "planned",
+    "title": "Release v0.4.2",
+    "version": "v0.4.2"
   }
 ]
