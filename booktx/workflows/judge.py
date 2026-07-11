@@ -144,6 +144,9 @@ def create_judge_profile_workflow(
     cfg = load_profile_config(project.root, profile_name)
     cfg.selection = selection_cfg
     write_profile_config(project.root, cfg)
+    # Return the project with an up-to-date profile_config so callers
+    # (e.g. command modules) can access .selection without re-loading from config.
+    project.profile_config = cfg
     if context_from:
         _sync_judge_context_from_source(project.root, context_from, profile_name)
     return project

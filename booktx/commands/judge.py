@@ -22,7 +22,6 @@ from booktx.cli_support import (
     _require_ready_context,
     console,
 )
-from booktx.config import load_profile_config
 from booktx.errors import BooktxError
 from booktx.judge_sources import (
     configured_selection_sources,
@@ -223,9 +222,11 @@ def judge_create_profile(
         _handle_booktx_error(exc)
         return
     console.print(f"created selection profile: {project.profile}")
-    cfg = load_profile_config(runtime.project.root, project.profile or profile_name)
-    selection = cfg.selection
-    if selection is not None:
+    if (
+        project.profile_config is not None
+        and project.profile_config.selection is not None
+    ):
+        selection = project.profile_config.selection
         console.print(f"purpose: {selection.purpose}")
         if selection.purpose == "revise":
             console.print(f"revision focus: {selection.revision_focus}")
