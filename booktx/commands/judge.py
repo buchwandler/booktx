@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.table import Table
@@ -21,6 +22,7 @@ from booktx.cli_support import (
     _require_ready_context,
     console,
 )
+from booktx.config import load_profile_config
 from booktx.errors import BooktxError
 from booktx.judge_sources import (
     configured_selection_sources,
@@ -135,7 +137,9 @@ def resolve_judge_submission_path(runtime: RuntimeContext, value: Path) -> Path:
     return final
 
 
-def _sync_render_payload(proj, runtime, result, *, write: bool) -> dict[str, object]:
+def _sync_render_payload(
+    proj: Any, runtime: RuntimeContext, result: Any, *, write: bool
+) -> dict[str, Any]:
     profiles_payload = [
         {
             "profile": snap.profile,
@@ -195,6 +199,11 @@ def judge_create_profile(
         "--purpose",
         help="Selection purpose: compare or revise.",
     ),
+    revision_focus: str = typer.Option(
+        "general",
+        "--revision-focus",
+        help="Revision focus for --purpose revise: general or grammar.",
+    ),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     _reject_if_isolated(runtime)
@@ -208,11 +217,18 @@ def judge_create_profile(
             model=model,
             context_from=context_from,
             purpose=purpose,
+            revision_focus=revision_focus,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
     console.print(f"created selection profile: {project.profile}")
+    cfg = load_profile_config(runtime.project.root, project.profile or profile_name)
+    selection = cfg.selection
+    if selection is not None:
+        console.print(f"purpose: {selection.purpose}")
+        if selection.purpose == "revise":
+            console.print(f"revision focus: {selection.revision_focus}")
 
 
 # --------------------------------------------------------------------------
@@ -411,7 +427,7 @@ def _render_snapshot_status(payload: dict[str, object]) -> None:
         )
 
 
-def _render_status_blockers(payload: dict[str, object]) -> None:
+def _render_status_blockers(payload: dict[str, Any]) -> None:
     blocked_by = payload.get("blocked_by")
     if not isinstance(blocked_by, list) or not blocked_by:
         return
@@ -420,6 +436,10 @@ def _render_status_blockers(payload: dict[str, object]) -> None:
     messages = {
         "context_missing": "initialize and approve context before judging",
         "context_not_ready": "approve or sync context before judging",
+        "revision_source_incomplete": (
+            "the pinned revision source has missing effective targets; "
+            "complete and revalidate the source profile, then refresh the judge snapshot"
+        ),
         "snapshot_missing": (
             "return to the project root and run `booktx judge prepare-isolation` for this profile"
             if mode == "profile-root"
@@ -435,13 +455,20 @@ def _render_status_blockers(payload: dict[str, object]) -> None:
     console.print("blocked: " + "; ".join(rendered), soft_wrap=True, markup=False)
 
 
-def _print_judge_status_payload(payload: dict[str, object]) -> None:
+def _print_judge_status_payload(payload: dict[str, Any]) -> None:
     console.print(f"selection profile: {payload['profile']}")
     console.print(f"mode: {payload['mode']}")
     purpose = payload.get("selection_purpose") or "compare"
     console.print(f"purpose: {purpose}")
     if purpose == "revise":
-        console.print("review mode: explicit judge decisions required")
+        focus = payload.get("revision_focus") or "general"
+        console.print(f"revision focus: {focus}")
+        review_mode = (
+            "explicit grammar-only judge decisions required"
+            if focus == "grammar"
+            else "explicit judge decisions required"
+        )
+        console.print(f"review mode: {review_mode}")
     console.print("source profiles: " + ", ".join(payload["source_profiles"]))
     context = payload["context"]
     console.print(f"context: {'READY' if context['ready'] else 'NOT READY'}")
@@ -452,6 +479,10 @@ def _print_judge_status_payload(payload: dict[str, object]) -> None:
     console.print(
         f"records with candidate gaps: {payload['records_with_candidate_gaps']}"
     )
+    if purpose == "revise":
+        console.print(f"copy decisions: {payload['decisions_copy']}")
+        console.print(f"edited decisions: {payload['decisions_edited']}")
+        console.print(f"decision edit rate: {payload['decision_edit_rate']}")
     _render_snapshot_status(payload)
     _render_status_blockers(payload)
     if payload["next_command"]:
@@ -463,7 +494,7 @@ def _print_judge_status_payload(payload: dict[str, object]) -> None:
         console.print(f"identical sweep: {sweep_hint}", soft_wrap=True, markup=False)
 
 
-def _first_missing_chapter(payload: dict[str, object]) -> str | None:
+def _first_missing_chapter(payload: dict[str, Any]) -> str | None:
     chapters = payload.get("chapters")
     if not isinstance(chapters, list):
         return None
@@ -659,7 +690,9 @@ def judge_record(
     _print_judge_task(task, proj, runtime, output_format=resolved_format)
 
 
-def _print_judge_task(task, proj, runtime: RuntimeContext, output_format: str) -> None:
+def _print_judge_task(
+    task: Any, proj: Any, runtime: RuntimeContext, output_format: str
+) -> None:
     src_path, ingest_block = judge_task_block_paths(proj, task)
     decisions_path = judge_task_decisions_path(proj, task)
     if output_format == "block":
@@ -728,9 +761,11 @@ def judge_show(
     task = load_judge_task(runtime.project, judge_task_id)
     if task is None:
         _die(f"judge task not found: {judge_task_id}")
+    assert task is not None
     record = next((item for item in task.records if item.id == record_id), None)
     if record is None:
         _die(f"record {record_id} is not part of judge task {judge_task_id}")
+    assert record is not None
     console.print(record.id)
     console.print(f"SOURCE: {record.source}")
     for candidate in record.candidates:
@@ -750,22 +785,46 @@ def judge_show(
         )
         console.print(f"validation: {summary}")
     if task.selection_purpose == "revise":
-        console.print("REVISION MODE:", soft_wrap=True, markup=False)
         console.print(
-            "- proofread the BASE_TARGET for every record; do not skip records.",
-            soft_wrap=True,
-            markup=False,
+            f"REVISION MODE ({task.revision_focus}):", soft_wrap=True, markup=False
         )
-        console.print(
-            "- copy: selected=A and decision_kind=copy; leave TARGET empty to keep the base target.",
-            soft_wrap=True,
-            markup=False,
-        )
-        console.print(
-            "- edited: selected=A (or edited) and decision_kind=edited; TARGET is the complete corrected target.",
-            soft_wrap=True,
-            markup=False,
-        )
+        if task.revision_focus == "grammar":
+            console.print(
+                "- inspect every BASE_TARGET record; use SOURCE only as a semantic guard and do not retranslate.",
+                soft_wrap=True,
+                markup=False,
+            )
+            console.print(
+                "- copy: selected=A and decision_kind=copy; leave TARGET empty when the German is already grammatically correct.",
+                soft_wrap=True,
+                markup=False,
+            )
+            console.print(
+                "- edited: selected=A (or edited) and decision_kind=edited; TARGET is the complete minimally corrected target.",
+                soft_wrap=True,
+                markup=False,
+            )
+            console.print(
+                "- do not change vocabulary, terminology, style, flow, tone, register, meaning, or sentence boundaries.",
+                soft_wrap=True,
+                markup=False,
+            )
+        else:
+            console.print(
+                "- proofread the BASE_TARGET for every record; do not skip records.",
+                soft_wrap=True,
+                markup=False,
+            )
+            console.print(
+                "- copy: selected=A and decision_kind=copy; leave TARGET empty to keep the base target.",
+                soft_wrap=True,
+                markup=False,
+            )
+            console.print(
+                "- edited: selected=A (or edited) and decision_kind=edited; TARGET is the complete corrected target.",
+                soft_wrap=True,
+                markup=False,
+            )
     else:
         console.print("DECISION MODES:", soft_wrap=True, markup=False)
         console.print(
@@ -808,10 +867,12 @@ def _accept_identical_next_message(
         return [f"next command: {global_next}"] if global_next else []
 
     chapters = status_payload.get("chapters")
+    if not isinstance(chapters, list):
+        chapters = []
     chapter_status = next(
         (
             item
-            for item in (chapters or [])
+            for item in chapters
             if isinstance(item, dict) and item.get("chapter_id") == requested_chapter
         ),
         None,

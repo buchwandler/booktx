@@ -258,6 +258,14 @@ Do not run `accept-identical`, `sweep-identical`, or
 through translation or review revision commands; use `judge record` for later
 corrections.
 
+Revision profiles have two submodes:
+
+- `--revision-focus general` (default): general proofread/revision; grammar,
+  flow, punctuation, style, or terminology corrections may be made.
+- `--revision-focus grammar`: grammar-only revision; existing wording,
+  terminology, names, tone, and register are frozen, and `BASE_TARGET` is the
+  authoritative German wording.
+
 Create a revision profile with exactly one source:
 
 ```bash
@@ -268,9 +276,23 @@ booktx judge create-profile ./book PROFILE_REVISED \
   --context-from PROFILE_B \
   --model gpt-5.5 \
   --purpose revise
+```
+
+Create a grammar-only isolated revision profile from an existing translated
+book:
+
+```bash
+booktx judge create-profile ./book judge_gpt5_6 \
+  --target de \
+  --target-locale de-DE \
+  --sources de_glm_5_2 \
+  --context-from de_glm_5_2 \
+  --model gpt-5.6 \
+  --purpose revise \
+  --revision-focus grammar
 
 booktx judge prepare-isolation ./book \
-  --profile PROFILE_REVISED \
+  --profile judge_gpt5_6 \
   --write
 ```
 
@@ -290,11 +312,21 @@ booktx validate . --fail-on-warnings
 booktx build . --require-complete
 ```
 
+Booktx records are sentence-segmented translation units; a revision profile
+requires an explicit decision for every translatable record. In
+`--revision-focus grammar`, prefer `copy` whenever the existing German is
+grammatically valid, and use `edited` only for minimal grammar, syntax,
+agreement, inflection, orthography, capitalization, or punctuation fixes.
+Source gaps are blockers in revise mode, not skippable records.
+
 In `selection.purpose=compare`, prefer `accept-identical` and
 `sweep-identical` for true multi-source identical candidates.
 
 In `selection.purpose=revise`, never use deterministic selection commands.
-Every record requires an explicit copy or edited judge decision.
+Every record requires an explicit copy or edited judge decision. Only one
+managed isolated profile contract is active at a time, so prepare isolated
+judge profiles sequentially in one project unless you use separate worktrees or
+project copies.
 
 ## What stays a version?
 

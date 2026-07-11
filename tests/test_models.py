@@ -472,12 +472,33 @@ def test_selection_and_sync_models_have_safe_defaults():
         source_sha256="abc",
     )
     assert task.records == []
+    assert task.revision_focus == "general"
 
     ledger = TranslationSelectionLedger(
         profile="de_judge",
         source_sha256="sha256:source",
     )
     assert ledger.records == {}
+
+
+def test_selection_config_revision_focus_defaults_and_roundtrips():
+    cfg = SelectionConfig(sources=["de_a"], purpose="revise")
+    assert cfg.revision_focus == "general"
+
+    grammar = SelectionConfig(
+        sources=["de_a"],
+        purpose="revise",
+        require_all_sources=True,
+        revision_focus="grammar",
+    )
+    dumped = json.loads(grammar.model_dump_json())
+    assert dumped["revision_focus"] == "grammar"
+    assert SelectionConfig.model_validate_json(grammar.model_dump_json()) == grammar
+
+
+def test_selection_config_rejects_grammar_focus_for_compare():
+    with pytest.raises(ValidationError):
+        SelectionConfig(sources=["de_a"], purpose="compare", revision_focus="grammar")
 
 
 def test_names_file_default():

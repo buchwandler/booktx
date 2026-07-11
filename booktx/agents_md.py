@@ -453,7 +453,98 @@ def _render_isolated_selection_body(*, profile: str, target_locale: str) -> str:
     )
 
 
-def _render_isolated_revision_body(*, profile: str, target_locale: str) -> str:
+def _render_isolated_revision_body(
+    *, profile: str, target_locale: str, revision_focus: str = "general"
+) -> str:
+    if revision_focus == "grammar":
+        return (
+            "\n\n"
+            "# booktx isolated judge revision profile\n"
+            "\n"
+            "You are in a single-source grammar-only judge revision profile.\n"
+            "\n"
+            "Use only profile-local commands with project argument `.`. "
+            "Do not use parent paths, absolute paths, shell globs, "
+            "filesystem traversal snippets, sibling profile commands, or "
+            "`--profile`.\n"
+            "\n"
+            "Profile:\n"
+            "\n"
+            f"- profile: {profile}\n"
+            f"- target: {target_locale}\n"
+            "- source access: copied judge-sources snapshot\n"
+            "- mutable state: this directory only\n"
+            "\n"
+            "Allowed commands:\n"
+            "\n"
+            "```bash\n"
+            "booktx judge status .\n"
+            "booktx judge next . --unit chapter --chapter CHAPTER "
+            "--max-records 20 --format decisions\n"
+            "booktx judge record . --record RECORD_ID --format decisions\n"
+            "booktx judge insert . --judge-task-id TASK "
+            "--file judge-ingest/TASK.decisions.txt --format decisions\n"
+            "booktx judge continue . --max-records 20\n"
+            "booktx validate . --fail-on-warnings\n"
+            "booktx build . --require-complete\n"
+            "```\n"
+            "\n"
+            "Forbidden commands (they bypass explicit per-record decisions and "
+            "must fail in revision mode):\n"
+            "\n"
+            "```bash\n"
+            "booktx judge accept-identical . --write\n"
+            "booktx judge sweep-identical . --write\n"
+            "booktx judge prefill-policy-fixes . --write\n"
+            "booktx translate insert .\n"
+            "booktx translation revise-record .\n"
+            "booktx translation revise-block .\n"
+            "```\n"
+            "\n"
+            "For every record, inspect BASE_TARGET and choose an explicit copy "
+            "or edited decision. Use copy when the German is grammatically "
+            "correct. Use edited only for the smallest necessary German grammar, "
+            "syntax, agreement, inflection, orthography, capitalization, or "
+            "punctuation correction.\n"
+            "\n"
+            "BASE_TARGET is authoritative for wording and terminology. SOURCE "
+            "is only a semantic guard. Do not retranslate, paraphrase, polish, "
+            "improve flow, replace words with synonyms, change terminology, "
+            "alter tone or register, or split or merge sentences.\n"
+            "\n"
+            "Decision semantics:\n"
+            "\n"
+            "- `selected: A` with `decision_kind: copy` and an empty `TARGET` keeps "
+            "the BASE_TARGET unchanged.\n"
+            "- `selected: A` with `decision_kind: edited` and a full `TARGET` revises "
+            "the BASE_TARGET.\n"
+            "- `selected: edited` with `decision_kind: edited` and a full `TARGET` "
+            "replaces the target entirely.\n"
+            "\n"
+            "Autonomy rule:\n"
+            "\n"
+            "- Run one booktx command at a time. Never wrap judge commands in "
+            "a shell loop, never chain them with `||`, `&&`, or `;`, and never "
+            "append `|| true` to swallow failures. Read each command's output "
+            "before continuing.\n"
+            "\n"
+            "Rules:\n"
+            "\n"
+            "- Preserve record ids, placeholders, inline XHTML tags, and quote "
+            "boundaries exactly.\n"
+            "- Do not invent context answers or mark context ready.\n"
+            "- Do not use Python, sed, perl, awk, regex scripts, or bulk "
+            "filesystem edits to rewrite judge ingest files.\n"
+            "- Do not edit `judge-tasks/*.source.block.txt`.\n"
+            "- Do not hand-edit `translation-store.json` or "
+            "`translation-selection-ledger.json`; effective output is valid only "
+            "while each active target has matching judge-decision provenance.\n"
+            "- If booktx prints a parent path, sibling profile, or any "
+            "parent-directory reference, stop and report an isolation bug.\n"
+            "\n"
+            "Use the installed booktx skill when available. This file is the "
+            "local harness entry contract; it does not replace the skill.\n"
+        )
     return (
         "\n\n"
         "# booktx isolated judge revision profile\n"
@@ -501,6 +592,9 @@ def _render_isolated_revision_body(*, profile: str, target_locale: str) -> str:
         "For every record in a judge task, choose an explicit copy or edited "
         "decision. Do not skip records. Later corrections must use "
         "`booktx judge record`.\n"
+        "\n"
+        "Use edited for grammar, flow, punctuation, style, or terminology "
+        "corrections.\n"
         "\n"
         "Decision semantics:\n"
         "\n"
@@ -601,6 +695,7 @@ def render_agents_md(
     target_locale: str | None = None,
     profile_kind: str | None = None,
     selection_purpose: str | None = None,
+    revision_focus: str | None = None,
 ) -> str:
     """Render a complete managed ``AGENTS.md`` document for ``mode``.
 
@@ -627,7 +722,9 @@ def render_agents_md(
         if profile_kind == "selection":
             if selection_purpose == "revise":
                 body = _render_isolated_revision_body(
-                    profile=profile, target_locale=target_locale
+                    profile=profile,
+                    target_locale=target_locale,
+                    revision_focus=revision_focus or "general",
                 )
             else:
                 body = _render_isolated_selection_body(

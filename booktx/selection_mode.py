@@ -30,9 +30,12 @@ if TYPE_CHECKING:
 
 __all__ = [
     "SelectionPurpose",
+    "RevisionFocus",
     "parse_sources_csv",
     "selection_purpose",
+    "revision_focus",
     "is_revision_selection_profile",
+    "is_grammar_revision_profile",
     "configured_revision_source",
     "resolve_judge_sources_for_purpose",
     "require_selection_profile",
@@ -40,6 +43,7 @@ __all__ = [
 
 
 SelectionPurpose = Literal["compare", "revise"]
+RevisionFocus = Literal["general", "grammar"]
 
 
 def parse_sources_csv(raw: str | None) -> list[str]:
@@ -91,6 +95,21 @@ def selection_purpose(project: Project) -> SelectionPurpose:
 def is_revision_selection_profile(project: Project) -> bool:
     """True when the selection profile is configured for single-source revision."""
     return selection_purpose(project) == "revise"
+
+
+def revision_focus(project: Project) -> RevisionFocus:
+    """Return the effective revision focus (defaults to ``"general"``)."""
+    cfg = project.profile_config
+    if cfg is None or cfg.selection is None:
+        return "general"
+    return cfg.selection.revision_focus
+
+
+def is_grammar_revision_profile(project: Project) -> bool:
+    """True when the profile is a grammar-only single-source revision profile."""
+    return is_revision_selection_profile(project) and (
+        revision_focus(project) == "grammar"
+    )
 
 
 def configured_revision_source(project: Project) -> str:

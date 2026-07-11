@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import TYPE_CHECKING
 
 # ruff: noqa: E501
@@ -39,7 +40,7 @@ from booktx.models import (
     Record,
     TranslatedRecord,
 )
-from booktx.selection_mode import selection_purpose
+from booktx.selection_mode import revision_focus, selection_purpose
 from booktx.termbase_tasking import (
     applicable_termbase_sha256_for_record_sources,
     validate_termbase_record_pair,
@@ -51,7 +52,12 @@ from booktx.translation_store import (
     sha256_text,
     upsert_translation_version,
 )
-from booktx.validate import Severity, load_validation_context, validate_record_pair
+from booktx.validate import (
+    Finding,
+    Severity,
+    load_validation_context,
+    validate_record_pair,
+)
 from booktx.versioning import canonical_json_sha256, lookup_version, resolve_identity
 
 if TYPE_CHECKING:
@@ -247,6 +253,70 @@ def _error_findings(findings: list[Finding]) -> list[Finding]:
         for finding in findings
         if finding.severity == Severity.ERROR or finding.rule in blocking_rules
     ]
+
+
+def _rough_sentence_count(text: str) -> int:
+    stripped = text.strip()
+    if not stripped:
+        return 0
+    parts = [
+        item.strip()
+        for item in re.split(r'(?<=[.!?])(?:["»”\')\]]+)?\s+', stripped)
+        if item.strip()
+    ]
+    return len(parts) if parts else 1
+
+
+def _grammar_revision_warning_findings(
+    *,
+    item: SubmittedJudgeRecord,
+    task_record: JudgeTaskRecord,
+    target_text: str,
+) -> list[Finding]:
+    if item.decision_kind != "edited" or not task_record.candidates:
+        return []
+    base_target = task_record.candidates[0].target
+    if _normalize_newlines(base_target) == _normalize_newlines(target_text):
+        return []
+    findings: list[Finding] = []
+    before_sentences = _rough_sentence_count(base_target)
+    after_sentences = _rough_sentence_count(target_text)
+    if before_sentences != after_sentences:
+        findings.append(
+            Finding(
+                chunk_id=task_record.chunk_id,
+                severity=Severity.WARN,
+                rule="grammar_revision_sentence_count_changed",
+                message=(
+                    "grammar-focused revision changed the sentence count from "
+                    f"{before_sentences} to {after_sentences}; verify this was a "
+                    "minimal grammatical repair"
+                ),
+                record_id=item.id,
+            )
+        )
+    similarity = SequenceMatcher(
+        None,
+        _normalize_newlines(base_target),
+        _normalize_newlines(target_text),
+    ).ratio()
+    if (
+        max(len(base_target.strip()), len(target_text.strip())) >= 40
+        and similarity < 0.72
+    ):
+        findings.append(
+            Finding(
+                chunk_id=task_record.chunk_id,
+                severity=Severity.WARN,
+                rule="grammar_revision_large_edit",
+                message=(
+                    "grammar-focused revision made a large edit to BASE_TARGET; "
+                    "verify wording, terminology, and meaning stayed frozen"
+                ),
+                record_id=item.id,
+            )
+        )
+    return findings
 
 
 def _binding_glossary_findings(
@@ -673,6 +743,15 @@ def accept_judge_submission(
         raise _err("empty_submission", "no judge decisions to accept")
 
     _validate_task_profile(project, task)
+    if (
+        selection_purpose(project) == "revise"
+        and task.selection_purpose == "revise"
+        and task.revision_focus != revision_focus(project)
+    ):
+        raise _err(
+            "judge_revision_focus_mismatch",
+            "revision focus changed after task creation; recreate the task",
+        )
     _validate_task_evidence(project, task)
     _bind_task_source_access(project, task, enforce_snapshot=enforce_snapshot)
 
@@ -708,6 +787,11 @@ def accept_judge_submission(
         project,
         context_view_path=task.context_view_path,
     )
+    if validation_context is None:
+        raise _err(
+            "judge_context_missing",
+            "judge task validation context is missing; recreate the task",
+        )
 
     findings: list[Finding] = []
     store = load_translation_store(project)
@@ -733,6 +817,14 @@ def accept_judge_submission(
             input_format=input_format,
         )
         resolved_target_by_id[item.id] = target_text
+        if task.selection_purpose == "revise" and task.revision_focus == "grammar":
+            item_findings.extend(
+                _grammar_revision_warning_findings(
+                    item=item,
+                    task_record=task_records[item.id],
+                    target_text=target_text,
+                )
+            )
         findings.extend(item_findings)
 
     errors = _error_findings(findings)

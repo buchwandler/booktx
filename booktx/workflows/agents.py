@@ -114,6 +114,13 @@ def _selection_purpose(root: Path, profile_name: str) -> str | None:
     return cfg.selection.purpose
 
 
+def _revision_focus(root: Path, profile_name: str) -> str | None:
+    cfg = load_profile_config(load_source_project(root), profile_name)
+    if cfg.selection is None:
+        return None
+    return cfg.selection.revision_focus
+
+
 def _reject_ancestor_conflict(root: Path, *, sanitize: bool) -> None:
     """Block isolated preparation when the project-root AGENTS.md is incompatible."""
     ancestor = root / AGENTS_FILENAME
@@ -233,6 +240,7 @@ def _write_project_root(
         target_locale=_target_locale(root, target_profile),
         profile_kind=_profile_kind(root, target_profile),
         selection_purpose=_selection_purpose(root, target_profile),
+        revision_focus=_revision_focus(root, target_profile),
     )
     write_managed_agents_md(target, text, replace_unmanaged=replace_unmanaged)
 
@@ -288,6 +296,7 @@ def _write_profile_root(
         target_locale=_target_locale(root, target_profile),
         profile_kind=_profile_kind(root, target_profile),
         selection_purpose=_selection_purpose(root, target_profile),
+        revision_focus=_revision_focus(root, target_profile),
     )
     target = profile_root / AGENTS_FILENAME
     write_managed_agents_md(target, text, replace_unmanaged=replace_unmanaged)

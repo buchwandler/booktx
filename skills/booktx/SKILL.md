@@ -900,6 +900,16 @@ Do not run `accept-identical`, `sweep-identical`, or
 through translation or review revision commands; use `judge record` for later
 corrections.
 
+Read the task's revision contract before editing:
+
+```text
+purpose=revise, revision_focus=general
+    -> general proofread/revision contract
+
+purpose=revise, revision_focus=grammar
+    -> minimal grammar-only contract
+```
+
 Create a revision profile with exactly one source, then judge every record
 with an explicit `copy` (keep the base target, empty `TARGET`) or `edited`
 (write the complete corrected target) decision. Use the unit of review
@@ -910,6 +920,11 @@ booktx judge create-profile ./book de_glm_5_2_revised \
   --target de --target-locale de-DE \
   --sources de_glm_5_2 --context-from de_glm_5_2 --model gpt-5.5 \
   --purpose revise
+
+booktx judge create-profile ./book judge_gpt5_6 \
+  --target de --target-locale de-DE \
+  --sources de_glm_5_2 --context-from de_glm_5_2 --model gpt-5.6 \
+  --purpose revise --revision-focus grammar
 booktx judge prepare-isolation ./book --profile de_glm_5_2_revised --write
 cd translations/de_glm_5_2_revised
 booktx judge status .
@@ -919,6 +934,14 @@ booktx judge record . --record RECORD_ID --format decisions
 booktx validate . --fail-on-warnings
 booktx build . --require-complete
 ```
+
+In `revision_focus=grammar`, inspect every record, treat `BASE_TARGET` as
+authoritative for wording and terminology, use `SOURCE` only as a semantic
+guard, prefer `copy` whenever the German is grammatically valid, and use
+`edited` only for the smallest necessary grammar, syntax, agreement,
+inflection, orthography, capitalization, or punctuation correction. Do not
+retranslate, replace words with synonyms, change terminology, improve flow,
+alter tone or register, or split or merge sentences.
 
 In `selection.purpose=compare`, prefer `accept-identical` and
 `sweep-identical` for true multi-source identical candidates. In

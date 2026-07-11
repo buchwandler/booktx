@@ -445,6 +445,17 @@ commands `accept-identical`, `sweep-identical`, and `prefill-policy-fixes` are
 disabled there. See _Single-source judge revision profiles_ in
 `docs/profiles.md`.
 
+`judge create-profile` also accepts:
+
+```text
+--revision-focus general|grammar
+```
+
+Use `general` for the existing broad revise contract. Use `grammar` when you
+want an isolated single-source grammar-fix run that freezes established
+wording, terminology, names, tone, and register while still requiring an
+explicit decision for every record.
+
 ```bash
 booktx judge create-profile ./book JUDGE_PROFILE \
   --target de \
@@ -453,6 +464,15 @@ booktx judge create-profile ./book JUDGE_PROFILE \
   --context-from PROFILE \
   --model gpt-5.5 \
   --purpose compare
+
+booktx judge create-profile ./book JUDGE_GRAMMAR \
+  --target de \
+  --target-locale de-DE \
+  --sources de_glm_5_2 \
+  --context-from de_glm_5_2 \
+  --model gpt-5.6 \
+  --purpose revise \
+  --revision-focus grammar
 
 booktx judge status ./book --profile JUDGE_PROFILE --sources PROFILE,PROFILE_B
 
@@ -514,6 +534,11 @@ booktx judge continue . --max-records 8
 
 For `decision_kind: copy`, leave `TARGET` empty; booktx copies the selected
 candidate exactly. Only `edited` decisions require a non-empty `TARGET`.
+
+For revise profiles, do **not** use `accept-identical`; it is valid only in
+compare mode. In `--revision-focus grammar`, `booktx judge status .` reports the
+revision focus plus copy/edited counts and edit rate so model runs can be
+compared without adding a separate reporting command.
 
 ## Glossary repair and chapter note reset
 

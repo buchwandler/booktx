@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from hashlib import blake2s
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from booktx.config import (
     JUDGE_SOURCES_SNAPSHOT_MANIFEST_REL,
@@ -41,7 +41,7 @@ from booktx.models import (
 )
 from booktx.progress import count_words
 from booktx.record_refs import parse_record_ref
-from booktx.selection_mode import selection_purpose
+from booktx.selection_mode import revision_focus, selection_purpose
 from booktx.status import selected_chapter
 from booktx.tasks import limit_records_by_words
 from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
@@ -100,22 +100,57 @@ def _record_ids_for_task(
     return chapter_obj.chapter_id, limited
 
 
+def _is_grammar_revision_task(task: JudgeTask) -> bool:
+    return task.selection_purpose == "revise" and task.revision_focus == "grammar"
+
+
 def _judge_task_block_header(task: JudgeTask, *, revise: bool) -> list[str]:
     if revise:
         source_name = task.source_profiles[0] if task.source_profiles else ""
-        lines = [
-            "# booktx judge revision task",
-            f"judge_task_id: {task.judge_task_id}",
-            f"profile: {task.profile}",
-            f"source: {source_name}",
-            "purpose: revise",
-            "# Goal: proofread and improve the existing target record by record.",
-            "# Use copy only when the base target is already good.",
-            "# Use edited for grammar, flow, punctuation, style, or terminology "
-            "corrections.",
-            "# Preserve meaning, names, policy, placeholders, quotes, ",
-            "and inline XHTML.",
-        ]
+        if _is_grammar_revision_task(task):
+            lines = [
+                "# booktx judge revision task",
+                f"judge_task_id: {task.judge_task_id}",
+                f"profile: {task.profile}",
+                f"source: {source_name}",
+                "purpose: revise",
+                "revision_focus: grammar",
+                (
+                    "# Goal: inspect every BASE_TARGET record and correct German "
+                    "grammar only."
+                ),
+                "# BASE_TARGET is authoritative for wording and terminology.",
+                "# SOURCE is a semantic guard; do not retranslate from it.",
+                "# Use copy whenever BASE_TARGET is grammatically correct.",
+                (
+                    "# Use edited only for the smallest necessary grammar, "
+                    "syntax, agreement,"
+                ),
+                (
+                    "# inflection, orthography, capitalization, or punctuation "
+                    "correction."
+                ),
+                "# Do not change vocabulary, terminology, style, flow, tone, register,",
+                (
+                    "# meaning, sentence boundaries, names, placeholders, quotes, "
+                    "or inline XHTML."
+                ),
+            ]
+        else:
+            lines = [
+                "# booktx judge revision task",
+                f"judge_task_id: {task.judge_task_id}",
+                f"profile: {task.profile}",
+                f"source: {source_name}",
+                "purpose: revise",
+                "revision_focus: general",
+                "# Goal: proofread and improve the existing target record by record.",
+                "# Use copy only when the base target is already good.",
+                "# Use edited for grammar, flow, punctuation, style, or terminology "
+                "corrections.",
+                "# Preserve meaning, names, policy, placeholders, quotes, ",
+                "and inline XHTML.",
+            ]
     else:
         lines = [
             "# booktx judge task",
@@ -260,13 +295,24 @@ def render_judge_task_block(task: JudgeTask) -> str:
 def render_judge_decision_block(task: JudgeTask) -> str:
     revise = task.selection_purpose == "revise"
     if revise:
-        lines = [
-            "# booktx judge revision decisions",
-            f"judge_task_id: {task.judge_task_id}",
-            "# Fill every record. Use copy only when no improvement is needed.",
-            "# For edited, TARGET must contain the complete corrected target.",
-            "",
-        ]
+        if _is_grammar_revision_task(task):
+            lines = [
+                "# booktx judge grammar revision decisions",
+                f"judge_task_id: {task.judge_task_id}",
+                "# Fill every record.",
+                "# copy: keep BASE_TARGET unchanged and leave TARGET empty.",
+                "# edited: write the complete minimally corrected target.",
+                "# Do not rewrite grammatically valid text for style or fluency.",
+                "",
+            ]
+        else:
+            lines = [
+                "# booktx judge revision decisions",
+                f"judge_task_id: {task.judge_task_id}",
+                "# Fill every record. Use copy only when no improvement is needed.",
+                "# For edited, TARGET must contain the complete corrected target.",
+                "",
+            ]
     else:
         lines = [
             "# booktx judge decisions",
@@ -372,8 +418,8 @@ def _build_judge_task_model(
     project: Project,
     bundle: StatusBundle,
     task_chapter_id: str,
-    resolution,
-    context_view,
+    resolution: Any,
+    context_view: Any,
     source_profiles: list[str],
     source_access: Literal["live", "snapshot"],
     source_snapshot_sha256: str | None,
@@ -411,6 +457,7 @@ def _build_judge_task_model(
         source_snapshot_path=source_snapshot_path,
         source_candidates_sha256=judge_task_candidates_sha256(records),
         selection_purpose=selection_purpose(project),
+        revision_focus=revision_focus(project),
         records=records,
     )
 

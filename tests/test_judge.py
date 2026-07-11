@@ -3735,17 +3735,32 @@ def test_judge_insert_prints_qa_summary_with_warnings(monkeypatch, tmp_path: Pat
 # =====================================================================
 
 
-def _create_revision_profile(project_dir: Path, profile: str, source: str) -> None:
+def _create_revision_profile(
+    project_dir: Path,
+    profile: str,
+    source: str,
+    *,
+    revision_focus: str = "general",
+) -> None:
     create_profile(project_dir, profile, target_language="de", kind="selection")
     cfg = load_profile_config(project_dir, profile)
-    cfg.selection = SelectionConfig(sources=[source], purpose="revise")
+    cfg.selection = SelectionConfig(
+        sources=[source],
+        purpose="revise",
+        require_all_sources=True,
+        revision_focus=revision_focus,
+    )
     write_profile_config(project_dir, cfg)
 
 
-def _revise_project(tmp_path: Path) -> tuple[Path, list[str]]:
+def _revise_project(
+    tmp_path: Path, *, revision_focus: str = "general"
+) -> tuple[Path, list[str]]:
     project_dir = _make_project(tmp_path)
     _create_translation_profile(project_dir, "de_a")
-    _create_revision_profile(project_dir, "de_rev", "de_a")
+    _create_revision_profile(
+        project_dir, "de_rev", "de_a", revision_focus=revision_focus
+    )
     for profile in ("de_a", "de_rev"):
         _ready_context(project_dir, profile)
     return project_dir, _record_ids(project_dir)
@@ -3821,11 +3836,16 @@ def test_revise_create_profile_cli_validates_purpose_and_sources(tmp_path: Path)
             "de_a",
             "--purpose",
             "revise",
+            "--revision-focus",
+            "grammar",
         ],
     )
     assert res.exit_code == 0, res.output
     cfg = load_profile_config(project_dir, "de_rev")
     assert cfg.selection is not None and cfg.selection.purpose == "revise"
+    assert cfg.selection.revision_focus == "grammar"
+    assert cfg.selection.require_all_sources is True
+    assert "revision focus: grammar" in res.output
 
     # invalid purpose rejected, no profile leaked
     res2 = runner.invoke(
@@ -3866,6 +3886,69 @@ def test_revise_create_profile_cli_validates_purpose_and_sources(tmp_path: Path)
     assert res3.exit_code != 0
     assert not (project_dir / "translations" / "de_bad2").exists()
 
+    # compare mode rejects grammar-only focus
+    res4 = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            str(project_dir),
+            "de_bad3",
+            "--target",
+            "de",
+            "--sources",
+            "de_a",
+            "--purpose",
+            "compare",
+            "--revision-focus",
+            "grammar",
+        ],
+    )
+    assert res4.exit_code != 0
+    assert not (project_dir / "translations" / "de_bad3").exists()
+
+    # unknown focus rejected before profile creation
+    res5 = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            str(project_dir),
+            "de_bad4",
+            "--target",
+            "de",
+            "--sources",
+            "de_a",
+            "--purpose",
+            "revise",
+            "--revision-focus",
+            "bogus",
+        ],
+    )
+    assert res5.exit_code != 0
+    assert not (project_dir / "translations" / "de_bad4").exists()
+
+    # omitted focus remains backward-compatible
+    res6 = runner.invoke(
+        app,
+        [
+            "judge",
+            "create-profile",
+            str(project_dir),
+            "de_rev_default",
+            "--target",
+            "de",
+            "--sources",
+            "de_a",
+            "--purpose",
+            "revise",
+        ],
+    )
+    assert res6.exit_code == 0, res6.output
+    cfg_default = load_profile_config(project_dir, "de_rev_default")
+    assert cfg_default.selection is not None
+    assert cfg_default.selection.revision_focus == "general"
+
 
 def test_revise_resolve_sources_overrides(tmp_path: Path):
     project_dir, _ = _revise_project(tmp_path)
@@ -3887,9 +3970,74 @@ def test_revise_resolve_sources_overrides(tmp_path: Path):
             assert exc.code == "judge_revision_sources_override"
 
 
+def test_revise_status_blocks_source_gaps_and_next_fails(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path, revision_focus="grammar")
+    _write_source_candidate(project_dir, "de_a", record_ids[0], "Basisziel.")
+
+    status = runner.invoke(
+        app,
+        ["judge", "status", str(project_dir), "--profile", "de_rev", "--json"],
+    )
+    assert status.exit_code == 0, status.output
+    data = json.loads(status.output)
+    assert data["selection_purpose"] == "revise"
+    assert data["revision_focus"] == "grammar"
+    assert "revision_source_incomplete" in data["blocked_by"]
+    assert data["records_with_candidate_gaps"] > 0
+    assert data["next_command"] == ""
+
+    next_res = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--unit",
+            "chapter",
+            "--chapter",
+            "0001",
+            "--max-words",
+            "900",
+            "--format",
+            "block",
+        ],
+    )
+    assert next_res.exit_code != 0
+
+    for record_id in record_ids[1:]:
+        _write_source_candidate(
+            project_dir, "de_a", record_id, f"Basisziel {record_id}."
+        )
+
+    ready_next = runner.invoke(
+        app,
+        [
+            "judge",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_rev",
+            "--unit",
+            "chapter",
+            "--chapter",
+            "0001",
+            "--max-words",
+            "900",
+            "--format",
+            "block",
+        ],
+    )
+    assert ready_next.exit_code == 0, ready_next.output
+
+
 def test_revise_deterministic_commands_are_rejected(tmp_path: Path):
     project_dir, record_ids = _revise_project(tmp_path)
-    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+    for record_id in record_ids:
+        _write_source_candidate(
+            project_dir, "de_a", record_id, f"A target {record_id}."
+        )
     _sync_sources(project_dir, profile="de_rev", write=True)
     for cmd in (
         [
@@ -3971,28 +4119,45 @@ def test_revise_deterministic_commands_are_rejected(tmp_path: Path):
 
 
 def test_revise_task_artifact_uses_base_target(tmp_path: Path):
-    project_dir, record_ids = _revise_project(tmp_path)
-    _write_source_candidate(project_dir, "de_a", record_ids[0], "Base target.")
+    project_dir, record_ids = _revise_project(tmp_path, revision_focus="grammar")
+    for record_id in record_ids:
+        _write_source_candidate(
+            project_dir, "de_a", record_id, f"Base target {record_id}."
+        )
     _sync_sources(project_dir, profile="de_rev", write=True)
     res = _revise_profile_root_next(project_dir)
     assert res.exit_code == 0, res.output
     task_id = _revise_task_id(project_dir)
     assert task_id is not None
     proj = load_profile_project(project_dir, "de_rev")
+    task = load_judge_task(proj, task_id)
+    assert task is not None
+    assert task.revision_focus == "grammar"
     block_path = judge_ingest_block_path(proj, task_id)
     text = Path(block_path).read_text("utf-8")
     assert "# booktx judge revision task" in text
     assert "purpose: revise" in text
+    assert "revision_focus: grammar" in text
     assert "BASE_TARGET [A]" in text
+    assert "BASE_TARGET is authoritative for wording and terminology." in text
+    assert "Do not change vocabulary, terminology, style, flow, tone, register," in text
     assert "CANDIDATES:" not in text
+    assert (
+        "Use edited for grammar, flow, punctuation, style, or terminology corrections."
+        not in text
+    )
     decisions_path = judge_ingest_decisions_path(proj, task_id)
     dec_text = Path(decisions_path).read_text("utf-8")
-    assert "# booktx judge revision decisions" in dec_text
+    assert "# booktx judge grammar revision decisions" in dec_text
+    assert "Do not rewrite grammatically valid text for style or fluency." in dec_text
 
 
 def test_revise_insert_requires_complete_task_and_writes_hash(tmp_path: Path):
     project_dir, record_ids = _revise_project(tmp_path)
-    _write_source_candidate(project_dir, "de_a", record_ids[0], "Base target.")
+    for record_id in record_ids:
+        _write_source_candidate(
+            project_dir, "de_a", record_id, f"Base target {record_id}."
+        )
     _sync_sources(project_dir, profile="de_rev", write=True)
     res = _revise_profile_root_next(project_dir)
     assert res.exit_code == 0, res.output
@@ -4014,7 +4179,8 @@ def test_revise_insert_requires_complete_task_and_writes_hash(tmp_path: Path):
     # Valid explicit copy decision writes matching output hash provenance.
     task = load_judge_task(proj, task_id)
     base_target = task.records[0].candidates[0].target
-    _fill_decisions_ingest(ingest, task_id, [(record_ids[0], "A", "copy", "ok", "")])
+    decisions = [(rec.id, "A", "copy", "ok", "") for rec in task.records]
+    _fill_decisions_ingest(ingest, task_id, decisions)
     res_copy = _revise_profile_root_insert(
         project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
     )
@@ -4027,7 +4193,10 @@ def test_revise_insert_requires_complete_task_and_writes_hash(tmp_path: Path):
 
 def test_revise_insert_edited_writes_hash_and_compare_task_rejected(tmp_path: Path):
     project_dir, record_ids = _revise_project(tmp_path)
-    _write_source_candidate(project_dir, "de_a", record_ids[0], "Base target.")
+    for record_id in record_ids:
+        _write_source_candidate(
+            project_dir, "de_a", record_id, f"Base target {record_id}."
+        )
     _sync_sources(project_dir, profile="de_rev", write=True)
     res = _revise_profile_root_next(project_dir)
     assert res.exit_code == 0, res.output
@@ -4035,9 +4204,14 @@ def test_revise_insert_edited_writes_hash_and_compare_task_rejected(tmp_path: Pa
     proj = load_profile_project(project_dir, "de_rev")
     ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.decisions.txt"
     edited = "Edited target text."
-    _fill_decisions_ingest(
-        ingest, task_id, [(record_ids[0], "A", "edited", "fix", edited)]
-    )
+    task = load_judge_task(proj, task_id)
+    decisions = []
+    for idx, rec in enumerate(task.records):
+        if idx == 0:
+            decisions.append((rec.id, "A", "edited", "fix", edited))
+        else:
+            decisions.append((rec.id, "A", "copy", "ok", ""))
+    _fill_decisions_ingest(ingest, task_id, decisions)
     res_ed = _revise_profile_root_insert(
         project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
     )
@@ -4052,7 +4226,7 @@ def test_revise_insert_edited_writes_hash_and_compare_task_rejected(tmp_path: Pa
 
     write_judge_task(proj, compare_task)
     ingest2 = proj.profile_dir / "judge-ingest" / f"{task_id}-compare.decisions.txt"
-    _fill_decisions_ingest(ingest2, task_id, [(record_ids[0], "A", "copy", "ok", "")])
+    _fill_decisions_ingest(ingest2, task_id, decisions)
     res_cmp = runner.invoke(
         app,
         [
@@ -4072,10 +4246,62 @@ def test_revise_insert_edited_writes_hash_and_compare_task_rejected(tmp_path: Pa
     assert res_cmp.exit_code != 0
 
 
-def test_revise_status_reports_purpose_and_no_sweep(tmp_path: Path):
-    project_dir, record_ids = _revise_project(tmp_path)
-    _write_source_candidate(project_dir, "de_a", record_ids[0], "A target.")
+def test_revise_insert_rejects_revision_focus_mismatch(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path, revision_focus="grammar")
+    for record_id in record_ids:
+        _write_source_candidate(
+            project_dir, "de_a", record_id, f"Base target {record_id}."
+        )
     _sync_sources(project_dir, profile="de_rev", write=True)
+    res = _revise_profile_root_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = _revise_task_id(project_dir)
+    assert task_id is not None
+    proj = load_profile_project(project_dir, "de_rev")
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.decisions.txt"
+    task = load_judge_task(proj, task_id)
+    assert task is not None
+    decisions = [(rec.id, "A", "copy", "ok", "") for rec in task.records]
+    _fill_decisions_ingest(ingest, task_id, decisions)
+
+    cfg = load_profile_config(project_dir, "de_rev")
+    assert cfg.selection is not None
+    cfg.selection.revision_focus = "general"
+    write_profile_config(project_dir, cfg)
+
+    res_insert = _revise_profile_root_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
+    )
+    assert res_insert.exit_code != 0
+    assert "revision focus changed after task creation" in res_insert.output
+
+
+def test_revise_status_reports_purpose_and_no_sweep(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path, revision_focus="grammar")
+    for index, record_id in enumerate(record_ids, start=1):
+        _write_source_candidate(project_dir, "de_a", record_id, f"A target {index}.")
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    res = _revise_profile_root_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = _revise_task_id(project_dir)
+    assert task_id is not None
+    proj = load_profile_project(project_dir, "de_rev")
+    task = load_judge_task(proj, task_id)
+    assert task is not None
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.decisions.txt"
+    decisions = []
+    for idx, rec in enumerate(task.records):
+        if idx == 1:
+            decisions.append(
+                (rec.id, "A", "edited", "grammar fix", "A korrigiertes Ziel.")
+            )
+        else:
+            decisions.append((rec.id, "A", "copy", "ok", ""))
+    _fill_decisions_ingest(ingest, task_id, decisions)
+    insert = _revise_profile_root_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
+    )
+    assert insert.exit_code == 0, insert.output
     res = runner.invoke(
         app,
         ["judge", "status", str(project_dir), "--profile", "de_rev", "--json"],
@@ -4083,7 +4309,55 @@ def test_revise_status_reports_purpose_and_no_sweep(tmp_path: Path):
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)
     assert data["selection_purpose"] == "revise"
+    assert data["revision_focus"] == "grammar"
     assert data.get("sweep_hint") == ""
+    assert data["decisions_copy"] == len(task.records) - 1
+    assert data["decisions_edited"] == 1
+    assert data["decision_edit_rate"] == round(1 / len(task.records), 4)
+
+
+def test_revise_grammar_insert_warns_on_large_edit(tmp_path: Path):
+    project_dir, record_ids = _revise_project(tmp_path, revision_focus="grammar")
+    base_targets = {
+        record_ids[0]: "Eins.",
+        record_ids[1]: "Das Imperium marschiert im Morgengrauen weiter.",
+        record_ids[2]: "Die Niederungen antworten.",
+    }
+    for record_id, target in base_targets.items():
+        _write_source_candidate(project_dir, "de_a", record_id, target)
+    _sync_sources(project_dir, profile="de_rev", write=True)
+    res = _revise_profile_root_next(project_dir)
+    assert res.exit_code == 0, res.output
+    task_id = _revise_task_id(project_dir)
+    assert task_id is not None
+    proj = load_profile_project(project_dir, "de_rev")
+    task = load_judge_task(proj, task_id)
+    assert task is not None
+    ingest = proj.profile_dir / "judge-ingest" / f"{task_id}.decisions.txt"
+    decisions = []
+    for rec in task.records:
+        if rec.id == record_ids[1]:
+            decisions.append(
+                (
+                    rec.id,
+                    "A",
+                    "edited",
+                    "grammar",
+                    (
+                        "Heute blieb niemand an seinem Platz, weil alles "
+                        "vollkommen anders wurde."
+                    ),
+                )
+            )
+        else:
+            decisions.append((rec.id, "A", "copy", "ok", ""))
+    _fill_decisions_ingest(ingest, task_id, decisions)
+    insert = _revise_profile_root_insert(
+        project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
+    )
+    assert insert.exit_code == 0, insert.output
+    assert "qa: " in insert.output
+    assert "grammar-focused revision made a large edit to BASE_TARGET" in insert.output
 
 
 def test_revise_validation_and_build_enforce_provenance(tmp_path: Path):

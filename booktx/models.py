@@ -1141,12 +1141,17 @@ class SelectionConfig(BaseModel):
     allow_edited_targets: bool = True
     require_all_sources: bool = False
     purpose: Literal["compare", "revise"] = "compare"
+    revision_focus: Literal["general", "grammar"] = "general"
 
     @model_validator(mode="after")
     def _validate_revision_sources(self) -> SelectionConfig:
         if self.purpose == "revise" and len(self.sources) != 1:
             raise ValueError(
                 "selection.purpose=revise requires exactly one configured source"
+            )
+        if self.purpose != "revise" and self.revision_focus != "general":
+            raise ValueError(
+                "selection.revision_focus is only valid for purpose=revise"
             )
         return self
 
@@ -1268,6 +1273,7 @@ class JudgeTask(BaseModel):
     source_snapshot_path: str | None = None
     source_candidates_sha256: str | None = None
     selection_purpose: Literal["compare", "revise"] = "compare"
+    revision_focus: Literal["general", "grammar"] = "general"
     records: list[JudgeTaskRecord] = Field(default_factory=list)
 
 

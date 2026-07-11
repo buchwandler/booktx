@@ -254,6 +254,12 @@ review revision commands, because revision output is valid only while each
 active target has matching judge-decision provenance. See _Single-source judge
 revision profiles_ in `docs/profiles.md`.
 
+For grammar-only fix runs on an existing translated book, create the revision
+profile with `--revision-focus grammar`. In that mode, `BASE_TARGET` is
+authoritative for wording and terminology, `SOURCE` is only a semantic guard,
+`copy` is preferred whenever the German is grammatically valid, and `edited`
+must be the complete minimally corrected target.
+
 ## Isolated judge workflow
 
 After the selection profile context is ready, prepare a profile-local snapshot
@@ -285,3 +291,28 @@ profiles. Output is sanitized: no `--profile` flag, no parent paths, and no
 `translations/<profile>` references. Submission paths are confined to regular
 files inside the current profile. Do not chain `judge insert` and `judge next`
 in one shell command; continue only after a successful insert.
+
+For revision profiles, replace the compare-mode `accept-identical` step with an
+explicit decision loop:
+
+```text
+## 0001-000001
+selected: A
+decision_kind: copy
+reason: grammatically correct
+TARGET:
+```
+
+```text
+## 0001-000002
+selected: A
+decision_kind: edited
+reason: grammar: corrected case agreement
+TARGET:
+Der vollständig korrigierte deutsche Zielsatz.
+```
+
+Do not tell an agent to use `accept-identical` in revise mode. One managed
+isolated profile contract is active at a time, so run isolated grammar
+benchmarks sequentially in one project unless you split them across worktrees
+or separate project copies.

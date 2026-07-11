@@ -443,6 +443,30 @@ while each active target has matching judge-decision provenance. Use
 `booktx judge record . --record RECORD_ID` for later corrections. See
 `docs/profiles.md` for the full workflow.
 
+For a grammar-fix run on an existing translated book, add
+`--revision-focus grammar`:
+
+```bash
+booktx judge create-profile ./demo judge_gpt5_6 \
+  --target de \
+  --target-locale de-DE \
+  --sources de_glm_5_2 \
+  --context-from de_glm_5_2 \
+  --model gpt-5.6 \
+  --purpose revise \
+  --revision-focus grammar
+
+booktx judge prepare-isolation ./demo --profile judge_gpt5_6 --write
+cd translations/judge_gpt5_6
+booktx judge status .
+booktx judge continue . --max-records 20 --format decisions
+```
+
+In grammar focus, `BASE_TARGET` is authoritative for wording and terminology:
+use `copy` when the German is already grammatically correct and `edited` only
+for minimal grammar, syntax, agreement, inflection, orthography, capitalization,
+or punctuation repairs.
+
 `booktx translate next` also snapshots the exact effective task context under
 `translations/<profile>/context-history/views/<sha>/`. New tasks carry both the
 baseline version (for example `1.2`) and the immutable context-view evidence

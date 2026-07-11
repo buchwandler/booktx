@@ -109,11 +109,19 @@ def test_agents_md_isolated_judge_says_copy_target_empty():
 def test_agents_md_isolated_revision_body():
     kwargs = dict(ISO_SELECTION_KWARGS)
     kwargs["selection_purpose"] = "revise"
+    kwargs["revision_focus"] = "grammar"
     text = render_agents_md(**kwargs)
     # Revision-specific header and contract.
     assert "# booktx isolated judge revision profile" in text
     assert "Allowed commands:" in text
     assert "Forbidden commands" in text
+    assert "single-source grammar-only judge revision profile" in text
+    assert "BASE_TARGET is authoritative for wording and terminology." in text
+    assert "Do not retranslate, paraphrase, polish, improve flow" in text
+    assert (
+        "Use edited for grammar, flow, punctuation, style, or terminology corrections."
+        not in text
+    )
     # Forbidden deterministic / direct-store bypasses are listed.
     assert "booktx judge accept-identical . --write" in text
     assert "booktx judge sweep-identical . --write" in text
@@ -132,6 +140,19 @@ def test_agents_md_isolated_revision_body():
     # Compare-only selection body must NOT contain the forbidden section.
     cmp_text = render_agents_md(**ISO_SELECTION_KWARGS)
     assert "Forbidden commands" not in cmp_text
+
+
+def test_agents_md_general_revision_body_retains_broader_revision_contract():
+    kwargs = dict(ISO_SELECTION_KWARGS)
+    kwargs["selection_purpose"] = "revise"
+    kwargs["revision_focus"] = "general"
+    text = render_agents_md(**kwargs)
+    assert "single-source judge revision profile" in text
+    assert (
+        "Use edited for grammar, flow, punctuation, style, or terminology corrections."
+        in text
+    )
+    assert "single-source grammar-only judge revision profile" not in text
 
 
 # --- case 3: collaborative render ----------------------------------------

@@ -5,7 +5,7 @@ from __future__ import annotations
 # ruff: noqa: E501
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from booktx.acceptance import SubmissionValidationError
 from booktx.agents_md import AGENTS_FILENAME, inspect_agents_md
@@ -15,6 +15,7 @@ from booktx.config import (
     load_judge_task,
     load_profile_config,
     load_profile_project,
+    load_translation_selection_ledger,
     profile_dir,
     write_profile_config,
 )
@@ -60,6 +61,7 @@ from booktx.models import (
 from booktx.placeholders import TOKEN_RE, collect_tokens
 from booktx.selection_mode import (
     is_revision_selection_profile,
+    revision_focus,
     selection_purpose,
 )
 from booktx.termbase import publish_termbase_snapshot
@@ -103,11 +105,13 @@ def create_judge_profile_workflow(
     model: str | None,
     context_from: str | None,
     purpose: str = "compare",
+    revision_focus: str = "general",
 ) -> Project:
     # Validate purpose and sources, and construct the intended SelectionConfig,
     # BEFORE create_profile_workflow writes any profile directory or list entry.
     # An invalid command must not leave a profile behind.
     purpose_value = _parse_selection_purpose(purpose)
+    focus_value = _parse_revision_focus(revision_focus)
     source_profiles = parse_sources_csv(sources_csv)
     if not source_profiles:
         raise _err("judge_sources_missing", "--sources must not be empty")
@@ -116,11 +120,17 @@ def create_judge_profile_workflow(
             "judge_revision_source_count",
             "selection.purpose=revise requires exactly one source profile",
         )
+    if purpose_value != "revise" and focus_value != "general":
+        raise _err(
+            "judge_revision_focus",
+            "revision focus is only valid with --purpose revise",
+        )
     selection_cfg = SelectionConfig(
         sources=source_profiles,
         allow_edited_targets=True,
-        require_all_sources=False,
+        require_all_sources=(purpose_value == "revise"),
         purpose=purpose_value,
+        revision_focus=focus_value,
     )
 
     project = create_profile_workflow(
@@ -294,6 +304,17 @@ def _parse_selection_purpose(value: str) -> Literal["compare", "revise"]:
     return normalized  # type: ignore[return-value]
 
 
+def _parse_revision_focus(value: str) -> Literal["general", "grammar"]:
+    """Parse and validate a ``--revision-focus`` value before any mutation."""
+    normalized = (value or "").strip().lower()
+    if normalized not in ("general", "grammar"):
+        raise _err(
+            "judge_revision_focus",
+            "invalid revision focus; expected 'general' or 'grammar'",
+        )
+    return normalized  # type: ignore[return-value]
+
+
 def _reject_revision_deterministic(proj: Project, command: str) -> None:
     """Hard-reject a deterministic selection command in revise mode.
 
@@ -319,7 +340,7 @@ def _snapshot_status(
     proj: Project,
     configured: list[str],
     sources_csv: str | None,
-) -> tuple[dict[str, Any], dict[str, object]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Classify the active snapshot and load its views.
 
     Returns ``(snapshot_info, source_views)``. The snapshot is reported as
@@ -340,7 +361,7 @@ def _snapshot_status(
             {"state": state, "message": str(exc), "generated_at": None, "profiles": []},
             {},
         )
-    counts = [
+    counts: list[dict[str, Any]] = [
         {
             "profile": name,
             "records_total": manifest.profiles[name].records_total,
@@ -435,7 +456,10 @@ def build_chapter_next_command(
     context_ready = bool(context_info.get("ready"))
     snapshot_info = status_payload.get("snapshot")
     snapshot_usable = snapshot_info is None or snapshot_info.get("state") == "valid"
-    source_access = status_payload.get("source_access")
+    source_access_raw = status_payload.get("source_access")
+    if source_access_raw not in {"live", "snapshot"}:
+        return ""
+    source_access = cast(Literal["live", "snapshot"], source_access_raw)
     source_profiles = list(status_payload.get("source_profiles") or [])
     return _build_status_next_command(
         runtime,
@@ -479,10 +503,11 @@ def build_judge_status_workflow(
 ) -> dict[str, Any]:
     source_access = _source_access_from_runtime(runtime)
     purpose = selection_purpose(proj)
+    focus = revision_focus(proj)
     if purpose == "revise":
-        selected_ids = audit_revision_provenance(proj).valid_record_ids
+        selected_ids = set(audit_revision_provenance(proj).valid_record_ids)
     else:
-        selected_ids = selected_record_ids(proj)
+        selected_ids = set(selected_record_ids(proj))
     context_info = _judge_context_status(proj)
     blocked_by: list[str] = []
     if not context_info["exists"]:
@@ -490,7 +515,7 @@ def build_judge_status_workflow(
     elif not context_info["ready"]:
         blocked_by.append("context_not_ready")
     snapshot_info: dict[str, Any] | None = None
-    source_views: dict[str, object] = {}
+    source_views: dict[str, Any] = {}
     source_profiles: list[str]
     if source_access == "snapshot":
         source_profiles = configured_selection_sources(proj)
@@ -511,7 +536,7 @@ def build_judge_status_workflow(
             gaps = sum(
                 1
                 for record_id in record_ids
-                if record_has_candidate_gap(source_views, record_id)  # type: ignore[arg-type]
+                if record_has_candidate_gap(source_views, record_id)
             )
         else:
             gaps = 0
@@ -544,6 +569,26 @@ def build_judge_status_workflow(
             blocked_by.append("snapshot_missing")
         elif snapshot_state == "invalid":
             blocked_by.append("snapshot_invalid")
+    if purpose == "revise" and candidate_gaps:
+        blocked_by.append("revision_source_incomplete")
+    if blocked_by:
+        next_command = ""
+    decisions_copy = 0
+    decisions_edited = 0
+    decision_edit_rate = 0.0
+    if purpose == "revise":
+        ledger = load_translation_selection_ledger(proj)
+        for record_id in selected_ids:
+            decision = ledger.records.get(record_id)
+            if decision is None:
+                continue
+            if decision.decision_kind == "copy":
+                decisions_copy += 1
+            elif decision.decision_kind == "edited":
+                decisions_edited += 1
+        decided_total = decisions_copy + decisions_edited
+        if decided_total:
+            decision_edit_rate = round(decisions_edited / decided_total, 4)
     incomplete_chapters = [
         entry["chapter_id"]
         for entry in chapters
@@ -572,12 +617,16 @@ def build_judge_status_workflow(
         "records_total": bundle.snapshot.totals.records_total,
         "records_missing": bundle.snapshot.totals.records_total - len(selected_ids),
         "records_with_candidate_gaps": candidate_gaps,
+        "decisions_copy": decisions_copy,
+        "decisions_edited": decisions_edited,
+        "decision_edit_rate": decision_edit_rate,
         "chapters": chapters,
         "next_command": next_command,
         "sweep_hint": sweep_hint,
         "mode": runtime.mode.kind,
         "source_access": source_access,
         "selection_purpose": purpose,
+        "revision_focus": focus,
         "context": context_info,
         "blocked_by": blocked_by,
         "snapshot": snapshot_info,
@@ -625,6 +674,8 @@ def create_next_judge_task_workflow(
 
 
 def _effective_require_all_sources(proj: Project, cli_value: bool) -> bool:
+    if is_revision_selection_profile(proj):
+        return True
     cfg = proj.profile_config
     selection = cfg.selection if cfg is not None else None
     return cli_value or (
@@ -1227,6 +1278,7 @@ def finish_chapter_plan_workflow(
     source_access = status_payload.get("source_access")
     if source_access not in {"live", "snapshot"}:
         source_access = "live"
+    resolved_source_access = cast(Literal["live", "snapshot"], source_access)
     next_cmd = build_chapter_next_command(
         proj, runtime, chapter=chapter, status_payload=status_payload
     )
@@ -1248,7 +1300,7 @@ def finish_chapter_plan_workflow(
         ]
         return {"chapter": chapter, "plan_lines": plan_lines}
     sweep_cmd = _build_sweep_hint_command(
-        runtime, proj, source_profiles, chapter, chapter, source_access
+        runtime, proj, source_profiles, chapter, chapter, resolved_source_access
     )
     plan_lines = [
         f"chapter {chapter} finish plan:",
