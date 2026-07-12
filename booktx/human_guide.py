@@ -18,9 +18,7 @@ from booktx.context import (
     unapproved_required_questions,
     unresolved_required_questions,
 )
-from booktx.source_analysis import read_canonical_report
 from booktx.workflows.agents import agents_status_workflow
-from booktx.workflows.source_interview import interview_status
 
 if TYPE_CHECKING:
     from booktx.runtime import RuntimeContext
@@ -235,6 +233,8 @@ def build_guide_result(
             agent_next=None,
         )
 
+    from booktx.source_analysis import read_canonical_report
+
     report = read_canonical_report(project)
     if report is None or report.source_sha256 != current_source_sha256(project):
         return GuideResult(
@@ -249,6 +249,8 @@ def build_guide_result(
             ),
             agent_next=None,
         )
+
+    from booktx.workflows.source_interview import interview_status
 
     interview = interview_status(project, profile=profile)
     if bool(interview["missing"]) or bool(interview["stale"]):

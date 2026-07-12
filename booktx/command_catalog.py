@@ -254,6 +254,15 @@ TOP_LEVEL: dict[str, CommandDescriptor] = {
         help_panel="ADVANCED",
         group_help=True,
     ),
+    "model": CommandDescriptor(
+        "model",
+        CommandAudience.HUMAN_ADVANCED,
+        "advanced",
+        "Manage translation model defaults for one profile.",
+        writes="conditional",
+        modes=frozenset({"project_root", "profile_root"}),
+        group_help=True,
+    ),
     "inspect": CommandDescriptor(
         "inspect",
         CommandAudience.HUMAN_ADVANCED,
@@ -450,6 +459,9 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "context remove-term": "Compatibility alias for glossary entry removal.",
     "context reset-term": "Compatibility alias for atomic glossary entry replacement.",
     "context mandate-term": "Compatibility alias for mandatory glossary decisions.",
+    "model whoami": "Show the resolved model default for translation versioning.",
+    "model set": "Persist the model default used for new version tracks.",
+    "model clear": "Clear the stored model default back to the local fallback.",
 }
 
 
@@ -547,6 +559,7 @@ def _leaf_audience(group: str, command: str) -> CommandAudience:
         "version": CommandAudience.HUMAN_ADVANCED,
         "epub": CommandAudience.HUMAN_ADVANCED,
         "doctor": CommandAudience.HUMAN_CORE,
+        "model": CommandAudience.HUMAN_ADVANCED,
     }
     return _DEFAULT.get(group, CommandAudience.HUMAN_ADVANCED)
 
@@ -582,6 +595,7 @@ def descriptor_for_path(path: str) -> CommandDescriptor:
         "judge prepare-grammar",
         "profile create",
         "build",
+        "model set",
     }:
         writes = "always"
     if path in {"series prepare", "source analyze", "source interview-plan"}:
@@ -599,6 +613,7 @@ def descriptor_for_path(path: str) -> CommandDescriptor:
         "judge",
         "identity",
         "version",
+        "model",
     }
     if path in {
         "profile list",
