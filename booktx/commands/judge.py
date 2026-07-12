@@ -22,6 +22,7 @@ from booktx.cli_support import (
     _require_ready_context,
     console,
 )
+from booktx.config import load_profile_project
 from booktx.errors import BooktxError
 from booktx.judge_sources import (
     configured_selection_sources,
@@ -230,6 +231,62 @@ def judge_create_profile(
         console.print(f"purpose: {selection.purpose}")
         if selection.purpose == "revise":
             console.print(f"revision focus: {selection.revision_focus}")
+
+
+@judge_app.command(name="prepare-grammar")
+def judge_prepare_grammar(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    source_profile: str = typer.Option(
+        ..., "--source-profile", help="Existing translation profile to revise."
+    ),
+    profile: str = typer.Option(..., "--profile", help="New judge profile name."),
+    model: str = typer.Option(..., "--model", help="Judge model label."),
+    write: bool = typer.Option(
+        False,
+        "--write",
+        help="Create the revision profile and write isolated judge instructions.",
+    ),
+    replace_unmanaged: bool = typer.Option(
+        False,
+        "--replace-unmanaged",
+        help="Overwrite an unmanaged AGENTS.md when preparing isolation.",
+    ),
+) -> None:
+    """Create and prepare a grammar-only revision profile in one command."""
+    if not write:
+        _die("judge prepare-grammar requires --write")
+    runtime = _load_runtime_or_exit(project_dir, require_profile=False)
+    _reject_if_isolated(runtime)
+    source_project = load_profile_project(runtime.project.root, source_profile)
+    source_cfg = source_project.profile_config
+    if source_cfg is None or source_cfg.kind != "translation":
+        _die("--source-profile must reference a translation profile")
+    try:
+        project = create_judge_profile_workflow(
+            runtime.project.root,
+            profile,
+            target_language=source_cfg.target_language,
+            target_locale=source_cfg.target_locale,
+            sources_csv=source_profile,
+            model=model,
+            context_from=source_profile,
+            purpose="revise",
+            revision_focus="grammar",
+        )
+        prepared = prepare_judge_isolation_workflow(
+            runtime.project.root,
+            profile=project.profile or profile,
+            context_from=source_profile,
+            write=True,
+            replace_unmanaged=replace_unmanaged,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(f"created grammar revision profile: {project.profile}")
+    console.print(
+        f"prepared isolation snapshot: {prepared['snapshot_id']}", soft_wrap=True
+    )
 
 
 # --------------------------------------------------------------------------

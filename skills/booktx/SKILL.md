@@ -411,8 +411,8 @@ Use:
 ```bash
 booktx version current . --profile PROFILE
 booktx version list . --profile PROFILE
-booktx translation compare . --profile PROFILE RECORD --versions 1.1,1.2
-booktx translation activate . --profile PROFILE RECORD 1.2
+booktx translate compare . --profile PROFILE RECORD --versions 1.1,1.2
+booktx translate activate . --profile PROFILE RECORD 1.2
 ```
 
 A model/actor/harness change creates or selects a major track. A baseline
@@ -438,10 +438,10 @@ Use commands instead:
 
 ```bash
 booktx translate insert ...
-booktx translation activate ...
+booktx translate activate ...
 booktx translate export ...
 booktx translate export-index ...
-booktx translation revise-record . RECORD_ID --target "..."
+booktx translate revise-record . RECORD_ID --target "..."
 booktx check . --chapter CHAPTER --fail-on-warnings
 booktx validate . --profile PROFILE
 ```
@@ -464,7 +464,7 @@ markdown and resume hints then use local paths only.
 Use scoped `booktx check . --chapter CHAPTER --fail-on-warnings` for per-batch
 validation within a bounded todo. Use `booktx validate . --fail-on-warnings`
 only for the final pre-build check. If validation flags an old accepted record,
-use `booktx translation revise-record` to fix it; never edit
+use `booktx translate revise-record` to fix it; never edit
 `translation-store.json` directly.
 
 ## Single large chapters
@@ -549,7 +549,7 @@ first-pass output:
 
 Review candidates are stored in `reviews[]` under each record in the translation
 store. The effective output uses the `active_review` when valid, falling back
-to the `active_version`. Use `booktx translation compare . RECORD --versions 1.1,R1.1,R2.1`
+to the `active_version`. Use `booktx translate compare . RECORD --versions 1.1,R1.1,R2.1`
 to inspect the full chain.
 
 ### Review-first routing
@@ -584,7 +584,7 @@ review workflow:
 ```bash
 booktx translate export-index . --jsonl
 # audit current targets for forbidden terms, then:
-booktx translation revise-block . --file ingest/glossary-fixes.block.txt --format block --activate
+booktx translate revise-block . --file ingest/glossary-fixes.block.txt --format block --activate
 booktx validate . --fail-on-warnings
 ```
 
@@ -645,7 +645,7 @@ booktx termbase import --scope global --language de --input ./termbase-de.json -
 
 When the user reports a bad context-sensitive translation:
 
-1. Fix the active effective output with `translation revise-record`; if the
+1. Fix the active effective output with `translate revise-record`; if the
    effective target is an active review, use `review revise-record`.
 2. Add a local glossary entry only if the phrase is fixed and safely
    enforceable.
@@ -659,23 +659,24 @@ Never edit `context.json` directly. Use CLI commands for all glossary changes:
 
 ```bash
 # Replace all forbidden targets (full replacement, not append).
-booktx context add-term . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
-
-# Append forbidden targets explicitly without removing existing ones.
-booktx context add-term . "empire" --append-forbid "Kaiserreich"
-
-# Clear all forbidden targets.
-booktx context add-term . "empire" --clear-forbidden
+booktx glossary add . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
 
 # Remove a wrong glossary entry entirely.
-booktx context remove-term . "empire"
-booktx context remove-term . "empire" --missing-ok
+booktx glossary remove . "empire"
 
 # Replace one entry atomically (target, forbidden targets, category, notes, enforce).
-booktx context reset-term . "empire" \
+booktx glossary reset . "empire" \
   --target "Imperium" \
   --forbid "Reich" --forbid "Empire" \
   --category "concept" --enforce error
+
+# Record a mandatory binding decision.
+booktx glossary mandate . "tenday" \
+  --source-variant "tendays" \
+  --target "Dekade" \
+  --target-variant "Dekaden" \
+  --forbid "Zehntag" --forbid "Zehntage" --forbid "zehn Tage" \
+  --category "calendar"
 
 # Atomic reset of an entire chapter note.
 booktx context chapter-note . 0006 \
@@ -687,30 +688,18 @@ booktx context chapter-note . 0006 \
   --open-issue "Check title rendering"
 ```
 
-`--forbid` now replaces the full forbidden-target list. When the target changes, any forbidden term equal to the new target is pruned automatically. Use `--append-forbid` when you want to add terms without removing existing ones.
+For **user terminology decisions** (e.g. "always translate `tenday` as
+`Dekade`"), prefer `glossary mandate` over ad-hoc glossary edits.
 
-For **user terminology decisions** (e.g. \u201calways translate `tenday` as
-`Dekade`\u201d), prefer `mandate-term` over `add-term`/`reset-term`:
-
-```bash
-booktx context mandate-term . "tenday" \
-  --source-variant "tendays" \
-  --target "Dekade" \
-  --target-variant "Dekaden" \
-  --forbid "Zehntag" --forbid "Zehntage" --forbid "zehn Tage" \
-  --category "calendar"
-```
-
-`mandate-term` always sets `require_target = true` and defaults to
-`enforce = error` so the approved target is positively enforced. It never
-accepts `--enforce off`.
+`glossary mandate` always sets `require_target = true` and defaults to
+`enforce = error` so the approved target is positively enforced.
 
 **Never set `--enforce off`** to silence validation warnings unless the
 user explicitly says the term is advisory only. If you must intentionally
 disable a mandatory rule, use `--allow-disable-enforcement`:
 
 ```bash
-booktx context reset-term . "tenday" \
+booktx glossary reset . "tenday" \
   --target "Dekade" --forbid "Zehntag" \
   --enforce off --allow-disable-enforcement
 ```
@@ -738,7 +727,7 @@ Only violating effective records are included; the generator never guesses
 the corrected translation. Revise and validate:
 
 ```bash
-booktx translation revise-block . \
+booktx translate revise-block . \
   --file ingest/glossary-tenday-fixes.block.txt --format block --activate
 booktx validate . --fail-on-warnings
 ```
@@ -759,16 +748,16 @@ When the user asks to fix a specific terminology decision and update context:
 ```bash
 booktx mode .
 booktx context status .
-booktx translation search . --source "TERM" --jsonl
-booktx translation search . --target "WRONG_TARGET" --jsonl
-booktx translation search . --source "TERM" --target "WRONG_TARGET" --match all --write-block ingest/term-fix.block.txt
-booktx translation revise-block . --file ingest/term-fix.block.txt --format block --activate
+booktx translate search . --source "TERM" --jsonl
+booktx translate search . --target "WRONG_TARGET" --jsonl
+booktx translate search . --source "TERM" --target "WRONG_TARGET" --match all --write-block ingest/term-fix.block.txt
+booktx translate revise-block . --file ingest/term-fix.block.txt --format block --activate
 booktx check . --chapter CHAPTER --fail-on-warnings
 booktx validate . --fail-on-warnings
 booktx build .
 ```
 
-Use booktx commands, not raw Python/store scripts. In isolated profile-root mode, if a needed search or inspection requires parent `.booktx/` data, use a profile-local booktx command (`source record`, `source chapter`, `translation search`, `translate export-index`). If no command exists, stop and report the missing booktx command instead of reading parent files directly.
+Use booktx commands, not raw Python/store scripts. In isolated profile-root mode, if a needed search or inspection requires parent `.booktx/` data, use a profile-local booktx command (`source record`, `source chapter`, `translate search`, `translate export-index`). If no command exists, stop and report the missing booktx command instead of reading parent files directly.
 
 Glossary entries are binding only when `enforce != "off"` and `require_target` or `forbidden_targets` is set. `enforce` alone is advisory. If `glossary_alignment_ambiguous` is reported, inspect the companion `.sources.txt` block before revising; booktx is warning that a mixed compound/standalone record cannot be deterministically aligned at target-occurrence level.
 
@@ -776,7 +765,7 @@ Glossary entries are binding only when `enforce != "off"` and `require_target` o
 
 When a shorter source term is contained inside a longer configured source
 phrase, booktx enforces only the longest non-shadowed source span. Add the
-longer binding decision with `context mandate-term`; a separate standalone
+longer binding decision with `glossary mandate`; a separate standalone
 occurrence of the shorter term in the same record remains binding.
 
 Do not distort the target sentence merely to satisfy the shorter literal target

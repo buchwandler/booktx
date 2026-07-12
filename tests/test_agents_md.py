@@ -126,8 +126,8 @@ def test_agents_md_isolated_revision_body():
     assert "booktx judge accept-identical . --write" in text
     assert "booktx judge sweep-identical . --write" in text
     assert "booktx judge prefill-policy-fixes . --write" in text
-    assert "booktx translation revise-record ." in text
-    assert "booktx translation revise-block ." in text
+    assert "booktx translate revise-record ." in text
+    assert "booktx translate revise-block ." in text
     # Allowed revision workflow commands.
     assert "booktx judge record . --record RECORD_ID --format decisions" in text
     assert "booktx build . --require-complete" in text

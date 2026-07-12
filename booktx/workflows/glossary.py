@@ -1,4 +1,4 @@
-"""Binding glossary wrappers over the canonical termbase workflows."""
+"""Binding glossary wrappers over the canonical termbase and context workflows."""
 
 from __future__ import annotations
 
@@ -7,6 +7,15 @@ import re
 from pathlib import Path
 from typing import Any
 
+from booktx.cli_support import _load_project_or_exit, _project_status_snapshot
+from booktx.context import load_context
+from booktx.errors import _err
+from booktx.workflows.context import (
+    audit_term_workflow,
+    mandate_term_workflow,
+    remove_term_workflow,
+    reset_term_workflow,
+)
 from booktx.workflows.termbase import (
     termbase_add_workflow,
     termbase_export_workflow,
@@ -16,8 +25,12 @@ from booktx.workflows.termbase import (
 
 __all__ = [
     "glossary_add_workflow",
+    "glossary_audit_workflow",
     "glossary_export_workflow",
     "glossary_import_workflow",
+    "glossary_mandate_workflow",
+    "glossary_remove_workflow",
+    "glossary_reset_workflow",
     "glossary_status_workflow",
 ]
 
@@ -136,3 +149,123 @@ def glossary_add_workflow(
         severity="error" if enforce == "error" else "warn",
         approve=True,
     )
+
+
+def _load_context_project(project_dir: Path | None, profile: str | None):
+    if project_dir is None:
+        raise _err(
+            "glossary_project_required",
+            "glossary mutation commands require a project directory or profile root",
+        )
+    project = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    context = load_context(project)
+    if context is None:
+        raise _err(
+            "glossary_context_missing",
+            "translation context is missing; run `booktx context init` first",
+        )
+    return project, context
+
+
+def glossary_remove_workflow(
+    project_dir: Path | None,
+    *,
+    profile: str | None,
+    source: str,
+    missing_ok: bool,
+) -> str:
+    project, context = _load_context_project(project_dir, profile)
+    return remove_term_workflow(project, context, source=source, missing_ok=missing_ok)
+
+
+def glossary_reset_workflow(
+    project_dir: Path | None,
+    *,
+    profile: str | None,
+    source: str,
+    target: str | None,
+    forbid: list[str],
+    category: str | None,
+    notes: str,
+    enforce: str,
+    source_variants: list[str],
+    target_variants: list[str],
+    require_target: bool,
+    case_sensitive: bool,
+    create: bool,
+) -> str:
+    project, context = _load_context_project(project_dir, profile)
+    return reset_term_workflow(
+        project,
+        context,
+        source=source,
+        target=target,
+        forbid=forbid,
+        category=category,
+        notes=notes,
+        enforce=enforce,
+        source_variant=source_variants,
+        target_variant=target_variants,
+        require_target=require_target,
+        case_sensitive=case_sensitive,
+        allow_disable_enforcement=False,
+        create=create,
+    )
+
+
+def glossary_mandate_workflow(
+    project_dir: Path | None,
+    *,
+    profile: str | None,
+    source: str,
+    target: str | None,
+    forbid: list[str],
+    category: str | None,
+    notes: str,
+    enforce: str,
+    source_variants: list[str],
+    target_variants: list[str],
+    case_sensitive: bool,
+) -> str:
+    project, context = _load_context_project(project_dir, profile)
+    return mandate_term_workflow(
+        project,
+        context,
+        source=source,
+        target=target,
+        source_variant=source_variants,
+        target_variant=target_variants,
+        forbid=forbid,
+        category=category,
+        notes=notes,
+        enforce=enforce,
+        case_sensitive=case_sensitive,
+    )
+
+
+def glossary_audit_workflow(
+    project_dir: Path | None,
+    *,
+    profile: str | None,
+    source: str,
+    chapter: str | None,
+    include_inactive: bool,
+) -> dict[str, Any]:
+    project, context = _load_context_project(project_dir, profile)
+    bundle = _project_status_snapshot(project)
+    result = audit_term_workflow(
+        project,
+        context,
+        source=source,
+        chapter=chapter,
+        include_inactive=include_inactive,
+        bundle=bundle,
+    )
+    payload = result.as_dict()
+    payload["source"] = source
+    payload["chapter"] = chapter
+    payload["finding_count"] = len(payload["records"]) + len(
+        payload["inactive_records"]
+    )
+    payload["records_with_matches"] = result.records_with_source_term
+    return payload

@@ -30,7 +30,7 @@ Version = history/candidate boundary inside that profile
 
 Implications:
 
-- normal `booktx translation compare` compares versions inside one selected profile;
+- normal `booktx translate compare` compares versions inside one selected profile;
 - cross-profile inspection is explicit via `booktx profile compare`;
 - `booktx build` never reads another profile's store;
 - `booktx validate` only reports on the selected profile;

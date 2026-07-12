@@ -18,6 +18,7 @@ import tomli_w
 import typer
 
 from booktx.cli import app
+from booktx.command_catalog import descriptor_for_path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,24 +143,18 @@ def _command_tree() -> tuple[set[str], dict[str, set[str]]]:
 # compatibility surfaces, or internal/diagnostic commands. A command listed
 # here does not need a prose mention in docs/commands.md.
 UNDOCUMENTED_ALLOWLIST: set[str] = {
-    # Root compatibility/diagnostic commands.
-    "whoami",  # alias of `identity whoami`
-    "mode",  # diagnostic mode reporter
-    "inspect",  # alias of `source record`
-    "next",  # alias of `translate next`
-    "next-chapter",  # convenience alias
-    "chapters",  # alias surface for chapter detection/audit
-    "actor",  # identity-group alias
-    "harness",  # identity-group alias
-    "model",  # identity-group alias
-    "identity",  # identity group (whoami)
+    # Hidden diagnostic / advanced surfaces.
+    "whoami",
+    "mode",
+    "inspect",
+    "identity",
     "version",  # version group
-    # The `translation` group is a documented alias of `translate`.
-    "translation",
-    # Pass-through is documented under profile create-pass-through.
+    # Maintenance and agent-protocol surfaces live in dedicated docs, not commands.md.
+    "translate",
+    "termbase",
     "pass-through",
-    # Doctor isolation is a diagnostic.
     "doctor",
+    "validate",
 }
 
 
@@ -185,9 +180,42 @@ def test_every_public_command_is_documented_or_allowlisted() -> None:
     )
 
 
-def test_translation_alias_group_present() -> None:
-    top, _ = _command_tree()
-    assert "translate" in top and "translation" in top
+def test_every_live_command_has_a_descriptor() -> None:
+    top, sub = _command_tree()
+    paths = set(top)
+    for group_name, commands in sub.items():
+        paths.update(f"{group_name} {command}" for command in commands)
+    missing = []
+    for path in sorted(paths):
+        try:
+            descriptor_for_path(path)
+        except KeyError:
+            missing.append(path)
+    assert not missing, f"commands missing catalog descriptors: {missing}"
+
+
+OBSOLETE_PROFILE_PHRASES = (
+    "active profile",
+    "selected profile state",
+    "select a profile",
+    "none is active",
+)
+
+
+def test_obsolete_active_profile_language_is_gone_from_human_docs() -> None:
+    checked = [
+        ROOT / "README.md",
+        ROOT / "skills" / "booktx" / "SKILL.md",
+        ROOT / "docs" / "quickstart.md",
+        ROOT / "docs" / "commands.md",
+    ]
+    hits: list[str] = []
+    for path in checked:
+        text = path.read_text("utf-8").lower()
+        for phrase in OBSOLETE_PROFILE_PHRASES:
+            if phrase in text:
+                hits.append(f"{path}: {phrase}")
+    assert not hits, "obsolete profile wording remains:\n" + "\n".join(hits)
 
 
 # Keep tomli_w import used (pyproject write helpers elsewhere rely on it).

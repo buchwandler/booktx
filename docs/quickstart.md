@@ -1,100 +1,109 @@
 # Quickstart
 
-## 1. Initialize a source project
+This quickstart is for the **human operator**. It stops at the points where the
+human must approve policy or start the isolated coding-agent harness.
+
+There is **no global profile selection**. From the project root, pass
+`--profile PROFILE` for profile-specific work. From `translations/PROFILE/`,
+booktx resolves the current profile root automatically.
+
+## 1. Create the source project
 
 ```bash
-booktx init ./demo --source-file book.epub --source-lang en
+booktx init ./demo --source-file ./book.epub --source-lang en
 ```
 
-## 2. Extract the source
+`booktx init` creates the source-first project layout and prints the next human
+step.
+
+## 2. Extract the source and inspect chapters
 
 ```bash
 booktx extract ./demo
+booktx chapters ./demo --audit
 ```
 
-## 3. Create and select a translation profile
+For EPUB sources, review the chapter audit before creating profile-local work.
+
+## 3. Create a translation profile
 
 ```bash
-booktx profile create ./demo PROFILE_A \
+booktx profile create ./demo de_glm_5_2 \
   --target de \
   --target-locale de-DE \
-  --model codex-openai/gpt-5.5@low
-
+  --model zai/glm-5.2@high
 ```
 
-## 4. Initialize the profile-local context
+This creates the profile only. It does **not** create a global profile selection.
+
+## 4. Ask booktx for the next human step
 
 ```bash
-booktx context init ./demo --profile PROFILE_A --non-interactive
-booktx context questions ./demo --profile PROFILE_A
-# Ask the user to approve or edit answers before continuing.
-booktx context approve ./demo --profile PROFILE_A Q001 --text "<USER_APPROVED_TEXT>" --approved-by "user:<USER>"
-booktx context render ./demo --profile PROFILE_A --write
-booktx context mark-ready ./demo --profile PROFILE_A
+booktx guide ./demo --profile de_glm_5_2
 ```
 
-## 5. Request a translation task
+Use `guide` whenever you return to a project and want one canonical next action.
+
+## 5. Initialize context and review source policy
 
 ```bash
-booktx translate next ./demo --profile PROFILE_A --unit batch --max-words 800 --format block
+booktx context init ./demo --profile de_glm_5_2 --non-interactive
+booktx source analyze ./demo --write --sync-profiles
+booktx source interview-plan ./demo --profile de_glm_5_2 --write
+booktx source interview-next ./demo --profile de_glm_5_2 --format markdown
+booktx context questionnaire ./demo --profile de_glm_5_2 --stdout
 ```
 
-Read `translations/PROFILE_A/context.md`, then fill the generated durable file
-under `translations/PROFILE_A/ingest/`.
+Generated recommendations are **not** approvals. A human must approve policy
+before translation begins.
 
-## 6. Submit the translation
+## 6. Record approved context and mark it ready
 
 ```bash
-booktx translate insert ./demo \
-  --profile PROFILE_A \
-  --task-id TASK \
-  --file translations/PROFILE_A/ingest/TASK.block.txt \
-  --format block
+booktx context approve ./demo \
+  --profile de_glm_5_2 \
+  Q001 \
+  --text "<USER_APPROVED_TEXT>" \
+  --approved-by "user:<USER>"
+
+booktx context mark-ready ./demo --profile de_glm_5_2
 ```
 
-## 7. Validate and build
+Use the `glossary` surface for binding terminology decisions:
 
 ```bash
-booktx validate ./demo --profile PROFILE_A
-booktx build ./demo --profile PROFILE_A
+booktx glossary mandate ./demo "Empire" \
+  --profile de_glm_5_2 \
+  --target "Imperium" \
+  --forbid "Reich"
 ```
 
-The rebuilt output is written under:
+## 7. Prepare the isolated agent workspace
+
+```bash
+booktx agents write ./demo --mode isolated --profile de_glm_5_2
+```
+
+Then start the harness inside:
 
 ```text
-demo/translations/PROFILE_A/output/
+demo/translations/de_glm_5_2/
 ```
 
-## Legacy projects
-
-Old single-layout projects can be migrated with:
+## 8. Monitor progress
 
 ```bash
-booktx profile migrate-current ./demo PROFILE_A
+booktx status ./demo --profile de_glm_5_2
+booktx guide ./demo --profile de_glm_5_2
 ```
 
-## Context approval
+`status` shows translation progress plus the current human and agent actions.
 
-booktx never decides translation policy by itself. An agent may propose context answers, but the user must approve them before translation begins. Do not use `context mark-ready --force` during normal translation work.
-
-## Next book in a series
-
-Normal path:
+## 9. Check and build
 
 ```bash
-booktx series prepare ./book5 \
-  --source-file ./book5/book5.epub \
-  --from-book ./book4 \
-  --from-profile de_glm_5_2 \
-  --profile de_glm_5_2 \
-  --series-id shadows-of-the-apt \
-  --title "Shadows of the Apt German series context" \
-  --target de \
-  --target-locale de-DE \
-  --model zai/glm-5.2@high \
-  --write \
-  --write-termbase \
-  --termbase-scope project
+booktx check ./demo --profile de_glm_5_2
+booktx build ./demo --profile de_glm_5_2
 ```
 
 Then review the generated context and finish the human gate:

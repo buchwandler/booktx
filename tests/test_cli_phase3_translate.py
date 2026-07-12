@@ -1,9 +1,5 @@
 # ruff: noqa: E501
-"""Phase 3 slice 7 behavioral tests: translate/translation commands.
-
-Covers the translate_app (alias translation) commands and workflow functions.
-The translation alias equality is asserted in tests/test_cli.py.
-"""
+"""Behavioral tests for the consolidated translate command surface."""
 
 from __future__ import annotations
 
@@ -65,13 +61,13 @@ def _init_context(project_dir: Path) -> None:
 # --- BooktxError error paths (via CliRunner) ---------------------------------
 
 
-def test_translation_activate_unknown_record_errors(tmp_path: Path) -> None:
+def test_translate_activate_unknown_record_errors(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     _init_context(project_dir)
     res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "activate",
             str(project_dir),
             "--profile",
@@ -85,13 +81,13 @@ def test_translation_activate_unknown_record_errors(tmp_path: Path) -> None:
     assert "has no stored translations" in res.output
 
 
-def test_translation_review_unknown_record_errors(tmp_path: Path) -> None:
+def test_translate_review_unknown_record_errors(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     _init_context(project_dir)
     res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "review",
             str(project_dir),
             "--profile",
@@ -159,12 +155,10 @@ def test_translate_next_command_creates_task(tmp_path: Path) -> None:
     assert "task:" in res.output
 
 
-def test_translation_alias_works(tmp_path: Path) -> None:
-    """The 'translation' alias maps to the same 'translate' sub-app."""
+def test_translation_alias_command_is_removed(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     _init_context(project_dir)
     res = runner.invoke(
         app, ["translation", "next", str(project_dir), "--profile", "de_default"]
     )
-    assert res.exit_code == 0, res.output
-    assert "task:" in res.output
+    assert res.exit_code != 0

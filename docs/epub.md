@@ -213,9 +213,10 @@ algorithm is regenerated even when the source SHA is unchanged.
 
 `booktx status` recomputes the audit summary for the current source rather
 than trusting the persisted report, and shows it when findings exist. New
-chapter/task/todo selection (`next`, `next-chapter`, `translate next --chapter`, todo creation) refuses to create new work only on `error` audit
-findings (for example `epub_toc_href_extracted_but_unmapped`); warning-only
-findings remain visible but non-blocking. This keeps the three counts distinct:
+task or todo selection (`translate next --chapter`, todo creation) refuses to
+create new work only on `error` audit findings (for example
+`epub_toc_href_extracted_but_unmapped`); warning-only findings remain visible
+but non-blocking. This keeps the three counts distinct:
 
 - **visible-TOC count** — chapters promised by the contents page (audit only).
 - **extracted-spine documents** — XHTML documents actually present in the spine.

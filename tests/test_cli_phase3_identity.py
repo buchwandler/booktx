@@ -1,12 +1,4 @@
-"""Phase 3 slice 1 behavioral tests: identity commands + workflows.
-
-Covers the extracted ``booktx/commands/identity.py`` (actor / harness / model /
-identity-whoami) and the ``booktx/workflows/identity.py`` domain functions
-(``resolve_identity_view``, ``set_identity_defaults``,
-``clear_identity_field``). The command-tree snapshot and boundary guard live
-in test_cli.py / test_cli_command_boundary.py; this file adds focused success
-and error paths through the extracted slice.
-"""
+"""Behavioral tests for the consolidated identity surface and workflows."""
 
 from __future__ import annotations
 
@@ -105,80 +97,80 @@ def test_clear_identity_field_workflow_removes_file_when_all_default(
 # --- Typer command success paths (CliRunner) -------------------------------
 
 
-def test_actor_set_then_whoami_command_round_trip(tmp_path: Path) -> None:
+def test_identity_set_updates_multiple_fields_and_root_whoami(tmp_path: Path) -> None:
     project_dir = _make_source_project(tmp_path)
     _make_profile(project_dir)
 
-    set_res = runner.invoke(
-        app,
-        ["actor", "set", "agent:codex", str(project_dir), "--profile", "de_review"],
-    )
-    assert set_res.exit_code == 0, set_res.output
-    assert set_res.output.strip() == "agent:codex"
-
-    who = runner.invoke(
-        app, ["actor", "whoami", str(project_dir), "--profile", "de_review"]
-    )
-    assert who.exit_code == 0, who.output
-    assert who.output.strip() == "agent:codex"
-
-
-def test_model_set_command_legacy_value_only_order(tmp_path: Path) -> None:
-    project_dir = _make_source_project(tmp_path)
-    _make_profile(project_dir)
-
-    # Legacy order: VALUE then PROJECT_DIR.
     set_res = runner.invoke(
         app,
         [
-            "model",
+            "identity",
             "set",
-            "codex-openai/gpt-5.5@low",
             str(project_dir),
             "--profile",
             "de_review",
+            "--actor",
+            "agent:codex",
+            "--harness",
+            "pi",
         ],
     )
     assert set_res.exit_code == 0, set_res.output
+    assert "agent:codex" in set_res.output
+    assert "pi" in set_res.output
 
     who = runner.invoke(
-        app, ["model", "whoami", str(project_dir), "--profile", "de_review"]
-    )
-    assert who.exit_code == 0, who.output
-    assert who.output.strip() == "codex-openai/gpt-5.5@low"
-
-
-def test_identity_whoami_alias_matches_root_whoami(tmp_path: Path) -> None:
-    project_dir = _make_source_project(tmp_path)
-    _make_profile(project_dir)
-
-    root = runner.invoke(
         app, ["whoami", str(project_dir), "--profile", "de_review", "--json"]
     )
-    alias = runner.invoke(
+    assert who.exit_code == 0, who.output
+    assert '"actor":"agent:codex"' in who.output.replace(" ", "")
+    assert '"harness":"pi"' in who.output.replace(" ", "")
+
+
+def test_identity_clear_without_flags_clears_all_fields(tmp_path: Path) -> None:
+    project_dir = _make_source_project(tmp_path)
+    _make_profile(project_dir)
+    runner.invoke(
         app,
-        ["identity", "whoami", str(project_dir), "--profile", "de_review", "--json"],
+        [
+            "identity",
+            "set",
+            str(project_dir),
+            "--profile",
+            "de_review",
+            "--actor",
+            "agent:codex",
+            "--model",
+            "codex-openai/gpt-5.5@low",
+        ],
     )
-    assert root.exit_code == 0, root.output
-    assert alias.exit_code == 0, alias.output
-    assert root.output == alias.output
+    clear_res = runner.invoke(
+        app,
+        ["identity", "clear", str(project_dir), "--profile", "de_review"],
+    )
+    assert clear_res.exit_code == 0, clear_res.output
+    proj = load_profile_project(project_dir, "de_review")
+    assert not identity_path(proj).is_file()
 
 
 # --- BooktxError error path -------------------------------------------------
 
 
-def test_actor_whoami_command_errors_on_non_project(tmp_path: Path) -> None:
+def test_identity_set_command_errors_on_non_project(tmp_path: Path) -> None:
     # A directory with no .booktx/ layout cannot resolve a profile, so the
     # shared loader maps BooktxError to a non-zero exit.
     bogus = tmp_path / "not-a-project"
     bogus.mkdir()
-    res = runner.invoke(app, ["actor", "whoami", str(bogus)])
+    res = runner.invoke(app, ["identity", "set", str(bogus), "--actor", "agent:codex"])
     assert res.exit_code != 0
     assert "error:" in res.output
 
 
-def test_harness_clear_command_errors_on_missing_profile(tmp_path: Path) -> None:
+def test_identity_help_exposes_only_set_and_clear(tmp_path: Path) -> None:
     project_dir = _make_source_project(tmp_path)
-    # Source-only project with no profile; require_profile=True rejects this.
-    res = runner.invoke(app, ["harness", "clear", str(project_dir)])
-    assert res.exit_code != 0
+    _make_profile(project_dir)
+    res = runner.invoke(app, ["identity", "--help"])
+    assert res.exit_code == 0, res.output
+    assert "set" in res.output
+    assert "clear" in res.output
+    assert "whoami" not in res.output

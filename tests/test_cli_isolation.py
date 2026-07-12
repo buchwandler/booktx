@@ -483,7 +483,7 @@ def test_profile_root_mode_does_not_leak_sibling_profile_translations(
         app,
         ["translate", "next", ".", "--unit", "batch", "--max-words", "20", "--json"],
     )
-    list_res = runner.invoke(app, ["translation", "list", ".", "--chapter", "1"])
+    list_res = runner.invoke(app, ["translate", "list", ".", "--chapter", "1"])
 
     assert next_res.exit_code == 0, next_res.output
     assert list_res.exit_code == 0, list_res.output

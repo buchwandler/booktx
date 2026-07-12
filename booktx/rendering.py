@@ -21,6 +21,7 @@ from booktx.tasks import TaskPathDisplay, task_paths
 
 if TYPE_CHECKING:
     from booktx.config import Project
+    from booktx.human_guide import GuideResult
     from booktx.models import TranslationTask
     from booktx.runtime import RuntimeMode
     from booktx.status import ChapterProgress, StatusBundle
@@ -46,7 +47,11 @@ def format_chunk_span(chunk_ids: list[str]) -> str:
     return f"{chunk_ids[0]}..{chunk_ids[-1]}"
 
 
-def print_status_human(bundle: StatusBundle, chapter: ChapterProgress | None) -> None:
+def print_status_human(
+    bundle: StatusBundle,
+    chapter: ChapterProgress | None,
+    guide: GuideResult | None = None,
+) -> None:
     """Render the human-readable ``booktx status`` summary to the console."""
     snapshot = bundle.snapshot
     totals = snapshot.totals
@@ -99,27 +104,57 @@ def print_status_human(bundle: StatusBundle, chapter: ChapterProgress | None) ->
                 "are invalid"
             )
     detail = chapter or snapshot.next
-    if detail is None:
+    if detail is not None:
+        console.print()
+        console.print("Next chapter:" if chapter is None else "Chapter:")
+        console.print(f"  {detail.chapter_id}  {detail.title}".rstrip())
+        console.print(f"  status: {detail.status}")
+        console.print(
+            f"  records: {detail.records_translated} / "
+            f"{detail.records_total} translated, "
+            f"{detail.records_remaining} remaining"
+        )
+        console.print(
+            f"  words: {detail.source_words_translated:,} / "
+            f"{detail.source_words_total:,} translated, "
+            f"{detail.source_words_remaining:,} remaining"
+        )
+        console.print(f"  chunks: {format_chunk_span(detail.chunk_ids)}")
+        console.print(
+            f"  pending chunks: {format_chunk_span(detail.pending_chunk_ids)}"
+        )
+        console.print(
+            f"  record range: {detail.record_range.start}..{detail.record_range.end}"
+        )
+    if guide is None:
         return
     console.print()
-    console.print("Next chapter:" if chapter is None else "Chapter:")
-    console.print(f"  {detail.chapter_id}  {detail.title}".rstrip())
-    console.print(f"  status: {detail.status}")
-    console.print(
-        f"  records: {detail.records_translated} / "
-        f"{detail.records_total} translated, "
-        f"{detail.records_remaining} remaining"
-    )
-    console.print(
-        f"  words: {detail.source_words_translated:,} / "
-        f"{detail.source_words_total:,} translated, "
-        f"{detail.source_words_remaining:,} remaining"
-    )
-    console.print(f"  chunks: {format_chunk_span(detail.chunk_ids)}")
-    console.print(f"  pending chunks: {format_chunk_span(detail.pending_chunk_ids)}")
-    console.print(
-        f"  record range: {detail.record_range.start}..{detail.record_range.end}"
-    )
+    console.print(f"Lifecycle stage: {guide.stage.upper()}")
+    console.print()
+    console.print("Human action:")
+    if guide.human_next is None:
+        console.print("  None.")
+    else:
+        console.print(f"  {guide.human_next.summary}")
+        if guide.human_next.command:
+            console.print(
+                f"    {guide.human_next.command}", soft_wrap=True, markup=False
+            )
+    console.print()
+    console.print("Agent action:")
+    if guide.agent_next is None:
+        console.print("  None.")
+    else:
+        console.print(f"  {guide.agent_next.summary}")
+        if guide.agent_next.command:
+            console.print(
+                f"    {guide.agent_next.command}", soft_wrap=True, markup=False
+            )
+    if guide.warnings:
+        console.print()
+        console.print("Warnings:")
+        for warning in guide.warnings:
+            console.print(f"  - {warning}")
 
 
 def _print_task_header(

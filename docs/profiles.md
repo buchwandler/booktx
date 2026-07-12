@@ -345,8 +345,8 @@ Use:
 ```bash
 booktx version current . --profile PROFILE
 booktx version list . --profile PROFILE
-booktx translation compare . --profile PROFILE RECORD --versions 1.1,1.2
-booktx translation activate . --profile PROFILE RECORD 1.2
+booktx translate compare . --profile PROFILE RECORD --versions 1.1,1.2
+booktx translate activate . --profile PROFILE RECORD 1.2
 ```
 
 ## Migration from legacy layout

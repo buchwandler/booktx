@@ -50,7 +50,7 @@ translations/<profile>/translated/NNNN.json
 
 ## Comparison rules
 
-- `booktx translation compare` is profile-local.
+- `booktx translate compare` is profile-local.
 - Cross-profile comparison is explicit under `booktx profile compare`.
 
 ## Block submission schema
@@ -118,7 +118,7 @@ Review candidates are stored under `translations/<profile>/reviews/`.
 
 ## Revision provenance
 
-`translation revise-record` and `translation revise-block` preserve provenance for revised candidates. The commands resolve the current translation version and baseline once, create chapter-scoped context-view snapshots for affected records, and write `baseline_ref`, `baseline_sha256`, `context_view_sha256`, `context_view_path`, and context-note scope metadata to the candidate. Revising an existing candidate at the same version amends that candidate; immutable correction-history references are not part of this contract.
+`translate revise-record` and `translate revise-block` preserve provenance for revised candidates. The commands resolve the current translation version and baseline once, create chapter-scoped context-view snapshots for affected records, and write `baseline_ref`, `baseline_sha256`, `context_view_sha256`, `context_view_path`, and context-note scope metadata to the candidate. Revising an existing candidate at the same version amends that candidate; immutable correction-history references are not part of this contract.
 
 ## Glossary phrase collisions
 
@@ -134,5 +134,5 @@ of:
 
 Example: a binding `Mole Cricket-kinden -> Maulwurfsgrillenart` entry shadows
 `Cricket-kinden -> Grillenart` for that contained occurrence, allowing the
-natural German compound. Create the longer decision with `context mandate-term`.
+natural German compound. Create the longer decision with `glossary mandate`.
 Apposition is only a fallback when no longer phrase decision exists.

@@ -24,8 +24,8 @@ translations/<profile>/context-history/views/<sha>/{context.json,context.md,mani
 `context.json` is the source of truth. Structured `style`, `global_rules`, and
 glossary entries are active policy. Setup questions and chapter notes are
 provenance unless their decisions are promoted into structured policy with
-context commands such as `context approve`, `context mandate-term`,
-`context add-term`, or `context reset-term`.
+commands such as `context approve`, `glossary mandate`, `glossary add`, or
+`glossary reset`.
 
 Use the report-only organization doctor to find duplicated or hidden policy:
 
@@ -171,19 +171,18 @@ When the target changes, any forbidden term equal to the new target (respecting 
 
 Updating an existing entry preserves `category`, `notes`, `enforce`, `case_sensitive`, `status`, and `examples` unless the command explicitly changes them.
 
-### remove-term
+### glossary remove
 
 ```bash
-booktx context remove-term . "empire"
-booktx context remove-term . "empire" --missing-ok
+booktx glossary remove . "empire"
 ```
 
-Deletes exact glossary entries by source term. Without `--missing-ok`, exits non-zero when the term is absent.
+Deletes exact glossary entries by source term.
 
-### reset-term
+### glossary reset
 
 ```bash
-booktx context reset-term . "empire" \
+booktx glossary reset . "empire" \
   --target "Imperium" \
   --forbid "Reich" --forbid "Empire" \
   --category "concept" \

@@ -132,7 +132,7 @@ booktx check ./book --profile PROFILE --chapter CHAPTER --fail-on-warnings
 
 Use `booktx validate ./book --profile PROFILE --fail-on-warnings` only for the
 final pre-build check. If validation flags an old accepted record, use
-`booktx translation revise-record` to fix it; never edit
+`booktx translate revise-record` to fix it; never edit
 `translation-store.json` directly.
 
 Warnings remain non-fatal for plain `booktx validate`, but `todo-resume` and
@@ -268,9 +268,9 @@ Interpret the findings:
   complete source.
 - `epub_toc_href_extracted_but_unmapped` means the target was extracted but no
   chapter boundary covers it, so translation would skip it. It is a blocking
-  `error` finding: `next`, `next-chapter`, `translate next --chapter`, and todo
-  creation will refuse new work until it is resolved. Re-extract to refresh
-  upstream block annotations, or inspect the source with `booktx epub inspect .`.
+  `error` finding: `translate next --chapter` and todo creation will refuse new
+  work until it is resolved. Re-extract to refresh upstream block annotations,
+  or inspect the source with `booktx epub inspect .`.
 - `epub_navigation_partial` indicates navigation is a strict subset of the
   visible chapter signals.
 
@@ -319,7 +319,7 @@ the selected candidate exactly during insert.
 
 ## glossary_alignment_ambiguous
 
-This warning means a source record contains both a longer glossary occurrence and a shorter standalone occurrence, and a target form could belong to either. Review the companion source block from `translation search --write-block` or `context audit-term --write-block`, then revise deliberately. Use `--fail-on-warnings` to block final validation until the ambiguity has been reviewed.
+This warning means a source record contains both a longer glossary occurrence and a shorter standalone occurrence, and a target form could belong to either. Review the companion source block from `translate search --write-block` or `glossary audit`, then revise deliberately. Use `--fail-on-warnings` to block final validation until the ambiguity has been reviewed.
 
 For a contained phrase collision, add the longer binding source phrase. Booktx
 enforces only longest non-shadowed spans, so

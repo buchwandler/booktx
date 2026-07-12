@@ -239,6 +239,27 @@ def test_selected_chapter_returns_next_for_none(tmp_path: Path):
     assert selected_chapter(bundle, "does-not-exist") is None
 
 
+def test_guide_reports_context_missing_stage(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+
+    res = runner.invoke(app, ["guide", str(project_dir), "--profile", "de_default"])
+
+    assert res.exit_code == 0, res.output
+    assert "Lifecycle stage: CONTEXT_MISSING" in res.output
+    assert "booktx context init" in res.output
+
+
+def test_status_human_output_includes_lifecycle_actions(tmp_path: Path):
+    project_dir = _make_project(tmp_path)
+
+    res = runner.invoke(app, ["status", str(project_dir), "--profile", "de_default"])
+
+    assert res.exit_code == 0, res.output
+    assert "Lifecycle stage:" in res.output
+    assert "Human action:" in res.output
+    assert "Agent action:" in res.output
+
+
 def _make_epub_project(tmp_path: Path, *, toc_count: int, spine_count: int) -> Path:
     from ebooklib import epub
 

@@ -801,7 +801,7 @@ def context_add_term(  # noqa: C901 - long form mirrors original
                     " approved target is not required."
                 )
                 console.print(
-                    "Use --require-target or `booktx context mandate-term` for a"
+                    "Use --require-target or `booktx glossary mandate` for a"
                     " binding user decision."
                 )
     except BooktxError as exc:

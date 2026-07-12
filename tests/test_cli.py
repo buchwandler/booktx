@@ -173,104 +173,58 @@ def test_whoami_json_is_stable_when_optional_state_is_missing(tmp_path: Path):
     assert payload["store"]["record_count"] is None
 
 
-def test_harness_set_accepts_all_supported_argument_orders(tmp_path: Path, monkeypatch):
+def test_identity_set_updates_defaults_from_project_root(tmp_path: Path, monkeypatch):
     project_dir = _make_markdown_project(tmp_path)
 
     monkeypatch.chdir(project_dir)
-    res = runner.invoke(app, ["harness", "set", "pi", "--profile", "de_default"])
-    assert res.exit_code == 0, res.output
-    assert (
-        runner.invoke(
-            app, ["harness", "whoami", ".", "--profile", "de_default"]
-        ).output.strip()
-        == "pi"
-    )
-
-    res = runner.invoke(
-        app, ["harness", "set", "qa", str(project_dir), "--profile", "de_default"]
-    )
-    assert res.exit_code == 0, res.output
-    assert (
-        runner.invoke(
-            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
-        ).output.strip()
-        == "qa"
-    )
-
-    res = runner.invoke(
-        app, ["harness", "set", str(project_dir), "ops", "--profile", "de_default"]
-    )
-    assert res.exit_code == 0, res.output
-    assert (
-        runner.invoke(
-            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
-        ).output.strip()
-        == "ops"
-    )
-
     res = runner.invoke(
         app,
         [
-            "harness",
+            "identity",
             "set",
-            "--project",
-            str(project_dir),
-            "pi",
+            ".",
             "--profile",
             "de_default",
+            "--harness",
+            "pi",
+            "--actor",
+            "user:test",
         ],
     )
     assert res.exit_code == 0, res.output
-    assert (
-        runner.invoke(
-            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
-        ).output.strip()
-        == "pi"
-    )
+    whoami = runner.invoke(app, ["whoami", ".", "--profile", "de_default", "--json"])
+    assert whoami.exit_code == 0, whoami.output
+    compact = whoami.output.replace(" ", "")
+    assert '"harness":"pi"' in compact
+    assert '"actor":"user:test"' in compact
 
 
-def test_actor_and_model_set_support_project_option(tmp_path: Path):
+def test_identity_set_supports_multiple_fields(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
 
-    actor_res = runner.invoke(
+    res = runner.invoke(
         app,
         [
-            "actor",
+            "identity",
             "set",
-            "--project",
             str(project_dir),
+            "--actor",
             "user:test",
-            "--profile",
-            "de_default",
-        ],
-    )
-    model_res = runner.invoke(
-        app,
-        [
-            "model",
-            "set",
-            "--project",
-            str(project_dir),
+            "--model",
             "codex-openai/gpt-5.5@low",
             "--profile",
             "de_default",
         ],
     )
 
-    assert actor_res.exit_code == 0, actor_res.output
-    assert model_res.exit_code == 0, model_res.output
-    assert (
-        runner.invoke(
-            app, ["actor", "whoami", str(project_dir), "--profile", "de_default"]
-        ).output.strip()
-        == "user:test"
+    assert res.exit_code == 0, res.output
+    whoami = runner.invoke(
+        app, ["whoami", str(project_dir), "--profile", "de_default", "--json"]
     )
-    assert (
-        runner.invoke(
-            app, ["model", "whoami", str(project_dir), "--profile", "de_default"]
-        ).output.strip()
-        == "codex-openai/gpt-5.5@low"
-    )
+    assert whoami.exit_code == 0, whoami.output
+    compact = whoami.output.replace(" ", "")
+    assert '"actor":"user:test"' in compact
+    assert '"model":"codex-openai/gpt-5.5@low"' in compact
 
 
 def test_init_accepts_source_lang_alias(tmp_path: Path):
@@ -512,17 +466,22 @@ def test_extract_leaves_chunks_intact_when_write_fails(tmp_path: Path, monkeypat
     assert leftovers == []
 
 
-def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: Path):
+def test_translate_next_prints_first_untranslated_then_exits_nonzero_when_done(
+    tmp_path: Path,
+):
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
     # First untranslated
     res = runner.invoke(
         app,
         [
+            "translate",
             "next",
             str(project_dir),
             "--profile",
             "de_default",
+            "--unit",
+            "chunk",
             "--allow-missing-context",
         ],
     )
@@ -545,10 +504,13 @@ def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: P
     res2 = runner.invoke(
         app,
         [
+            "translate",
             "next",
             str(project_dir),
             "--profile",
             "de_default",
+            "--unit",
+            "chunk",
             "--allow-missing-context",
         ],
     )
@@ -556,25 +518,39 @@ def test_next_prints_first_untranslated_then_exits_nonzero_when_done(tmp_path: P
     assert "All" in res2.output
 
 
-def test_next_requires_ready_context(tmp_path: Path):
-    project_dir = _make_markdown_project(tmp_path)
-    runner.invoke(app, ["extract", str(project_dir)])
-    res = runner.invoke(app, ["next", str(project_dir), "--profile", "de_default"])
-    assert res.exit_code == 1
-    assert "context" in res.output.lower()
-    assert "booktx context init" in res.output
-
-
-def test_next_allow_missing_context_legacy_override(tmp_path: Path):
+def test_translate_next_requires_ready_context(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
     res = runner.invoke(
         app,
         [
+            "translate",
             "next",
             str(project_dir),
             "--profile",
             "de_default",
+            "--unit",
+            "chunk",
+        ],
+    )
+    assert res.exit_code == 1
+    assert "context" in res.output.lower()
+    assert "booktx context init" in res.output
+
+
+def test_translate_next_allow_missing_context_legacy_override(tmp_path: Path):
+    project_dir = _make_markdown_project(tmp_path)
+    runner.invoke(app, ["extract", str(project_dir)])
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "chunk",
             "--allow-missing-context",
         ],
     )
@@ -582,15 +558,18 @@ def test_next_allow_missing_context_legacy_override(tmp_path: Path):
     assert "0001" in res.output
 
 
-def test_next_without_chunks_tells_user_to_extract(tmp_path: Path):
+def test_translate_next_without_chunks_tells_user_to_extract(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     res = runner.invoke(
         app,
         [
+            "translate",
             "next",
             str(project_dir),
             "--profile",
             "de_default",
+            "--unit",
+            "chunk",
             "--allow-missing-context",
         ],
     )
@@ -598,11 +577,14 @@ def test_next_without_chunks_tells_user_to_extract(tmp_path: Path):
     assert "booktx extract" in res.output
 
 
-def test_next_unit_chapter_without_chunks_tells_user_to_extract(tmp_path: Path):
+def test_translate_next_unit_chapter_without_chunks_tells_user_to_extract(
+    tmp_path: Path,
+):
     project_dir = _make_markdown_project(tmp_path)
     res = runner.invoke(
         app,
         [
+            "translate",
             "next",
             str(project_dir),
             "--profile",
@@ -616,7 +598,7 @@ def test_next_unit_chapter_without_chunks_tells_user_to_extract(tmp_path: Path):
     assert "booktx extract" in res.output
 
 
-def test_next_prints_context_path_when_context_ready(tmp_path: Path):
+def test_translate_next_prints_context_path_when_context_ready(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     runner.invoke(app, ["extract", str(project_dir)])
     runner.invoke(
@@ -643,9 +625,20 @@ def test_next_prints_context_path_when_context_ready(tmp_path: Path):
             "test setup",
         ],
     )
-    res = runner.invoke(app, ["next", str(project_dir), "--profile", "de_default"])
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "chunk",
+        ],
+    )
     assert res.exit_code == 0, res.output
-    assert "context:" in res.output
+    assert "context file:" in res.output
     assert "context.md" in res.output
     assert "0001" in res.output
 
@@ -718,14 +711,17 @@ def test_full_pipeline_end_to_end(tmp_path: Path):
     project_dir = _make_markdown_project(tmp_path)
     # extract
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
-    # next
+    # next translation task
     res_next = runner.invoke(
         app,
         [
+            "translate",
             "next",
             str(project_dir),
             "--profile",
             "de_default",
+            "--unit",
+            "chunk",
             "--allow-missing-context",
         ],
     )
@@ -852,7 +848,6 @@ def _command_tree() -> tuple[set[str], dict[str, set[str]]]:
 def test_command_tree_top_level_snapshot():
     top, _ = _command_tree()
     expected = {
-        "actor",
         "agents",
         "build",
         "chapters",
@@ -862,16 +857,13 @@ def test_command_tree_top_level_snapshot():
         "epub",
         "extract",
         "glossary",
-        "harness",
+        "guide",
         "identity",
         "init",
         "inspect",
         "judge",
         "termbase",
         "mode",
-        "model",
-        "next",
-        "next-chapter",
         "pass-through",
         "profile",
         "qa-scan",
@@ -880,7 +872,6 @@ def test_command_tree_top_level_snapshot():
         "source",
         "status",
         "translate",
-        "translation",
         "validate",
         "version",
         "whoami",
@@ -892,22 +883,23 @@ def test_command_tree_top_level_snapshot():
     )
 
 
-def test_translation_alias_matches_translate():
-    _, sub = _command_tree()
-    assert "translate" in sub and "translation" in sub
-    assert sub["translate"] == sub["translation"], (
-        "translation alias group diverged from translate"
-    )
+def test_phase3_removed_top_level_commands_are_not_registered():
+    top, _ = _command_tree()
+    assert {
+        "actor",
+        "harness",
+        "model",
+        "next",
+        "next-chapter",
+        "translation",
+    } & top == set()
 
 
 def test_command_tree_group_snapshots():
     _, sub = _command_tree()
     expected = {
         "agents": {"clean", "status", "write"},
-        "actor": {"clear", "set", "whoami"},
-        "harness": {"clear", "set", "whoami"},
-        "model": {"clear", "set", "whoami"},
-        "identity": {"whoami"},
+        "identity": {"clear", "set"},
         "doctor": {"isolation"},
         "epub": {"extract-text", "grep", "inspect"},
         "review": {
@@ -973,6 +965,7 @@ def test_command_tree_group_snapshots():
             "insert",
             "next",
             "prefill-policy-fixes",
+            "prepare-grammar",
             "prepare-isolation",
             "record",
             "reset-ingest",
@@ -996,6 +989,16 @@ def test_command_tree_group_snapshots():
             "select",
             "set-label",
             "show",
+        },
+        "glossary": {
+            "add",
+            "audit",
+            "export",
+            "import",
+            "mandate",
+            "remove",
+            "reset",
+            "status",
         },
         "translate": {
             "activate",
@@ -1034,7 +1037,7 @@ def test_command_tree_group_snapshots():
 def test_fixed_commands_present_in_tree():
     """The Phase 0 defect-repair commands must all remain registered."""
     top, sub = _command_tree()
-    assert {"review", "translate", "epub"} <= top
+    assert {"guide", "review", "translate", "epub"} <= top
     assert {"configure", "revise-record", "todo-next"} <= sub["review"]
     assert {"search", "revise-record"} <= sub["translate"]
     assert {"inspect", "grep", "extract-text"} <= sub["epub"]

@@ -84,6 +84,7 @@ if TYPE_CHECKING:
 
     from booktx.acceptance import SubmittedRecord
     from booktx.editor_indexes import EditorIndexesResult
+    from booktx.human_guide import GuideResult
     from booktx.models import TranslationTask
     from booktx.status import ChapterProgress, ProfilesOverview, StatusBundle
     from booktx.validate import Finding
@@ -491,7 +492,7 @@ def _staged_preflight_check(
         fix_record = f.record_id or (f.record_ids[0] if f.record_ids else "")
         if fix_record:
             console.print(
-                f"  fix: booktx translation revise-record . {fix_record} --stdin",
+                f"  fix: booktx translate revise-record . {fix_record} --stdin",
                 soft_wrap=True,
                 markup=False,
             )
@@ -631,9 +632,12 @@ def _create_translation_task(
     )
 
 
-def _print_status_human(bundle: StatusBundle, chapter: ChapterProgress | None) -> None:
-
-    print_status_human(bundle, chapter)
+def _print_status_human(
+    bundle: StatusBundle,
+    chapter: ChapterProgress | None,
+    guide: GuideResult | None = None,
+) -> None:
+    print_status_human(bundle, chapter, guide)
     _render_epub_audit_summary(getattr(bundle, "epub_audit", None))
 
 

@@ -37,7 +37,7 @@ actor_app = typer.Typer(help="Manage translation actor defaults.")
 harness_app = typer.Typer(help="Manage translation harness defaults.")
 model_app = typer.Typer(help="Manage translation model defaults.")
 identity_app = typer.Typer(
-    help="Inspect resolved translation identity and project state."
+    help="Set or clear default actor, harness, and model values for one profile."
 )
 
 
@@ -191,16 +191,47 @@ def model_clear(
     console.print(identity.model)
 
 
-# --- identity (alias of root whoami) ---------------------------------------
+# --- identity ---------------------------------------------------------------
 
 
-@identity_app.command(name="whoami")
-def identity_whoami(
+@identity_app.command(name="set")
+def identity_set(
     project_dir: Path = typer.Argument(..., help="Project directory."),
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+    actor: str | None = typer.Option(None, "--actor", help="Actor label."),
+    harness: str | None = typer.Option(None, "--harness", help="Harness label."),
+    model: str | None = typer.Option(None, "--model", help="Model label."),
 ) -> None:
-    """Alias for the top-level whoami command."""
-    _print_identity(project_dir, profile=profile, as_json=as_json)
+    """Persist one or more identity defaults for the resolved profile."""
+    if actor is None and harness is None and model is None:
+        raise typer.BadParameter("pass at least one of --actor, --harness, or --model")
+    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    set_identity_defaults(proj, actor=actor, harness=harness, model=model)
+    _print_identity(project_dir, profile=profile, as_json=False)
+
+
+@identity_app.command(name="clear")
+def identity_clear(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    actor: bool = typer.Option(False, "--actor", help="Clear the actor default."),
+    harness: bool = typer.Option(False, "--harness", help="Clear the harness default."),
+    model: bool = typer.Option(False, "--model", help="Clear the model default."),
+) -> None:
+    """Clear one or more identity defaults for the resolved profile."""
+    proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    if not actor and not harness and not model:
+        actor = True
+        harness = True
+        model = True
+    if actor:
+        clear_identity_field(proj, "actor")
+    if harness:
+        clear_identity_field(proj, "harness")
+    if model:
+        clear_identity_field(proj, "model")
+    _print_identity(project_dir, profile=profile, as_json=False)

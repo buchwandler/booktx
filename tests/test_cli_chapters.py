@@ -123,41 +123,50 @@ def test_chapters_audit_json_emits_findings(tmp_path: Path):
     assert "epub_toc_chapter_missing_from_map" in codes
 
 
-def test_next_chapter_respects_context_gate(tmp_path: Path):
+def test_guide_reports_context_gate_before_translation(tmp_path: Path):
     project_dir = _make_project(tmp_path)
-    res = runner.invoke(
-        app, ["next-chapter", str(project_dir), "--profile", "de_default"]
-    )
-    assert res.exit_code == 1
+    res = runner.invoke(app, ["guide", str(project_dir), "--profile", "de_default"])
+    assert res.exit_code == 0, res.output
     assert "context" in res.output.lower()
+    assert (
+        "lifecycle stage: CONTEXT_APPROVAL" in res.output
+        or "context_" in res.output.lower()
+    )
 
 
-def test_next_chapter_prints_first_incomplete_chapter(tmp_path: Path):
+def test_status_prints_first_incomplete_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     _ready_context(project_dir)
-    res = runner.invoke(
-        app, ["next-chapter", str(project_dir), "--profile", "de_default"]
-    )
+    res = runner.invoke(app, ["status", str(project_dir), "--profile", "de_default"])
     assert res.exit_code == 0, res.output
-    assert "context:" in res.output
-    assert "chapter: 0001" in res.output
+    assert "context:" in res.output.lower()
+    assert "0001" in res.output
     assert "chunks:" in res.output
     assert "pending chunks:" in res.output
     assert "record range:" in res.output
 
 
-def test_next_unit_chapter_matches_next_chapter(tmp_path: Path):
+def test_translate_next_unit_chapter_reports_first_incomplete_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     _ready_context(project_dir)
     res = runner.invoke(
-        app, ["next", str(project_dir), "--profile", "de_default", "--unit", "chapter"]
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "chapter",
+        ],
     )
     assert res.exit_code == 0, res.output
     assert "chapter: 0001" in res.output
-    assert "pending chunks:" in res.output
+    assert "record chunks:" in res.output
 
 
-def test_next_chapter_skips_completed_chapter(tmp_path: Path):
+def test_status_skips_completed_chapter(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     _ready_context(project_dir)
     translated_dir = _translated_dir(project_dir)
@@ -169,8 +178,6 @@ def test_next_chapter_skips_completed_chapter(tmp_path: Path):
         payload = {"chunk_id": cid, "records": records}
         out_path = translated_dir / f"{cid}.json"
         out_path.write_text(json.dumps(payload), encoding="utf-8")
-    res = runner.invoke(
-        app, ["next-chapter", str(project_dir), "--profile", "de_default"]
-    )
+    res = runner.invoke(app, ["status", str(project_dir), "--profile", "de_default"])
     assert res.exit_code == 0, res.output
-    assert "chapter: 0002" in res.output
+    assert "0002" in res.output

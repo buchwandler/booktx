@@ -747,7 +747,7 @@ def _render_glossary_section(glossary: list[GlossaryEntry]) -> list[str]:
     lines += [
         "",
         "Advisory entries are guidance only. Validation failures only occur",
-        "if converted with `context mandate-term` or `add-term --require-target`,",
+        "if converted with `glossary mandate` or `glossary add --require-target`,",
         "or if forbidden targets are configured.",
     ]
     lines += [

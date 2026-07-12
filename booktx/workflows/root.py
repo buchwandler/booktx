@@ -54,6 +54,7 @@ from booktx.config import (
 from booktx.context import context_markdown_path
 from booktx.epub_io import EpubExtraction, extract_epub
 from booktx.epub_manifest import EPUB2TEXT_SCHEMA, EPUB_TEMPLATE_PIPELINE
+from booktx.human_guide import build_guide_result
 from booktx.markdown_io import extract_markdown
 from booktx.models import Chunk, Manifest, NamesFile, TranslatedChunk
 from booktx.pass_through import ensure_pass_through_profile, run_pass_through
@@ -640,7 +641,8 @@ def status_cmd(
             json.dumps(summary.snapshot.model_dump(mode="json"), ensure_ascii=False)
         )
         return
-    _print_status_human(summary, selected)
+    guide = build_guide_result(runtime, bundle=summary, project_arg=str(project_dir))
+    _print_status_human(summary, selected, guide)
 
 
 @root_app.command(name="next")

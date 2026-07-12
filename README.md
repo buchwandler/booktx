@@ -85,27 +85,17 @@ booktx profile create ./demo PROFILE \
   --target-locale de-DE \
   --model codex-openai/gpt-5.5@low
 
-
+booktx guide ./demo --profile PROFILE
 booktx context init ./demo --profile PROFILE --non-interactive
-booktx context questions ./demo --profile PROFILE
-# Ask the user to approve or edit answers before continuing.
+booktx source analyze ./demo --write --sync-profiles
+booktx source interview-plan ./demo --profile PROFILE --write
+booktx context questionnaire ./demo --profile PROFILE --stdout
 booktx context approve ./demo --profile PROFILE Q001 --text "<USER_APPROVED_TEXT>" --approved-by "user:<USER>"
-booktx context render ./demo --profile PROFILE --write
 booktx context mark-ready ./demo --profile PROFILE
 
-booktx translate next ./demo \
-  --profile PROFILE \
-  --unit batch \
-  --max-words 800 \
-  --format block
-
-booktx translate insert ./demo \
-  --profile PROFILE \
-  --task-id TASK \
-  --file translations/PROFILE/ingest/TASK.block.txt \
-  --format block
-
-booktx validate ./demo --profile PROFILE
+booktx agents write ./demo --mode isolated --profile PROFILE
+booktx status ./demo --profile PROFILE
+booktx check ./demo --profile PROFILE
 booktx build ./demo --profile PROFILE
 ```
 
@@ -299,7 +289,7 @@ rg "Wespen" translations/PROFILE/target-index.json
 nvim translations/PROFILE/source-target-index.json
 
 # Inspect canonical state for a hit.
-booktx translation get-record ./demo 0014-000029 --profile PROFILE --json
+booktx translate get-record ./demo 0014-000029 --profile PROFILE --json
 ```
 
 All three files are generated artifacts. Do not edit them manually. The canonical state remains `translation-store.json`.
@@ -374,7 +364,7 @@ booktx profile show ./demo PROFILE
 booktx whoami ./demo --profile PROFILE
 booktx version current ./demo --profile PROFILE
 booktx translate task-status ./demo --profile PROFILE --task-id TASK
-booktx translation compare ./demo --profile PROFILE 74@38 --versions 1.1,1.2
+booktx translate compare ./demo --profile PROFILE 74@38 --versions 1.1,1.2
 booktx profile compare ./demo --profiles PROFILE,PROFILE_B --record 0001-000001
 booktx source status ./demo
 
@@ -531,21 +521,20 @@ See `docs/profiles.md` for configuration reference.
 
 ```bash
 # Fix wrong forbidden targets (replaces, doesn't append).
-booktx context add-term . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
+booktx glossary add . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
 
 # Remove a wrong entry.
-booktx context remove-term . "empire"
+booktx glossary remove . "empire"
 ```
 
 ### Mandatory glossary decisions
 
-For user terminology decisions (e.g. \u201calways translate `tenday` as `Dekade`\u201d),
-use `mandate-term`. It sets `require_target = true` and defaults to
-`enforce = error` so the approved target is positively enforced. It never
-accepts `--enforce off`:
+For user terminology decisions (e.g. "always translate `tenday` as `Dekade`"),
+use `glossary mandate`. It sets `require_target = true` and defaults to
+`enforce = error` so the approved target is positively enforced.
 
 ```bash
-booktx context mandate-term . "tenday" \
+booktx glossary mandate . "tenday" \
   --source-variant "tendays" \
   --target "Dekade" --target-variant "Dekaden" \
   --forbid "Zehntag" --forbid "Zehntage" --forbid "zehn Tage" \
@@ -555,7 +544,7 @@ booktx context mandate-term . "tenday" \
 Longer mandatory phrases shadow contained shorter source terms. For example:
 
 ```bash
-booktx context mandate-term . "Mole Cricket-kinden" \
+booktx glossary mandate . "Mole Cricket-kinden" \
   --target "Maulwurfsgrillenart" --category "kinden"
 ```
 
@@ -564,11 +553,8 @@ This permits the natural compound without requiring the shorter
 Standalone shorter occurrences remain enforced. Any mandatory glossary change
 requires a fresh translation task, including batch and todo-created tasks.
 
-`reset-term` and `add-term` also accept `--source-variant`,
-`--target-variant`, and `--require-target`. Use
-`--allow-disable-enforcement` to intentionally set `--enforce off` on a
-mandatory rule. Advisory approved-target-only entries may use
-`enforce = off` without warning.
+Use `glossary reset` for atomic entry replacement and `glossary add` for
+lighter advisory updates.
 
 ### Auditing a term
 
@@ -583,7 +569,7 @@ Generate a safe correction-block template for violating records:
 ```bash
 booktx context audit-term . "tenday" \
   --write-block ingest/glossary-tenday-fixes.block.txt
-booktx translation revise-block . \
+booktx translate revise-block . \
   --file ingest/glossary-tenday-fixes.block.txt --format block --activate
 booktx validate . --fail-on-warnings
 ```
@@ -605,7 +591,7 @@ booktx validate . --include-inactive --fail-on-history-warnings
 
 ### Deterministic terminology correction
 
-Use `booktx translation search` for terminology fixes instead of inspecting stores directly. Combine source and target criteria with `--match all`, add regex/exclusion filters when needed, and write profile-local correction blocks with `--write-block`. Glossary rendering distinguishes binding rules from advisory and disabled entries; `enforce` alone is not binding without `require_target` or forbidden targets. Revision commands preserve baseline and chapter-scoped context-view metadata.
+Use `booktx translate search` for terminology fixes instead of inspecting stores directly. Combine source and target criteria with `--match all`, add regex/exclusion filters when needed, and write profile-local correction blocks with `--write-block`. Glossary rendering distinguishes binding rules from advisory and disabled entries; `enforce` alone is not binding without `require_target` or forbidden targets. Revision commands preserve baseline and chapter-scoped context-view metadata.
 
 ### Translation preference dictionary / termbase
 
@@ -654,7 +640,7 @@ overlays, but it must not mutate global or project shards. Paths stay redacted
 
 When the user reports a bad context-sensitive translation:
 
-1. Fix the current effective output with `translation revise-record` or
+1. Fix the current effective output with `translate revise-record` or
    `review revise-record`, depending on whether the effective target is a
    translation or an active review.
 2. Add a local glossary entry only when the phrase is fixed and safely

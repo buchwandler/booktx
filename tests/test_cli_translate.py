@@ -1104,7 +1104,7 @@ def test_translation_get_record_json_and_human_output(tmp_path: Path):
     json_res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "get-record",
             str(project_dir),
             "--profile",
@@ -1129,7 +1129,7 @@ def test_translation_get_record_json_and_human_output(tmp_path: Path):
     human_res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "get-record",
             str(project_dir),
             "--profile",
@@ -1149,7 +1149,7 @@ def test_translation_list_range_uses_source_order(tmp_path: Path):
     res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "list",
             str(project_dir),
             "--profile",
@@ -1174,42 +1174,25 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
         runner.invoke(
             app,
             [
-                "actor",
+                "identity",
                 "set",
                 str(project_dir),
                 "--profile",
                 "de_default",
+                "--actor",
                 "user:nahrstaedt",
-            ],
-        ).exit_code
-        == 0
-    )
-    assert (
-        runner.invoke(
-            app, ["harness", "set", str(project_dir), "--profile", "de_default", "pi"]
-        ).exit_code
-        == 0
-    )
-    assert (
-        runner.invoke(
-            app,
-            [
-                "model",
-                "set",
-                str(project_dir),
-                "--profile",
-                "de_default",
+                "--harness",
+                "pi",
+                "--model",
                 "codex-openai/gpt-5.5@low",
             ],
         ).exit_code
         == 0
     )
 
-    whoami = runner.invoke(
-        app, ["actor", "whoami", str(project_dir), "--profile", "de_default"]
-    )
+    whoami = runner.invoke(app, ["whoami", str(project_dir), "--profile", "de_default"])
     assert whoami.exit_code == 0
-    assert whoami.output.strip() == "user:nahrstaedt"
+    assert "user:nahrstaedt" in whoami.output
 
     task, record, _ = _insert_identity_target(project_dir, target="Erste Fassung.")
     proj = load_project(project_dir, profile="de_default")
@@ -1239,7 +1222,7 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
     compare_res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "compare",
             str(project_dir),
             "--profile",
@@ -1260,7 +1243,7 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
     activate_res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "activate",
             str(project_dir),
             "--profile",
@@ -1274,7 +1257,7 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
     review_res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "review",
             str(project_dir),
             "--profile",
@@ -1293,7 +1276,7 @@ def test_translation_activate_review_compare_and_version_commands(tmp_path: Path
     get_res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "get-record",
             str(project_dir),
             "--profile",
@@ -1352,31 +1335,16 @@ def test_whoami_reports_active_version_and_scoped_identity(tmp_path: Path):
         runner.invoke(
             app,
             [
-                "actor",
+                "identity",
                 "set",
                 str(project_dir),
                 "--profile",
                 "de_default",
+                "--actor",
                 "user:nahrstaedt",
-            ],
-        ).exit_code
-        == 0
-    )
-    assert (
-        runner.invoke(
-            app, ["harness", "set", str(project_dir), "--profile", "de_default", "pi"]
-        ).exit_code
-        == 0
-    )
-    assert (
-        runner.invoke(
-            app,
-            [
-                "model",
-                "set",
-                str(project_dir),
-                "--profile",
-                "de_default",
+                "--harness",
+                "pi",
+                "--model",
                 "codex-openai/gpt-5.5@low",
             ],
         ).exit_code
@@ -1401,24 +1369,6 @@ def test_whoami_reports_active_version_and_scoped_identity(tmp_path: Path):
     assert payload["store"]["exists"] is True
     assert payload["store"]["version"] == 2
     assert payload["store"]["record_count"] >= 1
-    assert (
-        runner.invoke(
-            app, ["identity", "whoami", str(project_dir), "--profile", "de_default"]
-        ).exit_code
-        == 0
-    )
-    assert (
-        runner.invoke(
-            app, ["harness", "whoami", str(project_dir), "--profile", "de_default"]
-        ).output.strip()
-        == "pi"
-    )
-    assert (
-        runner.invoke(
-            app, ["model", "whoami", str(project_dir), "--profile", "de_default"]
-        ).output.strip()
-        == "codex-openai/gpt-5.5@low"
-    )
 
 
 def test_translate_export_can_select_exact_version(tmp_path: Path):
@@ -1496,7 +1446,7 @@ def test_translate_export_can_select_exact_version(tmp_path: Path):
     activate_res = runner.invoke(
         app,
         [
-            "translation",
+            "translate",
             "activate",
             str(project_dir),
             "--profile",
