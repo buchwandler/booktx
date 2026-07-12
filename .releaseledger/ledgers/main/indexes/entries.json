@@ -101,6 +101,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0001",
+    "internal": false,
+    "kind": "added",
+    "order": 1,
+    "record_revision": 2,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
+    "status": "accepted",
+    "summary": "Added `booktx guide` command that shows the current lifecycle stage and the next human and agent actions"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0002",
     "internal": false,
     "kind": "added",
@@ -194,6 +208,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0002",
+    "internal": false,
+    "kind": "added",
+    "order": 2,
+    "record_revision": 3,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
+    "status": "accepted",
+    "summary": "Added `booktx judge prepare-grammar` to create and prepare a grammar-only revision profile"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0003",
     "internal": false,
     "kind": "added",
@@ -282,6 +310,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0003",
+    "internal": false,
+    "kind": "added",
+    "order": 3,
+    "record_revision": 2,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
+    "status": "accepted",
+    "summary": "Added `booktx glossary remove`, `reset`, `mandate`, and `audit` subcommands for binding terminology decisions"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0004",
     "internal": false,
     "kind": "added",
@@ -344,6 +386,20 @@
     ],
     "status": "accepted",
     "summary": "Added booktx chapters detection with --audit comparing the EPUB table of contents against extracted chapter spans and the chapter map"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0004",
+    "internal": false,
+    "kind": "changed",
+    "order": 4,
+    "record_revision": 2,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
+    "status": "accepted",
+    "summary": "Changed `booktx status` output to include the current lifecycle stage and the next human and agent actions"
   },
   {
     "audience": null,
@@ -415,6 +471,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0005",
+    "internal": false,
+    "kind": "changed",
+    "order": 5,
+    "record_revision": 2,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
+    "status": "accepted",
+    "summary": "Added human-first CLI command catalog metadata (audience, runtime mode, write intent, examples) for `--help` output"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0006",
     "internal": false,
     "kind": "added",
@@ -482,6 +552,20 @@
   },
   {
     "audience": null,
+    "breaking": true,
+    "entry_id": "entry-0006",
+    "internal": false,
+    "kind": "changed",
+    "order": 6,
+    "record_revision": 5,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
+    "status": "accepted",
+    "summary": "Removed the `translation` group alias and the `actor` and `harness` identity groups"
+  },
+  {
+    "audience": null,
     "breaking": false,
     "entry_id": "entry-0007",
     "internal": false,
@@ -536,6 +620,20 @@
     "source_refs": ["git:aa8e4741193c8b69e8fd15a057aeb6609a8f5abf"],
     "status": "accepted",
     "summary": "Fixed translation validation to detect quotation mismatches in translated targets"
+  },
+  {
+    "audience": null,
+    "breaking": true,
+    "entry_id": "entry-0007",
+    "internal": false,
+    "kind": "changed",
+    "order": 7,
+    "record_revision": 3,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
+    "status": "accepted",
+    "summary": "Removed the top-level `next` and `next-chapter` commands and the `whoami` alias under `identity`"
   },
   {
     "audience": null,
@@ -604,6 +702,23 @@
   },
   {
     "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0008",
+    "internal": false,
+    "kind": "changed",
+    "order": 8,
+    "record_revision": 2,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": [
+      "git:48832522fe73aa45c91f4d4e36aff1952db7eb72",
+      "git:c2b304e0e1237e89ff7daca7187e7589dcc145ae"
+    ],
+    "status": "accepted",
+    "summary": "Documented the human-first CLI, the current data flow through `TranslationStoreV2`, and the profile boundary model"
+  },
+  {
+    "audience": null,
     "breaking": true,
     "entry_id": "entry-0009",
     "internal": false,
@@ -648,6 +763,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0009",
+    "internal": false,
+    "kind": "fixed",
+    "order": 9,
+    "record_revision": 3,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:57d56e40943bcbe2cde58b6cd9cf0a00ce8adda4"],
+    "status": "accepted",
+    "summary": "Fixed mypy strict type errors in source analysis and termbase and added a `tests` mypy override"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0010",
     "internal": false,
     "kind": "fixed",
@@ -687,6 +816,20 @@
     "source_refs": ["git:ded607582ebe214149cfe1270797adc5b71a02c5"],
     "status": "accepted",
     "summary": "Improved check and review workflow with enhanced validation"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0010",
+    "internal": false,
+    "kind": "fixed",
+    "order": 10,
+    "record_revision": 3,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:1de02f1139fb68999e029c09a3f411faa4770259"],
+    "status": "accepted",
+    "summary": "Fixed source analysis to assign the no-action bucket with the generic single-token reason"
   },
   {
     "audience": null,
@@ -740,6 +883,20 @@
     "source_refs": ["git:10841601422397c30dec2828a2b866ba8a5c6439"],
     "status": "accepted",
     "summary": "Added export-index command for profile-local editor QA indexes"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0011",
+    "internal": false,
+    "kind": "changed",
+    "order": 11,
+    "record_revision": 2,
+    "release_version": "v0.4.3",
+    "scopes": [],
+    "source_refs": ["git:cc4906a2b7bd30cf4f165fadcf7157a42b83d966"],
+    "status": "accepted",
+    "summary": "Added back the `booktx model` group as an advanced feature and made guide module imports lazy"
   },
   {
     "audience": null,

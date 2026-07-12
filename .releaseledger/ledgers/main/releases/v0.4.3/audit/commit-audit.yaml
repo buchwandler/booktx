@@ -1,0 +1,310 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.4.3
+git_base_ref: v0.4.2
+git_base_sha: 1cf0ba73c0ac2d58f0a40bf73b8bf083be0bcc51
+git_head_ref: HEAD
+git_head_sha: cc4906a2b7bd30cf4f165fadcf7157a42b83d966
+git_range: 1cf0ba73c0ac2d58f0a40bf73b8bf083be0bcc51..cc4906a2b7bd30cf4f165fadcf7157a42b83d966
+commit_count: 6
+rows:
+  - sha: 48832522fe73aa45c91f4d4e36aff1952db7eb72
+    source_ref: git:48832522fe73aa45c91f4d4e36aff1952db7eb72
+    short_sha: "4883252"
+    changed_paths:
+      - README.md
+      - docs/Makefile
+      - docs/agent-workflow.md
+      - docs/build.sh
+      - docs/commands.md
+      - docs/development.md
+      - docs/index.md
+      - docs/profiles.md
+      - docs/quickstart.md
+      - docs/troubleshooting.md
+    stats:
+      files_changed: 0
+      insertions: 105
+      deletions: 47
+    inspected: true
+    inspected_paths:
+      - docs/index.md
+      - docs/quickstart.md
+      - docs/development.md
+      - docs/commands.md
+      - docs/profiles.md
+      - docs/agent-workflow.md
+      - docs/troubleshooting.md
+      - docs/Makefile
+      - docs/build.sh
+      - README.md
+    observed_behavior:
+      Documentation polish for the human-first CLI. Rewrote docs/index.md
+      into grouped onboarding, operating, reference, and maintenance sections. Added
+      a "Continue with the guides" block in docs/quickstart.md. Expanded docs/development.md
+      with the docs-consistency test, sphinx warnings-as-errors build, and docs/build.sh
+      usage. Refreshed docs/commands.md, docs/profiles.md, docs/agent-workflow.md, and
+      docs/troubleshooting.md wording.
+    public_impact: docs
+    decision: accepted
+    target_entry_key: docs-rewrite
+  - sha: bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666
+    source_ref: git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666
+    short_sha: bf723bd
+    changed_paths:
+      - .taskledger.toml
+      - README.md
+      - booktx/agents_md.py
+      - booktx/cli.py
+      - booktx/cli_support.py
+      - booktx/command_catalog.py
+      - booktx/command_hints.py
+      - booktx/commands/context.py
+      - booktx/commands/glossary.py
+      - booktx/commands/guide.py
+      - booktx/commands/identity.py
+      - booktx/commands/judge.py
+      - booktx/context.py
+      - booktx/human_guide.py
+      - booktx/rendering.py
+      - booktx/rendering_guide.py
+      - booktx/workflows/glossary.py
+      - booktx/workflows/root.py
+      - docs/agent-workflow.md
+      - docs/architecture.md
+      - docs/commands.md
+      - docs/context.md
+      - docs/epub.md
+      - docs/human-workflows.md
+      - docs/maintenance.md
+      - docs/profiles.md
+      - docs/quickstart.md
+      - docs/translation-contract.md
+      - docs/troubleshooting.md
+      - skills/booktx/SKILL.md
+      - tests/test_agents_md.py
+      - tests/test_cli.py
+      - tests/test_cli_chapters.py
+      - tests/test_cli_isolation.py
+      - tests/test_cli_phase3_identity.py
+      - tests/test_cli_phase3_translate.py
+      - tests/test_cli_translate.py
+      - tests/test_docs_consistency.py
+      - tests/test_status.py
+    stats:
+      files_changed: 0
+      insertions: 2270
+      deletions: 1039
+    inspected: true
+    inspected_paths:
+      - booktx/commands/guide.py
+      - booktx/human_guide.py
+      - booktx/rendering_guide.py
+      - booktx/rendering.py
+      - booktx/cli_support.py
+      - booktx/workflows/root.py
+      - booktx/command_catalog.py
+      - booktx/cli.py
+      - booktx/commands/identity.py
+      - booktx/commands/judge.py
+      - booktx/commands/glossary.py
+      - booktx/workflows/glossary.py
+      - booktx/agents_md.py
+      - booktx/command_hints.py
+      - booktx/context.py
+      - tests/test_docs_consistency.py
+      - tests/test_cli.py
+      - tests/test_status.py
+    observed_behavior:
+      Major human-first CLI refactor. New top-level `booktx guide`
+      command (commands/guide.py, human_guide.py, rendering_guide.py) that resolves
+      the current lifecycle stage and prints the next human and agent actions. `booktx
+      status` (workflows/root.py, rendering.py, cli_support.py) now also includes the
+      guide result. New `booktx judge prepare-grammar` command that creates a grammar-only
+      revision profile and writes isolated judge instructions in one step. New glossary
+      subcommands `remove`, `reset`, `mandate`, and `audit` (commands/glossary.py, workflows/glossary.py)
+      wrapping the underlying context term workflows. New command_catalog.py centralizes
+      human-first command descriptors (audience, runtime mode, write intent, examples,
+      next-action hints) and patches --help output via apply_command_catalog. Removed
+      the `translation` group alias (only `translate` remains), the `actor` and `harness`
+      identity groups (replaced by `booktx identity set` and `booktx identity clear`),
+      the `whoami` alias under the `identity` group, and the root-level `next` and `next-chapter`
+      commands. Updated agents_md.py, command_hints.py, and tests to use the new commands
+      and assertion language.
+    public_impact: public
+    decision: accepted
+    target_entry_key: cli-human-first
+  - sha: c2b304e0e1237e89ff7daca7187e7589dcc145ae
+    source_ref: git:c2b304e0e1237e89ff7daca7187e7589dcc145ae
+    short_sha: c2b304e
+    changed_paths:
+      - .taskledger.toml
+      - README.md
+      - booktx/models.py
+      - docs/api.md
+      - docs/architecture.md
+      - docs/architecture/canonical-store-split.md
+      - docs/commands.md
+      - docs/concepts.md
+      - docs/context.md
+      - docs/epub.md
+      - docs/human-workflows.md
+      - docs/index.md
+      - docs/maintenance.md
+      - docs/mypy-baseline.md
+      - docs/profiles.md
+      - docs/project-layout.md
+      - docs/quickstart.md
+      - docs/translation-contract.md
+      - docs/troubleshooting.md
+      - skills/booktx/SKILL.md
+      - tests/test_docs_consistency.py
+    stats:
+      files_changed: 0
+      insertions: 1072
+      deletions: 3272
+    inspected: true
+    inspected_paths:
+      - docs/architecture.md
+      - docs/commands.md
+      - docs/profiles.md
+      - docs/project-layout.md
+      - docs/concepts.md
+      - docs/epub.md
+      - docs/human-workflows.md
+      - docs/maintenance.md
+      - docs/index.md
+      - docs/quickstart.md
+      - docs/api.md
+      - docs/context.md
+      - docs/mypy-baseline.md
+      - docs/translation-contract.md
+      - docs/troubleshooting.md
+      - docs/architecture/canonical-store-split.md
+      - skills/booktx/SKILL.md
+      - README.md
+      - tests/test_docs_consistency.py
+      - booktx/models.py
+    observed_behavior:
+      Major documentation rewrite aligned with the human-first CLI.
+      Rewrote docs/architecture.md to describe the current source and profile boundaries,
+      runtime resolution, and TranslationStoreV2 as the canonical record model. Rewrote
+      docs/commands.md into a human-first reference with the lifecycle, human decisions,
+      profiles, glossary, and translate sections. Rewrote docs/profiles.md around the
+      new profile marker and `booktx identity set` workflow. Removed the unimplemented
+      docs/architecture/canonical-store-split.md document. Updated remaining docs and
+      skills/booktx/SKILL.md to match. test_docs_consistency.py was updated to expect
+      the new command tree and allowlist.
+    public_impact: docs
+    decision: accepted
+    target_entry_key: docs-rewrite
+  - sha: 57d56e40943bcbe2cde58b6cd9cf0a00ce8adda4
+    source_ref: git:57d56e40943bcbe2cde58b6cd9cf0a00ce8adda4
+    short_sha: 57d56e4
+    changed_paths:
+      - booktx/command_catalog.py
+      - booktx/commands/judge.py
+      - booktx/commands/series.py
+      - booktx/commands/source.py
+      - booktx/glossary_match.py
+      - booktx/human_guide.py
+      - booktx/judge_sources.py
+      - booktx/source_analysis.py
+      - booktx/source_interview.py
+      - booktx/termbase.py
+      - booktx/termbase_audit.py
+      - booktx/termbase_match.py
+      - booktx/workflows/glossary.py
+      - booktx/workflows/series.py
+      - booktx/workflows/source_interview.py
+      - pyproject.toml
+    stats:
+      files_changed: 0
+      insertions: 117
+      deletions: 60
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+      - booktx/source_analysis.py
+      - booktx/termbase.py
+      - booktx/termbase_audit.py
+      - booktx/termbase_match.py
+      - booktx/glossary_match.py
+      - booktx/source_interview.py
+      - booktx/judge_sources.py
+      - booktx/command_catalog.py
+      - booktx/workflows/source_interview.py
+      - booktx/workflows/series.py
+      - booktx/workflows/glossary.py
+      - booktx/commands/source.py
+      - booktx/commands/series.py
+      - booktx/commands/judge.py
+      - booktx/human_guide.py
+    observed_behavior:
+      "mypy strict-mode cleanup. Added a `tests` package override in
+      pyproject.toml that disables disallow_untyped_defs, disallow_untyped_calls, and
+      ignore_missing_imports so the test suite does not need full annotations. Fixed
+      pydantic validator signatures in booktx/termbase.py by typing `info: ValidationInfo`.
+      Tightened the `_classify_review_bucket` return type in booktx/source_analysis.py
+      to use the proper SourceReviewBucket alias and Literal action set, and switched
+      one resource lookup to use chained joinpath() for python 3.10 importlib.resources
+      typing. Updated other source files for new module imports and minor typing polish."
+    public_impact: internal
+    decision: accepted
+    target_entry_key: mypy-cleanup
+  - sha: 1de02f1139fb68999e029c09a3f411faa4770259
+    source_ref: git:1de02f1139fb68999e029c09a3f411faa4770259
+    short_sha: 1de02f1
+    changed_paths:
+      - booktx/source_analysis.py
+      - tests/test_source_analysis.py
+    stats:
+      files_changed: 0
+      insertions: 3
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - booktx/source_analysis.py
+      - tests/test_source_analysis.py
+    observed_behavior:
+      Added an explicit `else` branch in _classify_review_bucket so
+      candidates that fall through every preceding elif are classified as no_action
+      with the generic_single_token suppression reason instead of being assigned a default.
+      Removed the obsolete assertion that the rendered snapshot markdown mentioned the
+      removed `booktx source review-candidate` command in tests/test_source_analysis.py.
+    public_impact: public
+    decision: accepted
+    target_entry_key: source-analysis-default-bucket
+  - sha: cc4906a2b7bd30cf4f165fadcf7157a42b83d966
+    source_ref: git:cc4906a2b7bd30cf4f165fadcf7157a42b83d966
+    short_sha: cc4906a
+    changed_paths:
+      - booktx/cli.py
+      - booktx/command_catalog.py
+      - booktx/commands/judge.py
+      - booktx/human_guide.py
+    stats:
+      files_changed: 0
+      insertions: 22
+      deletions: 4
+    inspected: true
+    inspected_paths:
+      - booktx/cli.py
+      - booktx/command_catalog.py
+      - booktx/commands/judge.py
+      - booktx/human_guide.py
+    observed_behavior:
+      Reintroduced the `booktx model` group as an advanced feature
+      for managing translation model defaults (model whoami, set, clear) via the command
+      catalog. Moved the load_profile_project import in booktx/commands/judge.py from
+      booktx.config to booktx.cli_support. Made booktx/source_analysis and booktx/workflows/source_interview
+      imports in human_guide.py lazy so the module imports cleanly without circular
+      import issues. Net effect is that the model group is preserved as an advanced
+      surface and the guide result no longer pulls source-analysis and source-interview
+      workflow modules at import time.
+    public_impact: public
+    decision: accepted
+    target_entry_key: model-group-restore
