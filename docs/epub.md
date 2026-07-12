@@ -1,271 +1,94 @@
 # EPUB handling
 
-EPUB support uses two external libraries through booktx adapters:
+EPUB support adapts `epub2text` extraction and `text2epub` rebuilding through
+`booktx.epub_io`, `booktx.epub_manifest`, and `booktx.build`.
 
-- `epub2text` for structured extraction
-- `text2epub` for rebuild
+## Extraction
 
-The adapter code lives mainly in:
+`booktx extract` records raw document offsets, inline runs, source spans,
+protected names, and navigation metadata in `.booktx/source-manifest.json`.
+Fresh EPUB chunks contain clean block text and name placeholders. The manifest
+also stores the source checksum, text2epub manifest, span references, and
+chapter mapping.
 
-- `booktx.epub_io`
-- `booktx.epub_manifest`
-- `booktx.build`
+Re-extract when the source checksum changes or when an old manifest lacks the
+current block annotations. `booktx chapters PROJECT --audit` reports visible
+TOC entries that are missing, unmapped, or only partially represented by the
+chapter map.
 
-## Extraction flow
+## Rebuild and output policy
 
-`booktx extract` calls `extract_epub()`.
+Build verifies the extraction checksum and assembles record targets back into
+manifest spans. The build is transactional: a failed rebuild or output-policy
+audit leaves the last successful output untouched.
 
-The extraction policy requests:
-
-- raw documents
-- character offsets
-- inline runs
-- no duplicate-title removal
-- no nav document text as translatable prose
-- no pre-segmentation by `epub2text`
-
-booktx then:
-
-1. maps structured blocks back to raw XHTML offsets
-2. protects configured names
-3. stores ordered span references
-4. converts structured extraction data into a `text2epub` manifest
-5. writes `.booktx/source-manifest.json`
-
-## Fresh EPUB chunk rule
-
-New EPUB chunks should contain clean block text and `__NAME_NNN__` placeholders only.
-
-Fresh EPUB extraction must not emit:
-
-```text
-__TAG_NNN__
-__SPANTX_NNNN__
-```
-
-If these appear in fresh EPUB chunks, extraction is considered defective. Legacy EPUB projects should be re-extracted after upgrading.
-
-## Manifest v2
-
-EPUB rebuild uses `.booktx/source-manifest.json` version 2.
-
-The manifest stores:
-
-- source filename
-- source format
-- source and target languages
-- source SHA256
-- chunk count
-- record count
-- EPUB template data
-- `text2epub` extraction manifest
-- span references
-- navigation references
-
-Build rejects legacy EPUB manifests and asks the user to rerun extraction.
-
-## Source checksum
-
-EPUB build verifies that the current source EPUB matches the checksum recorded at extraction time.
-
-If the source changed, rebuild fails. Re-run extraction after intentional source changes.
-
-## Identity build
-
-The intended gold standard is that pass-through EPUB builds preserve the
-extracted source EPUB bytes by default. Pass-through profiles resolve to a
-fully preserving EPUB output policy and so remain byte-identical.
-
-Translation profiles, by contrast, apply an EPUB output policy that rewrites
-publication/content language and injects a deterministic hyphenation style
-sheet, so a translated build is **not** expected to be byte-identical to the
-source. See _EPUB output-language and hyphenation policy_ below.
-
-## EPUB output-language and hyphenation policy
-
-A translated EPUB build writes the resolved target language to the primary
-OPF `dc:language` and to the `lang`/`xml:lang` of targeted XHTML root
-elements, and injects one deterministic best-effort hyphenation/word-break
-style sheet into eligible reflowable documents. Descendant language
-annotations (for example a quoted passage in another language) are preserved.
-
-This is a **metadata and author-style correctness** contract, not a promise
-of identical rendering across reading systems. Automatic hyphenation depends
-on the reader and its installed dictionaries; booktx cannot control computed
-style. CSS cascade conflicts (source `!important`, higher-specificity rules,
-or reader styles) are reported as warnings because they can override the
-injected policy.
-
-Defaults depend on profile kind:
-
-- translation and legacy translation projects default to `target` language
-  and `auto` hyphenation;
-- pass-through profiles default to `preserve`/`preserve` (byte-identical
-  output).
-
-Override the policy explicitly under `[epub_output]` in the profile (or
-legacy) config:
+Target translation builds resolve the target language for OPF and XHTML
+metadata and can inject deterministic hyphenation CSS. The policy is configured
+under `[epub_output]`:
 
 ```toml
 [epub_output]
-language_policy = "target"
-language = "de-DE"        # required only when language_policy = "explicit"
-hyphenation = "auto"      # auto | manual | none | preserve
+language_policy = "target"  # target | source | preserve | explicit
+language = "de-DE"          # required for explicit
+hyphenation = "auto"        # auto | manual | none | preserve
 inject_css = true
 patch_body_language = false
 ```
 
-`hyphenation = "none"` is the compatibility escape hatch: it disables the
-generated automatic hyphenation when a reader keeps producing bad breaks.
+The language and CSS policy is deterministic, but actual hyphenation depends on
+the reading system and its dictionaries. `hyphenation = "none"` disables the
+generated automatic hyphenation policy. Output reports retain replacement and
+unresolved-token counters and include the resolved EPUB policy and warnings.
 
-The build is transactional: a failed policy resolution, rebuild, or audit
-leaves the last successful output untouched. The build report keeps the
-existing top-level keys (`changed_entries`, `replacement_count`,
-`unresolved_token_count`) and adds an `epub_output_policy` object with the
-resolved language, hyphenation mode, patched XHTML count, and warning count.
+Pass-through profiles are generated reconstruction checks. Compare their
+output with an EPUB diff tool or the repository's reconstruction tests. The
+documentation does not promise byte identity for an arbitrary EPUB fixture.
 
-## Reconstruction validation
+## Inline XHTML contract
 
-To verify that extraction and reconstruction include all content, create a
-pass-through profile that rebuilds the EPUB from source-as-target chunks:
+EPUB records with inline markup use `source_markup="epub-inline-xhtml:v1"`.
+Changed targets are parsed and sanitized by `epub_preflight`, then passed to
+`text2epub` with inline XHTML enabled. Unchanged records use the source fragment
+for identity reconstruction.
 
-```bash
-booktx extract ./book
-booktx pass-through ./book --profile passthrough_en --create
-```
+A changed target must:
 
-Then compare the source and rebuilt output byte-for-byte (for the fixture) or
-with an EPUB diff viewer (for real books):
+- preserve the source tag sequence and attributes;
+- change only visible text nodes;
+- preserve opaque elements such as `code`, `img`, `svg`, `math`, and media;
+- avoid comments, processing instructions, scripts, styles, block tags, event
+  handlers, new attributes, and new inline elements.
 
-```text
-source/book.epub
-translations/passthrough_en/output/book.en.epub
-```
+Validation, `booktx check`, `translate insert`, and build use the same
+build-grade preflight. Findings include `inline_xhtml_preserved`,
+`inline_xhtml_no_new_attributes`, `inline_xhtml_no_block_tags`,
+`inline_xhtml_opaque_preserved`, and parse or empty-visible-text errors.
+`booktx translate audit-inline` lists stored records requiring attention.
 
-## Changed block tradeoff
+## Chapter audit
 
-The current EPUB rebuild path replaces changed blocks with escaped translated text for the whole block body.
+The chapter map combines upstream block annotations, heading sequences, and
+TOC document boundaries. The audit distinguishes:
 
-This preserves identity builds, but changed blocks can lose inner inline markup such as `<strong>` or `<em>` until a future text-run-preserving replacement mode exists.
+- visible TOC chapters;
+- extracted spine documents;
+- chapters covered by the chapter map.
 
-## Chapter detection
-
-EPUB chapter detection combines several signals rather than trusting a single
-source:
-
-1. **upstream `epub2text` block chapter annotations** — the authoritative
-   source for manifests marked `chapter_mapping="epub2text-block-v1"`. New
-   extractions persist `TextBlock.chapter_id` / `chapter_title` onto each
-   span ref and use them even when the set is empty (an authoritative "no
-   assignment" result).
-2. **heading tags** (`h1` through `h6`) that extend a numbered sequence
-3. **TOC-derived document starts**: when a boundary source is partial and a
-   visible contents page links to an extracted XHTML document, the first span
-   of that document becomes a chapter boundary
-4. a single chapter covering the whole record stream (last resort)
-
-Boundaries are resolved through canonical `Record.span_index` metadata, so a
-multi-sentence block never shifts a chapter start. Old manifests without
-block annotations (`chapter_mapping="legacy"`) fall back to a conservative
-navigation mapper that ignores fallback/unresolved navigation entries and
-offsets beyond extracted spans; re-extraction is required to gain upstream
-annotations. Detection no longer trusts partial navigation blindly: when a
-boundary source is a strict subset of a strongly chapter-like heading
-sequence, headings complete the map. TOC-derived boundaries are only used
-for documents that were actually extracted, so a truncated/preview EPUB
-never produces empty chapter entries. Relative visible-TOC hrefs are resolved
-against their containing XHTML document (no same-basename collapse).
-
-### Chapter completeness audit
-
-A visible contents page can promise more chapters than were extracted or
-detected (for example a preview EPUB, a skipped spine document, or partial
-navigation). The audit compares the visible TOC against extracted spans,
-navigation, and the chapter map:
+An extracted TOC target with no chapter-map boundary is an error and blocks new
+chapter work. Missing or partial preview navigation is reported as a warning.
+Use:
 
 ```bash
 booktx chapters ./book --audit
 booktx chapters ./book --audit --json
+booktx epub inspect ./book --profile PROFILE
 ```
 
-The audit writes `.booktx/reports/chapter-audit.json` and is also surfaced by
-`booktx validate` and `booktx check` for unscoped EPUB runs. Deterministic
-finding codes and severities:
+## Common recovery
 
-- `error epub_toc_href_extracted_but_unmapped`: the TOC target has extracted
-  spans but no chapter boundary covers it.
-- `warning epub_toc_chapter_missing_from_map`: a numbered TOC entry is not in
-  the chapter map.
-- `warning epub_toc_href_missing_from_extracted_spans`: the TOC target has no
-  extracted span (truncated/preview EPUB or extraction skip).
-- `warning epub_navigation_partial`: navigation covers fewer numbered chapters
-  than visible chapter signals.
-- `warning epub_chapter_sequence_gap`: numbered TOC chapters have gaps.
-
-The chapter map and audit are generated automatically during `booktx extract`:
-`extract` writes `.booktx/chapter-map.json`, runs the audit, writes
-`.booktx/reports/chapter-audit.json`, and prints a one-line warning with the
-`booktx chapters . --audit` hint when findings exist. Extraction stays
-successful for warning-only preview/truncation cases (it is a completeness
-signal, not a policy gate). The chapter-map algorithm is versioned
-(`ChapterMap.version`); a cached map whose version is older than the current
-algorithm is regenerated even when the source SHA is unchanged.
-
-`booktx status` recomputes the audit summary for the current source rather
-than trusting the persisted report, and shows it when findings exist. New
-task or todo selection (`translate next --chapter`, todo creation) refuses to
-create new work only on `error` audit findings (for example
-`epub_toc_href_extracted_but_unmapped`); warning-only findings remain visible
-but non-blocking. This keeps the three counts distinct:
-
-- **visible-TOC count** — chapters promised by the contents page (audit only).
-- **extracted-spine documents** — XHTML documents actually present in the spine.
-- **chapter-map count** — chapters booktx will translate.
-
-If the chapter-map count is lower than the visible-TOC count, inspect the
-source rather than trusting the contents page:
-
-```bash
-booktx chapters . --audit
-booktx epub inspect .
-```
-
-### Re-extraction for upstream annotations
-
-Projects extracted before `chapter_mapping="epub2text-block-v1"` use the
-conservative legacy navigation fallback and do not carry upstream block
-annotations. Re-extract to gain them:
-
-```bash
-booktx extract .
-```
-
-## Common EPUB errors
-
-### Legacy manifest
-
-Message:
-
-```text
-This project uses the legacy EPUB extraction format. Re-run `booktx extract` after upgrading.
-```
-
-Fix:
-
-```bash
-booktx extract .
-```
-
-### Source checksum mismatch
-
-The source EPUB bytes differ from the extraction manifest. Restore the original source or re-extract.
-
-### Unresolved placeholder in output EPUB
-
-A target likely omitted or changed a placeholder token. Run validation, repair the translated chunk, and rebuild.
-
-## Inline XHTML semantics
-
-EPUB extraction exposes inline XHTML fragments in record `source` values when the source block contains inline semantics. EPUB records use `source_markup="epub-inline-xhtml:v1"`. Legacy plain records continue to load as `plain:v1`.
-
-During rebuild, changed EPUB targets are parsed and sanitized as constrained inline XHTML before `text2epub` receives `allow_inline_xhtml=True`. Identity/pass-through output uses the plain expected source so reconstruction checks remain useful.
+- On a legacy manifest, run `booktx extract ./book` again.
+- On a source checksum mismatch, restore the source or re-extract intentionally.
+- On an unresolved placeholder, repair the submission and validate again.
+- On an inline-XHTML finding, restore the source skeleton and opaque content.
+- On a TOC audit error, inspect the source EPUB rather than synthesizing empty
+  chapters.

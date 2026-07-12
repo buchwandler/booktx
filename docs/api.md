@@ -1,14 +1,18 @@
 # API reference
 
-This page exposes the internal modules through Sphinx autodoc. The public command-line interface is more stable than the Python internals.
+This page is generated reference material for selected internal Python modules.
+The CLI and its documented JSON output are the user-facing interface. Python
+module names and function signatures may change between releases unless a
+separate API contract says otherwise.
 
-## Stability notes
+The durable model names currently include `TranslationStoreV2`, translation
+records and review candidates, context models, profile configuration, source
+manifests, and EPUB span metadata. The profile-local store is
+`translations/<profile>/translation-store.json`.
 
-- **Stable public API**: The CLI commands (`booktx init`, `booktx extract`, `booktx translate next`, etc.) and their JSON output shapes are the primary stable interface.
-- **Stable models**: Pydantic models in `booktx.models` (Chunk, Record, TranslationStore, TranslationTask, Manifest) are serialization contracts used by the CLI and external tools.
-- **Service modules**: `booktx.status`, `booktx.tasks`, `booktx.submissions`, `booktx.acceptance`, `booktx.rendering`, `booktx.io_utils` contain the extracted service logic. Their public functions are stable within a release cycle.
-- **Internal helpers**: `booktx.config`, `booktx.context`, `booktx.validate`, `booktx.build`, `booktx.chunking`, `booktx.placeholders` are intended stable but may change between minor releases.
-- **Legacy**: `booktx.html_io` contains shared XHTML helpers that may be consolidated in future releases.
+The reference is intentionally broad so generated documentation can expose
+model fields and service helpers. It should not be read as a promise that every
+imported symbol is a supported public API.
 
 ```{eval-rst}
 .. automodule:: booktx.config

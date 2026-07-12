@@ -719,7 +719,7 @@ class TranslationTask(BaseModel):
     target_locale: str = ""
     translation_version: str | None = Field(
         default=None,
-        description="Active translation version ref when the task was created",
+        description="Translation version ref when the task was created",
     )
     baseline_ref: str | None = Field(
         default=None,
@@ -1022,8 +1022,8 @@ class ProfileIdentityConfig(BaseModel):
 
     This is **not** the live identity. After creation, the authoritative
     identity lives in ``translations/<profile>/identity.json`` and is updated
-    by ``booktx model set`` / ``actor set`` / ``harness set``. Profile list
-    and show render the resolved ``identity.json`` value, not this field.
+    updated by ``booktx identity set`` / ``identity clear``. Profile list and
+    show render the resolved ``identity.json`` value, not this field.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1409,8 +1409,8 @@ class EpubOutputConfig(BaseModel):
     When ``None`` (the default), booktx resolves effective policy from the
     profile kind: translation and legacy translation projects default to
     ``target`` language / ``auto`` hyphenation; pass-through profiles default to
-    ``preserve`` / ``preserve`` (byte-identical output). Storing the model
-    opts the project into an explicit policy.
+    ``preserve`` / ``preserve`` output policy. Storing the model opts the
+    project into an explicit policy.
 
     See ``booktx.epub_output_policy`` for resolution and validation.
     """

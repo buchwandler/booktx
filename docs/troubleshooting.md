@@ -1,340 +1,131 @@
 # Troubleshooting
 
-## `multiple translation profiles exist`
+## Multiple profiles or missing profile
 
-Pass `--profile` or select one first:
+Project-root commands that read or write profile-local data require an explicit
+profile:
 
 ```bash
 booktx profile list ./book
-booktx status ./book --profile PROFILE_A
+booktx status ./book --profile PROFILE
+booktx guide ./book --profile PROFILE
 ```
 
-## `no translation profile exists`
-
-Create one:
+If no profile exists, create one:
 
 ```bash
-booktx profile create ./book PROFILE_A --target de
+booktx profile create ./book PROFILE --target de --target-locale de-DE
 ```
 
-## `task profile mismatch`
+From `translations/PROFILE/`, use `.` and omit `--profile`. If the marker is
+missing, mismatched, or stale, regenerate the profile-root instructions or
+repair the profile through the project-root workflow before isolated work.
 
-The task was created for another profile. Request a fresh task in the selected
-profile.
+## Profile and submission mismatches
 
-## `submission profile mismatch`
-
-The durable submission file or JSON payload declares a different profile than
-the selected one. Use the matching `translations/<profile>/ingest/` file.
-
-## `output filename ... does not match target language ...`
-
-Choose an output filename that matches the profile target, for example
-`book.de.epub`.
-
-## `legacy path used after migration`
-
-After migrating, do not use:
-
-- `.booktx/context.json`
-- `.booktx/context.md`
-- `.booktx/tasks/`
-- `.booktx/ingest/`
-- `.booktx/translated/`
-- `.booktx/translation-store.json`
-
-Use the selected profile paths under `translations/<profile>/` instead.
-
-## Stale translation task version
-
-`booktx translate insert` reports a stale task version when the durable task
-was created against an older context/version than the current one. Do not
-force the old file through. Request a fresh task:
+A task or submission created for another profile cannot be inserted into the
+selected profile. Request a fresh task and use the matching profile-local
+`ingest/` file:
 
 ```bash
 booktx translate next ./book --profile PROFILE --format block
 ```
 
-and submit the newly generated ingest file.
+Do not edit `translation-store.json` to work around a mismatch.
 
-## `context_render_drift`
+## Legacy paths after migration
 
-`context.md` differs from `context.json`. If the difference is chapter notes
-you want to keep, run:
+After `booktx profile migrate-current`, mutable translation state belongs under
+`translations/<profile>/`. Old `.booktx/` paths such as `context.json`,
+`tasks/`, `ingest/`, `translated/`, and `translation-store.json` are legacy
+migration input, not current profile storage.
 
-```bash
-booktx context import-md ./book --profile PROFILE --write
-```
+## Stale tasks and context
 
-Prefer `booktx context chapter-note` for future chapter summaries.
-
-## `series_prepare_pack_source_conflict` / `series_prepare_pack_source_missing`
-
-`booktx series prepare` requires exactly one policy source:
+If insertion reports stale task metadata, request a new task after the context,
+glossary, source, or version change:
 
 ```bash
-booktx series prepare ./book5 --source-file ./book5/book.epub --from-book ./book4 ...
+booktx context status ./book --profile PROFILE
+booktx translate next ./book --profile PROFILE --format block
 ```
 
-or:
+`context.json` is authoritative. If `context.md` contains manual notes, import
+or replace them with `booktx context import-md` before rendering. Do not mark
+context ready until the user has approved required questions.
 
-```bash
-booktx series prepare ./book5 --source-file ./book5/book.epub --pack ./series-context.json ...
-```
+## Source drift and missing chunks
 
-Do not pass both `--from-book` and `--pack`, and do not omit both.
-
-## `series_prepare_profile_conflict`
-
-The target profile already exists but does not match the requested
-target/locale/model (or explicit actor/harness override). Re-run with a
-compatible profile configuration, choose another profile name, or explicitly
-recreate it:
-
-```bash
-booktx series prepare ... --replace-profile --write
-```
-
-## `series_prepare_chapter_audit_failed`
-
-The EPUB chapter audit found blocking TOC/map mismatches during series setup.
-Inspect the generated report and fix the source before continuing:
-
-```bash
-booktx chapters ./book5 --audit
-```
-
-## `series_prepare_isolated_mode`
-
-`booktx series prepare` is a project-root workflow. Do not run it from
-`translations/<profile>/`. Move to the project root or parent directory first,
-then rerun the command there.
-
-## Source drift after extraction
-
-If the source file changed since the last `booktx extract`, the recorded
-source hash no longer matches and inserts/builds are blocked. Re-extract to
-realign the chunks and source manifest:
+Re-extract after an intentional source change or when chunks are missing:
 
 ```bash
 booktx extract ./book
+booktx chapters ./book --audit
 ```
 
-Then re-request tasks against the refreshed source.
+The source checksum and chapter audit must be current before new tasks are
+created. An extracted EPUB target with no chapter-map boundary is an error;
+warning-only preview or navigation findings remain visible for review.
 
-## Validation warnings during bounded todo runs
+## Validation and build
 
-Bounded todo runs should use scoped validation per batch:
+Use scoped checks during bounded work and the full validation before output:
 
 ```bash
-booktx check ./book --profile PROFILE --chapter CHAPTER --fail-on-warnings
+booktx check ./book --profile PROFILE --fail-on-warnings
+booktx validate ./book --profile PROFILE --fail-on-warnings
+booktx build ./book --profile PROFILE --require-complete
 ```
 
-Use `booktx validate ./book --profile PROFILE --fail-on-warnings` only for the
-final pre-build check. If validation flags an old accepted record, use
-`booktx translate revise-record` to fix it; never edit
-`translation-store.json` directly.
+If EPUB validation reports an inline-XHTML finding, preserve the source tag and
+attribute skeleton and change only text nodes. The same preflight is used by
+validation and build.
 
-Warnings remain non-fatal for plain `booktx validate`, but `todo-resume` and
-the generated todo workflow expect warnings to be cleared before continuing.
+If an output filename does not match the profile target, update the profile
+configuration rather than renaming generated files by hand.
 
-## Latest todo is incomplete
+## Context and series preparation
 
-Inspect the live bounded-run state before requesting more work:
+`booktx series prepare` is a project-root workflow. Provide exactly one policy
+source, either `--from-book` or `--pack`, then review the generated questionnaire
+before `context mark-ready`. Do not run series preparation from a profile root.
+
+## EPUB output policy
+
+Target language metadata and generated hyphenation CSS are controlled by the
+profile's `[epub_output]` policy. Automatic hyphenation still depends on the
+reader. Set `hyphenation = "none"` when the reader produces unacceptable
+breaks, then rebuild.
+
+## Bounded todos
+
+Inspect an incomplete run before requesting more work:
 
 ```bash
 booktx translate todo-status ./book --profile PROFILE --latest
 booktx translate todo-resume ./book --profile PROFILE --latest --format block
 ```
 
-If `todo-status` reports overlap ambiguity, re-run with `--todo-id TODO`.
+When planned chapters are complete, create a new bounded todo with
+`translate todo-next`. Keep todo files as run-control artifacts, not submission
+files.
 
-## Todo planned chapters are already complete
+## Glossary and termbase
 
-When the planned chapter set is finished, `booktx translate todo-resume` stops
-instead of issuing a task for the next chapter. Start a new bounded run if you
-want more work:
+Use `booktx glossary` for binding terminology decisions and `booktx termbase`
+for advanced reusable preferences. After a mandatory glossary change, request
+fresh translation tasks and audit the effective output. Longer glossary phrases
+shadow contained shorter matches; do not force an unnatural compound to satisfy
+a shorter rule.
 
-```bash
-booktx translate todo-next ./book --profile PROFILE --chapters 3 --batch-words 800 --write
-```
+## Judge ingest
 
-## Task created outside a todo
-
-If a user asked to continue a bounded run but the current task was created with
-plain `booktx translate next`, switch back to the todo controller:
-
-```bash
-booktx translate todo-status ./book --profile PROFILE --latest
-booktx translate todo-resume ./book --profile PROFILE --latest --format block
-```
-
-## Context is not ready
-
-Translation work requires a ready context. If you see `translation context is missing or not ready`, initialize and mark it ready:
+For a corrupted judge ingest file, regenerate it from the stored task:
 
 ```bash
-booktx context init ./book --profile PROFILE --non-interactive
-booktx context questionnaire ./book --profile PROFILE --stdout
-# Ask the user to approve or edit answers, then use context approve before mark-ready.
-booktx context mark-ready ./book --profile PROFILE
+booktx judge reset-ingest ./book --profile PROFILE \
+  --judge-task-id TASK --format decisions --write
 ```
 
-## Missing source chunks
-
-`No source chunks found` means extraction has not run (or the source file is
-missing). Check `.booktx/source-config.toml` points at an existing source
-file, then:
-
-```bash
-booktx extract ./book
-```
-
-## Output filename mismatch
-
-The output filename must match the profile target language. For Markdown the
-rebuilt file is `translations/<profile>/output/<name>.md`; for EPUB it is
-`translations/<profile>/output/<name>.epub`. If `booktx build` complains,
-create a profile with a matching `--target`/output filename, or override with
-`booktx profile create ... --output-filename book.de.md`.
-
-## Old `.booktx/ingest` path after migration
-
-After `booktx profile migrate-current`, submissions belong under
-`translations/<profile>/ingest/`, never `.booktx/ingest/`. If a missing-file
-error hints at the profile-local ingest path, switch to that file. Re-running
-`booktx translate next` regenerates the correct ingest file.
-
-## `TranslationTodo` is not fully defined
-
-This indicates an internal booktx model initialization bug, not a translation
-error. The message looks like:
-
-```text
-`TranslationTodo` is not fully defined; you should define `StatusTotals`,
-then call `TranslationTodo.model_rebuild()`.
-```
-
-Do not edit todo JSON manually. Upgrade booktx or run the fixed version where
-`StatusTotals` is defined in `booktx.models` and `TranslationTodo` no longer
-requires a late Pydantic `model_rebuild()`.
-
-If you see `internal todo model initialization failed` instead, the error
-classifier detected a schema/program error rather than a data validation error.
-Report this as a booktx bug with the full error message.
-
-Do not use `context mark-ready --force` during normal translation setup. If a legacy migration truly needs it, pass `--reason` and document the external approval.
-
-## EPUB inline XHTML validation failures
-
-If validation reports `inline_xhtml_preserved`, `inline_xhtml_no_new_attributes`, `inline_xhtml_no_block_tags`, or `inline_xhtml_opaque_preserved`, correct the target so it preserves the source inline XHTML skeleton. Use `booktx translate audit-inline ./book --profile PROFILE` to list active records that need review.
-
-## Validate passed but build failed (inline XHTML)
-
-If `booktx build` fails with `target inline XHTML skeleton does not match the source`
-but `booktx validate` reported no errors, this indicates a validation gap that
-should no longer occur with the current version. The EPUB inline-XHTML preflight
-is now shared between validate/check and build.
-
-If you encounter this, run `booktx check` which uses the build-grade preflight:
-
-```bash
-booktx check . --chapter 0005 --fail-on-warnings
-```
-
-The check output will show the exact record, chapter, source/target snippet, and
-suggested fix commands. File a booktx bug if check also misses the error that
-build catches.
-
-## TOC lists more chapters than chapter-map
-
-An EPUB contents page can advertise numbered chapters that were not extracted
-or not detected. Symptoms: `booktx validate` reports
-`epub_toc_chapter_missing_from_map` or `epub_toc_href_extracted_but_unmapped`,
-or the chapter map ends early (for example at `TEN` while the TOC lists
-`ONE` through `TWENTY-SIX`).
-
-Diagnose with the read-only audit:
-
-```bash
-booktx chapters . --audit
-```
-
-Interpret the findings:
-
-- `epub_toc_href_missing_from_extracted_spans` means the target XHTML was not
-  extracted. The source is likely a preview/truncated EPUB or extraction
-  skipped a spine document. Do not synthesize empty chapters; re-extract from a
-  complete source.
-- `epub_toc_href_extracted_but_unmapped` means the target was extracted but no
-  chapter boundary covers it, so translation would skip it. It is a blocking
-  `error` finding: `translate next --chapter` and todo creation will refuse new
-  work until it is resolved. Re-extract to refresh upstream block annotations,
-  or inspect the source with `booktx epub inspect .`.
-- `epub_navigation_partial` indicates navigation is a strict subset of the
-  visible chapter signals.
-
-Run `booktx chapters .` to refresh the map after fixing the source or
-re-extracting.
-
-## Bad hyphenation in a translated EPUB, for example `le-icht`
-
-Build a complete output and inspect the reported EPUB policy:
-
-```bash
-booktx build ./book --profile de_default --require-complete
-```
-
-booktx writes the profile target locale to the publication metadata and content
-document language attributes. Automatic hyphenation still depends on the
-reading system and its dictionaries; booktx cannot guarantee identical breaks.
-
-If a reader continues to produce bad breaks, disable automatic hyphenation:
-
-```toml
-[epub_output]
-hyphenation = "none"
-```
-
-Then rebuild. Source CSS conflict warnings in the build report may identify
-styles that still override the generated policy. To audit an existing output
-without rebuilding, run:
-
-```bash
-booktx check ./book --profile de_default --epub-output --json
-```
-
-## Corrupted judge ingest file
-
-If a judge ingest file glues a `TARGET` line to the next `## RECORD` header,
-`booktx judge insert` now reports a boundary-corruption error and suggests a
-reset command. Re-render the editable decision file from the stored task:
-
-```bash
-booktx judge reset-ingest ./book --profile PROFILE --judge-task-id TASK --format decisions --write
-```
-
-For `decision_kind: copy`, leave `TARGET` empty after the reset. booktx copies
-the selected candidate exactly during insert.
-
-## glossary_alignment_ambiguous
-
-This warning means a source record contains both a longer glossary occurrence and a shorter standalone occurrence, and a target form could belong to either. Review the companion source block from `translate search --write-block` or `glossary audit`, then revise deliberately. Use `--fail-on-warnings` to block final validation until the ambiguity has been reviewed.
-
-For a contained phrase collision, add the longer binding source phrase. Booktx
-enforces only longest non-shadowed spans, so
-`Mole Cricket-kinden -> Maulwurfsgrillenart` suppresses
-`Cricket-kinden -> Grillenart` only inside that phrase. It does not suppress a
-separate standalone `Cricket-kinden` occurrence.
-
-## Stale tasks after policy import
-
-If insert reports that a task predates context, glossary, or applicable
-termbase changes, discard the old task and request a fresh one. Binding glossary
-changes stale paragraph, batch, chapter, and todo-created tasks. Check
-`booktx termbase status --scope effective`, rerun `booktx context status`, and
-use `booktx translate todo-resume` when continuing a todo.
-
-## Starting a next book safely
-
-Run context-pack import as a dry run first, use `--write-termbase` only intentionally, run source analysis with `--sync-profiles`, and stop for human approval before `context mark-ready`.
+For revision profiles, every record requires an explicit `copy` or `edited`
+decision. Later corrections use judge commands, not direct store edits.

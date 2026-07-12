@@ -1,106 +1,75 @@
 # Project layout
 
-`booktx` now uses a **source-first, profile-aware** layout.
+`booktx` uses a source-first layout with profile-local mutable state:
 
 ```text
 book/
-  source/
-    book.md
-
+  source/book.epub
   .booktx/
     source-config.toml
     source-manifest.json
     names.json
     chapter-map.json
     chunks/
-      0001.json
-      0002.json
-
-  translations/
-    PROFILE_A/
-      config.toml
-      identity.json
-      context.json
-      context.md
-      translation-store.json
-      translation-version-ledger.json
-      tasks/
-      ingest/
-      translated/
-      reports/
-      output/
-        book.de.md
+    reports/
+  translations/PROFILE/
+    .booktx-profile.json
+    config.toml
+    identity.json
+    context.json
+    context.md
+    context-history/views/<sha>/
+    translation-store.json
+    translation-version-ledger.json
+    tasks/
+    todos/
+    ingest/
+    reviews/
+    review-todos/
+    translated/
+    reports/
+    output/
 ```
 
-## Shared source scope
+## Shared source state
 
-`.booktx/` contains only source-derived or source-shared state.
+`.booktx/` contains only source configuration and source-derived evidence:
 
-| Path                           | Scope  | Notes                                            |
-| ------------------------------ | ------ | ------------------------------------------------ |
-| `.booktx/source-config.toml`   | shared | Source language, source file, format, chunk size |
-| `.booktx/source-manifest.json` | shared | Source digest and rebuild metadata               |
-| `.booktx/names.json`           | shared | Protected terms                                  |
-| `.booktx/chapter-map.json`     | shared | Chapter-to-record/chunk metadata                 |
-| `.booktx/chunks/`              | shared | Extracted source chunks                          |
+| Path                           | Meaning                                     |
+| ------------------------------ | ------------------------------------------- |
+| `.booktx/source-config.toml`   | Source language, file, format, and chunking |
+| `.booktx/source-manifest.json` | Source digest and extraction manifest       |
+| `.booktx/names.json`           | Protected source names                      |
+| `.booktx/chapter-map.json`     | Chapter and record mapping                  |
+| `.booktx/chunks/`              | Extracted source records                    |
+| `.booktx/reports/`             | Source and chapter audit reports            |
 
-Do **not** put target-language translation state under `.booktx/` in a profile
-project.
+## Profile-local state
 
-## Translation profile scope
+Each `translations/<profile>/` directory is an isolation boundary. The
+`translation-store.json` file is the current `TranslationStoreV2` store;
+`context.json` and the version ledger are also durable state. Tasks, todos,
+submission files, reviews, judge artifacts, and reports remain profile-local.
 
-Every translation effort lives under `translations/<profile>/`.
+`translated/`, editor indexes, and `output/` are generated artifacts. They are
+rebuildable from source state and the profile store and are not the source of
+truth.
 
-| Path                                                     | Scope         | Notes                                                                                                 |
-| -------------------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- |
-| `translations/<profile>/config.toml`                     | profile-local | Target language, locale, output filename, default identity                                            |
-| `translations/<profile>/identity.json`                   | profile-local | Stored actor/harness/model defaults                                                                   |
-| `translations/<profile>/context.json`                    | profile-local | Authoritative translation context                                                                     |
-| `translations/<profile>/context.md`                      | profile-local | Rendered context for agents                                                                           |
-| `translations/<profile>/translation-store.json`          | profile-local | Primary record-level translation state                                                                |
-| `translations/<profile>/translation-version-ledger.json` | profile-local | Version history inside this profile                                                                   |
-| `translations/<profile>/tasks/`                          | profile-local | Persisted translation tasks                                                                           |
-| `translations/<profile>/ingest/`                         | profile-local | Durable submission files                                                                              |
-| `translations/<profile>/translated/`                     | profile-local | Generated compatibility/export chunk JSON (rebuildable; not primary state)                            |
-| `translations/<profile>/source-index.json`               | profile-local | Generated source-only editor QA index; rebuildable from source chunks and chapter map                 |
-| `translations/<profile>/target-index.json`               | profile-local | Generated target-only search index for editor QA; rebuildable from store, chunks, and chapter map     |
-| `translations/<profile>/source-target-index.json`        | profile-local | Generated source/target side-by-side editor QA index; rebuildable from store, chunks, and chapter map |
-| `translations/<profile>/reports/`                        | profile-local | Validation reports                                                                                    |
-| `translations/<profile>/output/`                         | profile-local | Rebuilt translated documents (rebuildable from the store)                                             |
+## Resolution and safety
 
-## Safety rules
+From the project root, profile-local commands require `--profile PROFILE`.
+From a profile root, booktx resolves the profile through
+`.booktx-profile.json` and the validated `config.toml`, so commands use `.`.
+The marker also binds the profile to the current project source identity.
 
-1. A profile is the hard isolation boundary.
-2. Different languages must not share one translation store.
-3. Model experiments should usually be separate profiles, even for the same target language.
-4. Project-root profile-local commands require `--profile PROFILE`.
-5. Legacy single-layout projects should be migrated with `booktx profile migrate-current`.
-6. `translations/<profile>/translated/` and `translations/<profile>/output/` are
-   generated artifacts. They can be deleted and regenerated; do not treat them
-   as primary state (the store and ledger are).
+## Legacy layout
 
-## Legacy layout and migration
+A legacy single-layout project may still contain translation files under
+`.booktx/`. Migrate it with:
 
-Legacy single-layout projects keep all state under `.booktx/`:
-
-```text
-book/.booktx/
-  config.toml              # source + target config
-  manifest.json
-  names.json
-  chunks/
-  context.json
-  identity.json
-  translation-store.json
-  translation-version-ledger.json
-  tasks/
-  ingest/
-  translated/
-  reports/
-book/output/               # build output lived at the project root
+```bash
+booktx profile migrate-current ./book PROFILE
 ```
 
-After `booktx profile migrate-current ./book PROFILE`, mutable state
-moves under `translations/PROFILE/`, shared source state stays under
-`.booktx/`, and build output moves under `translations/PROFILE/output/`. The
-legacy `config.toml` is removed once migration completes.
+After migration, `.booktx/` keeps shared source state and profile-local mutable
+files move to `translations/PROFILE/`.

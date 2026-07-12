@@ -126,35 +126,62 @@ def test_profile_invariant_documented(path: Path) -> None:
 # --- live Typer command inventory -------------------------------------------
 
 
-def _command_tree() -> tuple[set[str], dict[str, set[str]]]:
-
+def _command_paths() -> set[str]:
     group = typer.main.get_command(app)
     assert hasattr(group, "commands")
-    top = set(group.commands.keys())
-    sub: dict[str, set[str]] = {}
-    for name in sorted(top):
-        cmd = group.commands[name]
-        if hasattr(cmd, "commands"):
-            sub[name] = set(cmd.commands.keys())
-    return top, sub
+    paths: set[str] = set()
+
+    def walk(command: object, prefix: str = "") -> None:
+        commands = getattr(command, "commands", {})
+        for name, subcommand in sorted(commands.items()):
+            path = f"{prefix} {name}".strip()
+            paths.add(path)
+            walk(subcommand, path)
+
+    walk(group)
+    return paths
 
 
-# Commands that are intentionally undocumented because they are aliases,
-# compatibility surfaces, or internal/diagnostic commands. A command listed
-# here does not need a prose mention in docs/commands.md.
-UNDOCUMENTED_ALLOWLIST: set[str] = {
-    # Hidden diagnostic / advanced surfaces.
-    "whoami",
-    "mode",
-    "inspect",
-    "identity",
-    "version",  # version group
-    # Maintenance and agent-protocol surfaces live in dedicated docs, not commands.md.
-    "translate",
-    "termbase",
-    "pass-through",
+UNDOCUMENTED_GROUP_ALLOWLIST = {
+    # Agent protocol, maintenance, or hidden operational groups are documented
+    # in their dedicated guides rather than requiring every leaf in commands.md.
     "doctor",
-    "validate",
+    "mode",
+    "pass-through",
+    "termbase",
+    "translate",
+}
+
+UNDOCUMENTED_PATH_ALLOWLIST = {
+    # Agent protocol or maintenance leaves documented in agent-workflow.md or
+    # maintenance.md instead of the human command reference.
+    "context answer",
+    "context import-md",
+    "context recommend",
+    "judge accept-identical",
+    "judge continue",
+    "judge finish-chapter-plan",
+    "judge insert",
+    "judge next",
+    "judge prefill-policy-fixes",
+    "judge record",
+    "judge reset-ingest",
+    "judge show",
+    "judge sweep-identical",
+    "judge sync-sources",
+    "review activate",
+    "review deactivate",
+    "review insert",
+    "review next",
+    "review revise-record",
+    "review todo-next",
+    "review todo-resume",
+    "review todo-status",
+    "version fork-context",
+    "version select",
+    "version set-label",
+    "source chapter",
+    "source record",
 }
 
 
@@ -164,34 +191,75 @@ def _doc_text() -> str:
 
 
 def test_every_public_command_is_documented_or_allowlisted() -> None:
-    top, sub = _command_tree()
     docs = _doc_text()
     undocumented: list[str] = []
-    for name in sorted(top):
-        if name in UNDOCUMENTED_ALLOWLIST:
+    for path in sorted(_command_paths()):
+        if (
+            path.split()[0] in UNDOCUMENTED_GROUP_ALLOWLIST
+            or path in UNDOCUMENTED_PATH_ALLOWLIST
+        ):
             continue
-        # Match either the group command name or the bare alias form.
-        pattern = re.compile(rf"\b{re.escape(name)}\b")
+        pattern = re.compile(rf"\bbooktx\s+{re.escape(path)}\b")
         if not pattern.search(docs):
-            undocumented.append(name)
+            undocumented.append(path)
     assert not undocumented, (
-        f"public commands missing from docs/commands.md and not allowlisted: "
-        f"{undocumented}"
+        "public commands missing from docs/commands.md or explicit group "
+        f"allowlist: {undocumented}"
     )
 
 
 def test_every_live_command_has_a_descriptor() -> None:
-    top, sub = _command_tree()
-    paths = set(top)
-    for group_name, commands in sub.items():
-        paths.update(f"{group_name} {command}" for command in commands)
     missing = []
-    for path in sorted(paths):
+    for path in sorted(_command_paths()):
         try:
             descriptor_for_path(path)
         except KeyError:
             missing.append(path)
     assert not missing, f"commands missing catalog descriptors: {missing}"
+
+
+def test_documentation_preserves_current_invariants() -> None:
+    doc_paths = [
+        ROOT / "README.md",
+        ROOT / "skills" / "booktx" / "SKILL.md",
+        *sorted((ROOT / "docs").glob("*.md")),
+    ]
+    docs = "\n".join(path.read_text("utf-8") for path in doc_paths)
+    forbidden = (
+        ".booktx/profile state",
+        "global active profile",
+        "exactly one existing profile",
+        "canonical-store-split",
+        "state/current.json",
+        "booktx model set",
+        "booktx actor set",
+        "booktx harness set",
+    )
+    assert not [phrase for phrase in forbidden if phrase in docs]
+    markers = (
+        "TranslationStoreV2",
+        ".booktx-profile.json",
+        "booktx glossary",
+        "booktx identity set",
+        "booktx translate",
+    )
+    for marker in markers:
+        assert marker in docs, f"current documentation invariant missing: {marker}"
+
+
+def test_retained_docs_are_reachable_from_toctree() -> None:
+    index = (ROOT / "docs" / "index.md").read_text("utf-8")
+    listed = set(re.findall(r"^([a-z0-9_/-]+)$", index, flags=re.MULTILINE))
+    missing = []
+    for path in sorted((ROOT / "docs").glob("*.md")):
+        if path.name == "index.md":
+            continue
+        if path.stem not in listed:
+            missing.append(path.name)
+    assert not missing, (
+        f"documentation pages missing from docs/index.md toctree: {missing}"
+    )
+    assert not (ROOT / "docs" / "architecture" / "canonical-store-split.md").exists()
 
 
 OBSOLETE_PROFILE_PHRASES = (

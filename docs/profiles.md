@@ -1,489 +1,109 @@
 # Profiles
 
-`booktx` translation profiles let one source book support multiple translation
-efforts without mixing mutable state.
+Profiles isolate mutable translation state while sharing extracted source data.
+Create one for each target language, model experiment, or deliberately
+separate context decision.
 
-Examples:
-
-- `PROFILE_A`
-- `PROFILE_B`
-- `fr_gpt5_5`
-
-## Why profiles exist
-
-Without profiles, all mutable translation state lands in one shared store. That
-mixes different languages, different model experiments, and different context
-decisions.
-
-Profiles prevent that by moving mutable translation state under
-`translations/<profile>/`.
-
-## Commands
+## Project-root commands
 
 ```bash
 booktx profile create ./book PROFILE_A --target de --target-locale de-DE
 booktx profile list ./book
 booktx profile show ./book PROFILE_A
 booktx profile compare ./book --profiles PROFILE_A,PROFILE_B --record 0001-000001
-booktx profile migrate-current ./book PROFILE_A
 ```
 
-## Resolution rules
+A project-root command that needs profile-local data must receive
+`--profile PROFILE`. There is no global profile selector and target-state
+commands do not infer a profile from the number of profiles in the project.
 
-1. Explicit `--profile` wins.
-2. Otherwise the explicit profile from `.booktx/profile state` is used.
-3. Otherwise exactly one existing profile is auto-resolved.
-4. Otherwise target-dependent commands fail until a profile is chosen explicitly.
+## Profile-root commands
 
-## Access modes
-
-Profiles own mutable translation state, but **visibility of sibling profiles**
-depends on how the harness starts:
-
-### Collaborative project-root mode
-
-Start the harness at the book project root when you need:
-
-- profile administration
-- profile comparison
-- cross-profile reference work
-- migration and debugging
-
-In this mode, project-relative paths and explicit cross-profile commands are
-expected and allowed.
-
-### Isolated profile-root mode
-
-Start the harness inside `translations/<profile>/` when you want unbiased model
-or context evaluation for one target profile.
-
-This is **booktx-mediated isolation**, not OS sandboxing. It assumes:
-
-- the harness blocks parent paths, absolute paths, sibling profile paths, shell
-  globs, and arbitrary filesystem inspection snippets;
-- the agent uses only profile-local `booktx ... .` commands;
-- `booktx` itself never requires or prints parent/sibling paths for the normal
-  isolated workflow.
-
-Use:
+A validated profile root is `translations/<profile>/`. Its
+`.booktx-profile.json` marker binds the directory to the profile configuration,
+project root, target locale, and current source identity. From that directory,
+use `.` and omit `--profile`:
 
 ```bash
+cd translations/PROFILE_A
 booktx mode .
 booktx doctor isolation .
 booktx source status .
-booktx profile list .          # shows current profile only, no sibling names
-booktx profile show . .         # defaults to current profile
 booktx context status .
 booktx translate next . --unit batch --max-words 800 --format block
-booktx translate insert . --task-id TASK --file ingest/TASK.block.txt --format block
 booktx validate .
 booktx build .
 ```
 
-`profile list` in isolated mode shows only the current profile (no sibling profile names, no absolute paths, no `../`). Cross-profile commands like `profile compare`, `profile create`, and `profile migrate-current` remain blocked.
+Profile-root mode exposes only the selected profile through booktx's brokered
+source commands. It is booktx-mediated isolation, not an operating-system
+sandbox. Parent paths, sibling profiles, and arbitrary filesystem inspection
+are outside the isolated workflow.
 
-If a command in profile-root mode suggests `../`, prints an absolute path, or
-reveals another profile, stop and report a booktx isolation bug.
+## Shared and local state
 
-Before starting the harness inside a profile, prepare the matching harness
-instructions so the agent does not have to rediscover them:
+`.booktx/` contains shared source-derived state:
 
-```bash
-booktx agents write . --mode isolated --profile PROFILE
-```
+- `source-config.toml`, `source-manifest.json`
+- `names.json`, `chapter-map.json`, and `chunks/`
+- source-analysis evidence and shared reports
 
-This writes a profile-local `AGENTS.md` (safe to read from inside the profile
-root: no parent paths, absolute paths, sibling profile names, or `--profile`)
-and removes project-root/collaborative generated instructions. From inside the
-profile root, `booktx agents write . --mode isolated` refreshes the local file
-without printing parent paths. `booktx agents status .` reports ownership and
-staleness for the local file only.
+`translations/<profile>/` contains profile-local mutable state:
 
-## What is isolated?
+- `.booktx-profile.json`, `config.toml`, and `identity.json`
+- `context.json`, `context.md`, and `context-history/`
+- `translation-store.json` and `translation-version-ledger.json`
+- `tasks/`, `todos/`, `ingest/`, `reviews/`, `review-todos/`, and judge artifacts
+- generated `translated/`, indexes, `reports/`, and `output/`
 
-Each profile owns its own copy of all mutable translation state under
-`translations/<profile>/`:
+Never use sibling profile paths in an isolated profile-root workflow. Never edit
+`translation-store.json` or generated exports directly; use the CLI surfaces.
 
-| Path                              | Meaning                               |
-| --------------------------------- | ------------------------------------- |
-| `.booktx-profile.json`            | Profile-root runtime marker           |
-| `config.toml`                     | Profile config (target, output name)  |
-| `identity.json`                   | Live actor/harness/model identity     |
-| `context.json` / `context.md`     | Translation context and rendered form |
-| `translation-store.json`          | Primary record-level translations     |
-| `translation-version-ledger.json` | Version tracks and subversions        |
-| `tasks/`                          | Durable translation task files        |
-| `ingest/`                         | Submission templates (agent edits)    |
-| `translated/`                     | Generated compatibility export        |
-| `reports/`                        | Validation/build reports              |
-| `output/`                         | Final rebuilt document                |
+## Context transfer
 
-Two profiles never share any of the above. Translations accepted into one
-profile are invisible to another.
-
-## What is shared?
-
-Source-derived state under `.booktx/` is shared by all profiles:
-
-| Path                   | Meaning                             |
-| ---------------------- | ----------------------------------- |
-| `source-config.toml`   | Source language/format/chunking     |
-| `source-manifest.json` | Source hash and extraction manifest |
-| `names.json`           | Protected-term glossary             |
-| `chapter-map.json`     | Cached chapter boundaries           |
-| `chunks/`              | Immutable extracted source records  |
-
-Re-extracting the source updates the shared state for every profile at once.
-
-Profile-root isolated mode reads that shared source state only through booktx's
-brokered commands such as `booktx source ...` and `booktx translate next .`.
-
-Translation context is **not** shared across profiles. To keep style,
-global rules, glossary, and approved question answers consistent across
-several books in the same series, export a series context pack from one
-approved profile and import it into another with `booktx context export-pack`
-and `booktx context import-pack`. The pack carries reusable policy only; it
-never carries records, tasks, stores, ledgers, identity, or chapter contexts.
-For the normal "next book in the same series" workflow, prefer
-`booktx series prepare` so init/extract/profile creation/import/source-analysis
-and the human review stop are orchestrated together.
-
-For sibling profiles inside the **same** book project, use `booktx context sync`
-from project-root collaborative mode instead of repeatedly exporting and
-re-importing pack files. Sync still copies policy into each target profile's
-own context files; it does not make context shared.
-
-## When to create a new profile?
-
-Create a new profile whenever you want a hard isolation boundary:
-
-- **Different target language**: `PROFILE_A`, `fr_gpt5_5`, `es_gpt5_5`.
-- **Different model experiment**: `PROFILE_A` vs `PROFILE_B` for the same
-  language, so the two outputs never contaminate each other.
-- **Different context decisions**: a re-translation under revised glossary or
-  style rules, kept separate from a previous accepted run.
-
-Do **not** create a new profile for a routine re-translation of the same
-language/model/context; that is a _version_, not a profile.
+For a different book, export and import a context pack. For sibling profiles in
+the same book, use project-root `booktx context sync`. These operations copy
+approved policy into each profile; they do not share mutable stores or context
+files.
 
 ## Pass-through profiles
 
-A pass-through profile is a **generated validation fixture**, not a translation.
-Its target language equals the source language, and every translated record's
-target is set to the source text. Use it to verify that extraction and EPUB
-reconstruction include all content before involving a translator.
-
-- Pass-through profiles are generated fixtures; they must not be used for
-  human or LLM translation.
-- They use the source language as the target language.
-- They are isolated under `translations/<profile>/`, just like any profile, so
-  they cannot contaminate real translation profiles.
-- `booktx pass-through` requires an explicit `--profile` and refuses to run
-  against a profile whose `kind` is not `pass-through`.
-
-A non-empty translation store can silently override generated chunks, so
-pass-through refuses a profile with store records unless you pass
-`--clear-store` (which rewrites only `translation-store.json`).
-
-## Selection profiles
-
-A selection profile is a normal buildable profile whose accepted output is
-assembled from cross-profile judge decisions.
-
-- `kind = "selection"` in `translations/<profile>/config.toml`
-- it keeps its own `context.json`, `translation-store.json`, and output files
-- accepted judge output is written into the normal translation store so
-  `booktx validate` and `booktx build` work without special build rules
-- provenance is stored separately in
-  `translation-selection-ledger.json`
-- durable judge task artifacts live under `judge-tasks/` and `judge-ingest/`
-
-Create one with:
+Pass-through profiles are generated reconstruction checks. They use source text
+as target text and must not be used for human translation:
 
 ```bash
-booktx judge create-profile ./book JUDGE_PROFILE \
-  --target de \
-  --target-locale de-DE \
-  --sources PROFILE_A,PROFILE_B \
-  --context-from PROFILE_A \
-  --model gpt-5.5
-
+booktx profile create-pass-through ./book passthrough_en
+booktx validate ./book --profile passthrough_en
+booktx build ./book --profile passthrough_en
 ```
 
-`--context-from` copies approved style, global rules, glossary, and reusable
-approved answers from a ready source profile into the new selection profile and
-marks the judge context ready when that imported policy satisfies all required
-questions. Without it, initialize the selection profile context explicitly and
-sync policy from a compatible source profile before judging.
+## Selection and revision profiles
+
+`booktx judge create-profile` creates compare or revision profiles. A selection
+profile stores accepted judge decisions in its normal `TranslationStoreV2`
+store and keeps judge provenance separately. A single-source revision profile
+requires an explicit `copy` or `edited` judge decision for every record.
+Prepare isolated judge work from the project root with
+`booktx judge prepare-isolation`, then continue from the profile root.
+
+## Versions
+
+Versions live inside one profile. Translation versions use dotted references,
+while review candidates use `R<pass>.<run>` references. Compare or activate
+versions with:
 
 ```bash
-booktx context init ./book --profile JUDGE_PROFILE --non-interactive
-booktx context sync ./book \
-  --from PROFILE_A \
-  --to JUDGE_PROFILE \
-  --section glossary \
-  --section style \
-  --section global-rules \
-  --write
-booktx context mark-ready ./book --profile JUDGE_PROFILE
+booktx translate compare . --profile PROFILE_A RECORD --versions 1.1,1.2
+booktx translate activate . --profile PROFILE_A RECORD 1.2
 ```
 
-Judge profile creation and snapshot preparation are project-root workflows.
-After snapshot preparation, a selection profile may run `judge status`,
-`judge next`, `judge insert`, `judge show`, `judge continue`, and
-`judge accept-identical` from its own profile root:
+## Legacy migration
+
+Legacy single-layout projects may be migrated once:
 
 ```bash
-booktx judge status ./book --profile JUDGE_PROFILE --sources PROFILE_A,PROFILE_B
-booktx judge accept-identical ./book --profile JUDGE_PROFILE --sources PROFILE_A,PROFILE_B --unit chapter --chapter 0001 --max-records 100 --write
-booktx judge next ./book --profile JUDGE_PROFILE --sources PROFILE_A,PROFILE_B --unit chapter --chapter 0001 --max-records 8 --format decisions
-booktx judge insert ./book --profile JUDGE_PROFILE --judge-task-id TASK --file translations/JUDGE_PROFILE/judge-ingest/TASK.decisions.txt --format decisions
+booktx profile migrate-current ./book PROFILE_A
 ```
 
-Judge task record ids are chunk-based, so a task for a logical chapter can
-still contain ids prefixed with another chunk such as `0001-...`.
-
-## Single-source judge revision profiles
-
-Use `--purpose revise` when one translation source is clearly best and you
-want an isolated final profile where an LLM must explicitly proofread every
-record.
-
-Revision profiles are judge profiles, not review passes. Their effective
-output is valid only while each active target has matching judge-decision
-provenance.
-
-Do not run `accept-identical`, `sweep-identical`, or
-`prefill-policy-fixes` in a revision profile. Do not modify effective output
-through translation or review revision commands; use `judge record` for later
-corrections.
-
-Revision profiles have two submodes:
-
-- `--revision-focus general` (default): general proofread/revision; grammar,
-  flow, punctuation, style, or terminology corrections may be made.
-- `--revision-focus grammar`: grammar-only revision; existing wording,
-  terminology, names, tone, and register are frozen, and `BASE_TARGET` is the
-  authoritative German wording.
-
-Create a revision profile with exactly one source:
-
-```bash
-booktx judge create-profile ./book PROFILE_REVISED \
-  --target de \
-  --target-locale de-DE \
-  --sources PROFILE_B \
-  --context-from PROFILE_B \
-  --model gpt-5.5 \
-  --purpose revise
-```
-
-Create a grammar-only isolated revision profile from an existing translated
-book:
-
-```bash
-booktx judge create-profile ./book judge_gpt5_6 \
-  --target de \
-  --target-locale de-DE \
-  --sources de_glm_5_2 \
-  --context-from de_glm_5_2 \
-  --model gpt-5.6 \
-  --purpose revise \
-  --revision-focus grammar
-
-booktx judge prepare-isolation ./book \
-  --profile judge_gpt5_6 \
-  --write
-```
-
-Inside the isolated profile root, judge every record explicitly. For each
-record choose `copy` (keep the base target) or `edited` (write the complete
-corrected target). Later corrections use `booktx judge record`, not
-translation or review revision commands:
-
-```bash
-cd translations/PROFILE_REVISED
-booktx judge status .
-booktx judge next . --unit chapter --chapter 0008 --max-records 20 --format decisions
-booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
-booktx judge continue . --max-records 20
-booktx judge record . --record RECORD_ID --format decisions
-booktx validate . --fail-on-warnings
-booktx build . --require-complete
-```
-
-Booktx records are sentence-segmented translation units; a revision profile
-requires an explicit decision for every translatable record. In
-`--revision-focus grammar`, prefer `copy` whenever the existing German is
-grammatically valid, and use `edited` only for minimal grammar, syntax,
-agreement, inflection, orthography, capitalization, or punctuation fixes.
-Source gaps are blockers in revise mode, not skippable records.
-
-In `selection.purpose=compare`, prefer `accept-identical` and
-`sweep-identical` for true multi-source identical candidates.
-
-In `selection.purpose=revise`, never use deterministic selection commands.
-Every record requires an explicit copy or edited judge decision. Only one
-managed isolated profile contract is active at a time, so prepare isolated
-judge profiles sequentially in one project unless you use separate worktrees or
-project copies.
-
-## What stays a version?
-
-Versions live _inside_ a profile. Two profiles may both contain version `1.1`;
-they are unrelated.
-
-- A **model/actor/harness identity change** creates or selects a major track
-  (e.g. `1`).
-- A **baseline policy change** creates or selects a subversion inside that
-  track (e.g. `1.2`).
-- A **chapter-note append** changes the next task's composed context view but
-  does **not** create a new dotted version on its own.
-
-Use:
-
-```bash
-booktx version current . --profile PROFILE
-booktx version list . --profile PROFILE
-booktx translate compare . --profile PROFILE RECORD --versions 1.1,1.2
-booktx translate activate . --profile PROFILE RECORD 1.2
-```
-
-## Migration from legacy layout
-
-A legacy single-layout project keeps all state under `.booktx/`. Migrate it
-into the profile layout:
-
-```bash
-booktx profile migrate-current ./book PROFILE
-```
-
-Before:
-
-```text
-book/.booktx/{config.toml, translation-store.json, tasks/, ingest/, ...}
-```
-
-After:
-
-```text
-book/.booktx/{source-config.toml, source-manifest.json, chunks/, ...}
-book/translations/PROFILE/{identity.json, translation-store.json, tasks/, ingest/, ...}
-```
-
-CLI identity overrides (`--model`, `--actor`, `--harness`) are honored over any
-legacy `.booktx/identity.json`. Migration is staged: mutable files move
-first, then the final profile config/identity/state are written, and the
-legacy `config.toml` is removed only after all moves succeed.
-
-## Failure modes
-
-- **`multiple_profiles_ambiguous`**: more than one profile exists and no
-  `--profile` was given for a target-state command. Pass `--profile`.
-- **`profile_root_marker_missing`**: the profile-root marker is missing. Recreate
-  or backfill the profile marker before using isolated mode.
-- **`profile_root_marker_mismatch`**: the marker no longer matches the profile
-  directory, project root, or profile config. Regenerate or repair the marker.
-- **`stale_profile_root_marker`**: the marker is bound to an older extracted
-  source identity. Refresh the marker after source extraction changes.
-- **`task_profile_mismatch`**: a submission's profile header does not match
-  the selected profile. Re-request the task in the correct profile.
-- **`submission_profile_mismatch`**: a JSON submission's `profile` field
-  differs from the target profile. Fix the submission or switch profile.
-- **`legacy_project_required`**: the project still uses the legacy layout.
-  Run `booktx profile migrate-current` first.
-- **`migration_target_exists`**: the destination profile directory already
-  exists and is non-empty. Remove it or pick a new profile name.
-
-## Quality review configuration
-
-Add or update quality review through the CLI (preferred) or by editing
-the profile `config.toml` directly:
-
-```bash
-# Show current config
-booktx review configure . --show
-
-# Enable with one pass
-booktx review configure . --enable --pass 1 --name "Flow review" \
-  --mode manual --enforce warn --base active_translation \
-  --before 2 --after 2 --batch-words 900 \
-  --instructions "Improve reading flow and pronoun continuity."
-
-# Add a second pass
-booktx review configure . --enable --pass 2 --name "Final polish" \
-  --base active_review --required-base-pass 1 --enforce error \
-  --instructions "Polish final prose. Prefer minimal edits."
-
-# Disable quality review entirely
-booktx review configure . --disable
-```
-
-Manual TOML equivalent (kept for reference):
-Add a `[quality_review]` table to the profile `config.toml`:
-
-```toml
-[quality_review]
-enabled = true
-active_passes = [1]
-require_all_active_passes = true
-
-[[quality_review.passes]]
-pass_number = 1
-name = "Flow review"
-enabled = true
-mode = "after_chapter"
-enforce = "warn"
-base = "active_translation"
-before_records = 2
-after_records = 2
-batch_words = 900
-instructions = "Improve reading flow and pronoun continuity."
-```
-
-Two-pass example:
-
-```toml
-[quality_review]
-enabled = true
-active_passes = [1, 2]
-
-[[quality_review.passes]]
-pass_number = 1
-name = "Flow review"
-base = "active_translation"
-enforce = "warn"
-
-[[quality_review.passes]]
-pass_number = 2
-name = "Final polish"
-base = "active_review"
-required_base_pass = 1
-enforce = "error"
-instructions = "Polish final prose. Prefer minimal edits."
-```
-
-Fields:
-
-- `enabled` -- enable or disable quality review for this profile
-- `active_passes` -- which passes are currently active (reported by `review status`)
-- `require_all_active_passes` -- when true, validation reports missing active passes
-
-Per-pass fields:
-
-- `pass_number` -- unique pass identifier (1, 2, ...)
-- `name` -- human-readable label
-- `enabled` -- enable or disable this specific pass
-- `mode` -- `manual`, `after_chapter`, or `before_build`
-- `enforce` -- `off` (no findings), `warn` (warning), `error` (blocking)
-- `base` -- `active_translation` (first-pass version) or `active_review` (prior review)
-- `required_base_pass` -- pass that must be completed first (for chaining)
-- `before_records` / `after_records` -- neighbor context window size
-- `batch_words` -- maximum source words per review task
-- `instructions` -- prompt for the reviewing agent
-
-Pass-through profiles must not set `[quality_review]`.
-
-## Series continuation profiles
-
-Use the same profile name for a new book only after creating it in the new project. Policy transfer is explicit through context packs and optional termbase import, not by copying profile directories. After project-root preparation, run `booktx agents write BOOK --profile PROFILE --mode isolated` and start translation inside `translations/PROFILE`.
+After migration, `.booktx/` remains the shared source tree and mutable
+translation state moves under `translations/PROFILE_A/`.

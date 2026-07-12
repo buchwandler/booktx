@@ -1,130 +1,109 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/booktx)](https://pypi.org/project/booktx/)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/booktx)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/booktx)
 [![codecov](https://codecov.io/gh/buchwandler/booktx/graph/badge.svg?token=EFO4GQF52W)](https://codecov.io/gh/buchwandler/booktx)
 
 # booktx
 
-`booktx` is a deterministic local CLI that prepares **Markdown** and **EPUB**
-documents for translation by a coding agent or human translator.
-
-It:
-
-- extracts source text into stable record chunks,
-- tracks progress and translation versions,
-- hands out safe translation tasks,
-- validates submissions,
-- rebuilds translated output.
-
-`booktx` never translates text itself and makes no network calls.
+`booktx` is a deterministic local CLI for preparing **Markdown** and **EPUB**
+documents for translation by a human or coding agent. It extracts stable
+records, stores profile-local translation state, validates submissions, and
+rebuilds output. It does not translate text or make network calls.
 
 ## Install
 
 ```bash
 pip install -e .
+python -m pip install -e ".[dev,docs]"  # development and documentation work
 ```
 
-For development and docs:
-
-```bash
-python -m pip install -e ".[dev,docs]"
-```
-
-Python 3.10+ is supported.
+Python 3.10 and newer are supported.
 
 ## Core model
 
 ```text
-Profile = hard boundary for mutable translation state
-Access mode = determines whether sibling profiles are visible
-Version = history/candidate boundary inside that profile
+.booktx/                    shared source-derived state
+translations/<profile>/     mutable state for one translation effort
+TranslationStoreV2          current profile-local record store
 ```
 
-`.booktx/` now holds only shared source-derived state. Mutable translation state
-lives under `translations/<profile>/`.
+A profile is the hard isolation boundary. Project-root commands that need a
+profile require `--profile PROFILE`. Commands started inside a validated
+`translations/<profile>/` directory use `.` and the `.booktx-profile.json`
+marker to resolve that profile. There is no project-wide profile selector.
 
 ## Project layout
 
 ```text
 book/
-  source/
-    book.epub
-
+  source/book.epub
   .booktx/
     source-config.toml
     source-manifest.json
     names.json
     chapter-map.json
     chunks/
-
-  translations/
-    PROFILE/
-      .booktx-profile.json
-      config.toml
-      identity.json
-      context.json
-      context.md
-      translation-store.json
-      translation-version-ledger.json
-      tasks/
-      ingest/
-      translated/
-      reports/
-      output/
-        book.de.epub
+  translations/PROFILE/
+    .booktx-profile.json
+    config.toml
+    identity.json
+    context.json
+    context.md
+    translation-store.json
+    translation-version-ledger.json
+    tasks/
+    ingest/
+    todos/
+    reviews/
+    reports/
+    output/
 ```
+
+`.booktx/` contains source configuration, manifests, protected names, chapter
+metadata, and extracted chunks. Translation records, context, tasks, reviews,
+ledgers, reports, and output belong under the selected profile.
 
 ## Quickstart
 
 ```bash
-booktx init ./demo --source-file book.epub --source-lang en
+booktx init ./demo --source-file ./book.epub --source-lang en
 booktx extract ./demo
-
-booktx profile create ./demo PROFILE \
-  --target de \
-  --target-locale de-DE \
-  --model codex-openai/gpt-5.5@low
-
+booktx chapters ./demo --audit
+booktx profile create ./demo PROFILE --target de --target-locale de-DE --model MODEL
 booktx guide ./demo --profile PROFILE
 booktx context init ./demo --profile PROFILE --non-interactive
 booktx source analyze ./demo --write --sync-profiles
-booktx source interview-plan ./demo --profile PROFILE --write
 booktx context questionnaire ./demo --profile PROFILE --stdout
-booktx context approve ./demo --profile PROFILE Q001 --text "<USER_APPROVED_TEXT>" --approved-by "user:<USER>"
-booktx context mark-ready ./demo --profile PROFILE
+```
 
+Stop for human approval of policy and answers. Then record approved decisions,
+mark context ready, prepare the agent workspace, and run bounded translation
+work:
+
+```bash
+booktx context approve ./demo --profile PROFILE Q001 \
+  --text "<USER_APPROVED_TEXT>" --approved-by "user:<USER>"
+booktx context mark-ready ./demo --profile PROFILE
 booktx agents write ./demo --mode isolated --profile PROFILE
 booktx status ./demo --profile PROFILE
 booktx check ./demo --profile PROFILE
 booktx build ./demo --profile PROFILE
 ```
 
-## Collaborative vs isolated profile-root mode
+Use `booktx guide PROJECT --profile PROFILE` whenever you need the next human
+action.
 
-`booktx` supports two deliberate access modes:
+## Project-root and profile-root modes
 
-1. **Collaborative project-root mode**: start the harness at the book project
-   root when you need profile administration, profile comparison, or other
-   cross-profile work.
-2. **Isolated profile-root mode**: start the harness inside
-   `translations/<profile>/` when you want unbiased model evaluation without
-   normal booktx workflows revealing sibling profiles.
+From the project root, use explicit profile selection:
 
-Profile-root isolation is **booktx-mediated isolation**, not OS sandboxing. It
-depends on two things:
+```bash
+booktx source status ./demo
+booktx context status ./demo --profile PROFILE
+booktx translate next ./demo --profile PROFILE --unit batch --max-words 800 --format block
+```
 
-- the harness starts inside `translations/<profile>/` and blocks parent paths,
-  absolute paths, sibling profile paths, shell globs, and arbitrary filesystem
-  inspection snippets;
-- `booktx` commands are used with project argument `.` and do not print parent
-  or sibling paths.
-
-If a profile-root command suggests `../`, prints an absolute path, or reveals a
-sibling profile, stop and report a booktx isolation bug.
-
-### Isolated evaluation workflow
-
-From `book/translations/PROFILE/`:
+For isolated work, start the harness in `translations/PROFILE/` and use only
+profile-local commands:
 
 ```bash
 booktx mode .
@@ -137,544 +116,126 @@ booktx validate .
 booktx build .
 ```
 
-In this mode, `booktx` automatically binds the current profile, brokers source
-access internally, and renders profile-local paths such as `tasks/...`,
-`ingest/...`, `reports/...`, and `output/...`.
+The profile root is validated against its marker, profile configuration,
+project root, and extracted source identity. Profile-root isolation is
+booktx-mediated, not an operating-system sandbox. A command that reveals a
+parent or sibling profile is an isolation defect.
 
-## Generated AGENTS.md files
+## Human workflow surfaces
 
-Before starting an agent harness, write the matching harness instructions:
+- `booktx guide` shows the current lifecycle stage and next human action.
+- `booktx glossary` is the normal human terminology surface.
+- `booktx identity set` updates profile identity defaults.
+- `booktx translate` is the durable coding-agent task namespace.
+- `booktx review` and `booktx judge` provide optional quality workflows.
+
+For terminology decisions:
 
 ```bash
-booktx agents write . --mode isolated --profile PROFILE
-cd translations/PROFILE
+booktx glossary mandate ./demo "Empire" --profile PROFILE \
+  --target "Imperium" --forbid "Reich"
+booktx glossary status ./demo --profile PROFILE
 ```
 
-For project-root collaboration:
+For profile identity:
 
 ```bash
-booktx agents write . --mode collaborative
+booktx identity set ./demo --profile PROFILE \
+  --actor user:NAME --harness codex --model MODEL
 ```
 
-booktx deletes only `AGENTS.md` files it generated itself. User-authored files
-are never silently overwritten or removed. Use `booktx agents status .` to
-inspect ownership and `booktx agents clean . --mode all` to remove generated
-files.
-
-## Source-analysis review queue
-
-Use source analysis to mine translation-risk terms before real translation
-starts:
+## Bounded translation runs
 
 ```bash
-booktx source analyze ./demo --write
-booktx source analyze ./demo --write --sync-profiles
-booktx source analysis ./demo/translations/PROFILE
-```
-
-This is a review queue, not an approval step. The canonical JSON is
-authoritative and the Markdown is a readable bucketed queue for binding
-glossary candidates, names/titles, rare terms, and suppressed noise.
-
-To turn reviewed candidates into context state:
-
-```bash
-booktx context prefill ./demo --profile PROFILE --from-source-analysis
-booktx context prefill ./demo --profile PROFILE --from-source-analysis --include-advisory --write
-booktx context promote-candidate ./demo CAND-... --profile PROFILE --as-question --write
-booktx context promote-candidate ./demo CAND-... --profile PROFILE --target "Imperium" --require-target --enforce error --write
-booktx source ignore-candidate ./demo CAND-... --reason "ordinary vocabulary" --write
-```
-
-Default `context prefill --from-source-analysis` creates review questions for
-binding/name/rare candidates and does **not** open advisory glossary entries by
-default. If a profile-root `source analysis` read reports a missing snapshot,
-rerun project-root analysis with `--write --sync-profiles`.
-
-## Bounded agent runs
-
-When asking an agent to continue for several chapters, create a durable todo:
-
-```bash
-booktx translate todo-next ./demo \
-  --profile PROFILE \
-  --chapters 3 \
-  --batch-words 800 \
-  --max-run-words 12000 \
-  --write
-```
-
-This writes a todo file (not translations) under `translations/<profile>/todos/`.
-Continue bounded runs with:
-
-```bash
+booktx translate todo-next ./demo --profile PROFILE \
+  --chapters 3 --batch-words 800 --write
 booktx translate todo-status ./demo --profile PROFILE --latest
 booktx translate todo-resume ./demo --profile PROFILE --latest --format block
-booktx check ./demo --profile PROFILE --fail-on-warnings
 ```
 
-## Single large chapters
+Tasks snapshot the effective context view under
+`translations/<profile>/context-history/views/<sha>/`. Keep record headers and
+placeholder tokens unchanged in submissions. Do not edit the store directly.
 
-If the user asks to finish a single chapter that has more than the safe task
-budget (default 800 source words), booktx automatically creates or reuses a
-single-chapter todo and returns bounded batch tasks:
+## Formats and output
+
+Markdown extraction preserves YAML front matter, code, URLs, raw HTML, and
+inline token placeholders. Visible prose in paragraphs, headings, list items,
+blockquotes, and table cells becomes translation records.
+
+EPUB extraction stores constrained inline-XHTML records. Changed targets must
+preserve the source inline skeleton and may change only human-readable text
+nodes. Validation and build preflight reject new attributes, block elements,
+opaque-element changes, and mismatched inline structure. EPUB output policy
+updates target language metadata and may inject deterministic hyphenation CSS;
+reader rendering remains outside booktx's control.
+
+Pass-through profiles are generated reconstruction checks. Use a profile with
+`kind = pass-through` and compare its generated output with an EPUB diff tool;
+do not treat a generated fixture as a general byte-identity promise.
 
 ```bash
-booktx translate next ./demo --chapter 0005 --unit chapter --max-words 800
+booktx profile create-pass-through ./demo passthrough_en
+booktx validate ./demo --profile passthrough_en
+booktx build ./demo --profile passthrough_en
 ```
 
-This creates a todo for chapter 0005 and returns the first bounded batch.
-Continue with `booktx translate todo-resume` until the chapter completes.
+## Profiles and migration
 
-To override this behavior and force a whole-chapter task:
+Create separate profiles for different languages, model experiments, or
+context decisions:
 
 ```bash
-booktx translate next ./demo --chapter 0005 --unit chapter --force-chapter
+booktx profile create ./demo PROFILE_A --target de --model MODEL
+booktx profile create ./demo PROFILE_B --target de --model OTHER_MODEL
+booktx profile compare ./demo --profiles PROFILE_A,PROFILE_B --record 0001-000001
 ```
 
-After each chapter, run `booktx check` before adding the chapter note:
-
-```bash
-booktx check ./demo --profile PROFILE --chapter 0005 --fail-on-warnings
-booktx context chapter-note ./demo --profile PROFILE 0005 ...
-```
-
-`--max-run-words` is advisory only: it tells the agent when to stop and report
-progress, but booktx does not hard-stop accepted work at that threshold. Prefer
-batches over chapter-sized tasks.
-A chapter-note append does **not** create a new dotted translation version. Dotted
-versions track baseline policy changes such as style, glossary, answered questions,
-global rules, readiness, source metadata, language metadata, or actor/model track
-changes.
-
-## Final release output
-
-For final release output, prefer:
-
-```bash
-booktx validate ./demo --profile PROFILE --fail-on-warnings
-booktx build ./demo --profile PROFILE --require-complete
-```
-
-Translated EPUB builds write the resolved target language to publication and
-content-document metadata and inject one deterministic best-effort
-hyphenation style sheet. This is a metadata/author-style correctness contract;
-actual hyphenation still depends on the reading system. If a reader produces
-bad breaks, set `hyphenation = "none"` under `[epub_output]` in the profile
-config and rebuild. Pass-through output stays byte-identical by default. See
-[EPUB output-language and hyphenation policy](docs/epub.md).
-
-## Editor QA indexes
-
-Refresh editor-friendly indexes:
-
-```bash
-booktx translate export-index ./demo --profile PROFILE
-```
-
-This writes:
-
-- `translations/PROFILE/source-index.json` -- source text only, best for reading/searching the original source inside the profile, including isolated profile runs.
-- `translations/PROFILE/target-index.json` -- target text only, best for searching translated terms without English source false positives.
-- `translations/PROFILE/source-target-index.json` -- slim source/target side-by-side view, best for scanning translation fit in an editor.
-
-```bash
-# Search only the original source language.
-rg "Wasp" translations/PROFILE/source-index.json
-
-# Search only translated German target text.
-rg "Wespen" translations/PROFILE/target-index.json
-
-# Scan source and target side by side.
-nvim translations/PROFILE/source-target-index.json
-
-# Inspect canonical state for a hit.
-booktx translate get-record ./demo 0014-000029 --profile PROFILE --json
-```
-
-All three files are generated artifacts. Do not edit them manually. The canonical state remains `translation-store.json`.
-
-## Pass-through validation profile
-
-Use a pass-through profile to verify that extraction and EPUB reconstruction
-include all text before doing real translation:
-
-```bash
-booktx extract ./demo
-booktx pass-through ./demo --profile passthrough_en --create
-```
-
-This writes source-as-target translated chunks under
-`translations/passthrough_en/translated/`, validates complete coverage, and
-builds `translations/passthrough_en/output/...`. Compare the output EPUB against
-`source/book.epub` with an EPUB diff viewer. The included EPUB fixture should be
-byte-identical, but real-world EPUBs should be treated as reconstruction checks,
-not guaranteed byte-for-byte copies. Never run pass-through against a real
-translation profile.
-
-## Multiple profiles
-
-Create one profile per target language, model experiment, or hard-isolated
-context experiment. Two profiles can target the same language with different
-models, or the same model with different languages:
-
-```bash
-booktx profile create ./demo PROFILE --target de --model codex-openai/gpt-5.5@low
-booktx profile create ./demo PROFILE_B --target de --model glm-5.2
-booktx profile create ./demo fr_gpt5_5 --target fr --model codex-openai/gpt-5.5@low
-```
-
-### Profile resolution
-
-When a command needs a single profile, booktx resolves it in this order:
-
-```text
-Project-root profile commands require --profile PROFILE;
-otherwise fail for target-state commands.
-```
-
-If a project has more than one profile, always pass `--profile`.
-
-### Live identity
-
-`profile list` and `profile show` render the **current** identity from
-`translations/<profile>/identity.json`, which is updated by
-`booktx model set`, `actor set`, and `harness set`. The identity embedded in
-`config.toml` is only the initial default captured at creation.
-
-## Legacy projects
-
-Old single-layout projects can be migrated in place:
+Cross-profile operations are project-root operations. To migrate a legacy
+single-layout project, use:
 
 ```bash
 booktx profile migrate-current ./demo PROFILE
 ```
 
-CLI identity overrides (`--model`, `--actor`, `--harness`) are honored over any
-legacy `.booktx/identity.json`.
+Legacy `.booktx/` translation paths are migration input only. New profile
+projects keep mutable state under `translations/<profile>/`.
 
-## Common commands
+## Series and quality workflows
 
-```bash
-booktx status ./demo
-booktx status ./demo --profile PROFILE
-booktx mode ./demo
-booktx profile list ./demo
-booktx profile show ./demo PROFILE
-booktx whoami ./demo --profile PROFILE
-booktx version current ./demo --profile PROFILE
-booktx translate task-status ./demo --profile PROFILE --task-id TASK
-booktx translate compare ./demo --profile PROFILE 74@38 --versions 1.1,1.2
-booktx profile compare ./demo --profiles PROFILE,PROFILE_B --record 0001-000001
-booktx source status ./demo
-
-# Series-wide context packs (style/global rules/glossary/approved answers):
-booktx context export-pack ./book1 --profile PROFILE \
-  --series-id shadows-of-apt --output ./soa.en-de.booktx-context-pack.json
-booktx context import-pack ./book2 --profile PROFILE \
-  --file ./soa.en-de.booktx-context-pack.json --write
-
-# Prepare the next book in a series:
-booktx series prepare ./book5 \
-  --source-file ./book5/book5.epub \
-  --from-book ./book4 \
-  --from-profile PROFILE \
-  --profile PROFILE \
-  --series-id shadows-of-apt \
-  --title "Shadows of the Apt / German policy" \
-  --target de \
-  --target-locale de-DE \
-  --model zai/glm-5.2@high \
-  --write
-booktx series recipe write ./book5 --profile PROFILE --series-id shadows-of-apt --title "Shadows of the Apt / German policy" --output ../soa.de.booktx-series.toml
-
-# Same-book sibling profile policy sync:
-booktx context sync ./demo \
-  --from PROFILE \
-  --all-compatible \
-  --section glossary \
-  --term "Empire"
-
-# Build a judge/selection profile from sibling outputs:
-booktx judge create-profile ./demo JUDGE_PROFILE \
-  --target de \
-  --target-locale de-DE \
-  --sources PROFILE,PROFILE_B \
-  --context-from PROFILE \
-  --model gpt-5.5
-
-booktx judge status ./demo --profile JUDGE_PROFILE
-booktx judge accept-identical ./demo --profile JUDGE_PROFILE --sources PROFILE,PROFILE_B --unit chapter --chapter 0001 --max-records 100 --write
-booktx judge next ./demo --profile JUDGE_PROFILE --sources PROFILE,PROFILE_B --unit chapter --chapter 0001 --max-records 8 --format decisions
-```
-
-For isolated judge work, prepare the snapshot from the project root then cd into the profile root:
+Prepare a subsequent book with the human review stop intact:
 
 ```bash
-booktx judge prepare-isolation ./demo --profile JUDGE_PROFILE --write
-cd translations/JUDGE_PROFILE
-booktx judge status .
-booktx judge accept-identical . --unit chapter --chapter 0001 --max-records 100 --write
-booktx judge next . --unit chapter --chapter 0001 --max-records 8 --format decisions
-booktx judge insert . --judge-task-id TASK --file judge-ingest/TASK.decisions.txt --format decisions
-booktx judge reset-ingest . --judge-task-id TASK --format decisions --write
-booktx judge continue . --max-records 8
+booktx series prepare ./book5 --source-file ./book5.epub \
+  --from-book ./book4 --profile PROFILE --series-id series-id \
+  --title "Series policy" --target de --target-locale de-DE --model MODEL --write
 ```
 
-For `decision_kind: copy`, leave `TARGET` empty and let booktx copy the selected
-candidate exactly. Use `decision_kind: edited` only when the final target differs
-from every candidate. Judge record ids are chunk-based, so a task for chapter
-`0005` can still contain records whose ids start with `0001-`.
+Review the generated questionnaire before running `context mark-ready`.
+Quality review is configured and monitored with `booktx review configure` and
+`booktx review status`. Comparison or revision profiles are prepared with
+`booktx judge create-profile`, `booktx judge prepare-isolation`, and
+`booktx judge prepare-grammar`.
 
-When one source is clearly best, create a single-source **revision** profile
-with `--purpose revise`. Every record then requires an explicit `copy` or
-`edited` judge decision; `accept-identical`, `sweep-identical`, and
-`prefill-policy-fixes` are disabled, and effective output stays valid only
-while each active target has matching judge-decision provenance. Use
-`booktx judge record . --record RECORD_ID` for later corrections. See
-`docs/profiles.md` for the full workflow.
-
-For a grammar-fix run on an existing translated book, add
-`--revision-focus grammar`:
+## Development and documentation
 
 ```bash
-booktx judge create-profile ./demo judge_gpt5_6 \
-  --target de \
-  --target-locale de-DE \
-  --sources de_glm_5_2 \
-  --context-from de_glm_5_2 \
-  --model gpt-5.6 \
-  --purpose revise \
-  --revision-focus grammar
-
-booktx judge prepare-isolation ./demo --profile judge_gpt5_6 --write
-cd translations/judge_gpt5_6
-booktx judge status .
-booktx judge continue . --max-records 20 --format decisions
+python -m pytest -q
+python -m pytest tests/test_docs_consistency.py -q
+sphinx-build -W -b html docs docs/_build/check
+make -C docs check
+bash -n docs/build.sh
+ruff check .
+git diff --check
+python -m mypy booktx
 ```
 
-In grammar focus, `BASE_TARGET` is authoritative for wording and terminology:
-use `copy` when the German is already grammatically correct and `edited` only
-for minimal grammar, syntax, agreement, inflection, orthography, capitalization,
-or punctuation repairs.
+The mypy command is a status check. Its result must be reported accurately;
+this project does not claim a clean type check unless the command exits zero.
 
-`booktx translate next` also snapshots the exact effective task context under
-`translations/<profile>/context-history/views/<sha>/`. New tasks carry both the
-baseline version (for example `1.2`) and the immutable context-view evidence
-used for that task, and accepted candidates preserve that evidence.
-
-## Translation contract
-
-- record ids must stay unchanged;
-- placeholders must stay unchanged;
-- targets must be non-empty;
-- submissions must stay in the selected profile;
-- `translations/<profile>/translation-store.json` is the primary record-level state;
-- `translations/<profile>/translated/*.json` is compatibility/export output.
-
-## Documentation
-
-The [documentation index](docs/index.md) organizes the full guide set. Start with [installation](#install) and the [quickstart](docs/quickstart.md), then use the guides below for the workflow stage you are in:
-
-### Onboarding and operating workflows
-
-- [project layout](docs/project-layout.md) explains shared source state versus profile-local mutable state.
-- [profiles](docs/profiles.md) covers profile isolation, selection profiles, and version boundaries.
-- [context](docs/context.md) covers policy questions and the required human approval gate.
-- [agent workflow](docs/agent-workflow.md) describes collaborative and isolated harness operation.
-- [series](docs/series.md) covers preparing the next book and reusable context packs.
-- [commands](docs/commands.md) is the CLI reference.
-
-### Format and maintenance guides
-
-- [Markdown](docs/markdown.md) and [EPUB](docs/epub.md) document format-specific behavior.
-- [translation contract](docs/translation-contract.md) lists invariants for submissions and output.
-- [troubleshooting](docs/troubleshooting.md) maps common errors to safe remediation.
-- [development](docs/development.md) covers tests, linting, and the local documentation build.
-- [architecture](docs/architecture.md) and the [canonical store split](docs/architecture/canonical-store-split.md) explain implementation boundaries.
-
-## Context approval
-
-booktx never decides translation policy by itself. An agent may propose context answers, but the user must approve them before translation begins. Do not use `context mark-ready --force` during normal translation work.
-
-### EPUB inline XHTML records
-
-EPUB records may expose constrained inline XHTML fragments such as `<em>`, `<strong>`, `<span class="...">`, `<a href="...">`, `<sup>`, `<sub>`, or `<code>`. Translators must preserve tags and attributes around the equivalent target-language phrase and must not replace XHTML with Markdown markers.
-
-## Quality review commands
-
-Quality review is an optional workflow that improves already-accepted translations:
-
-- `booktx review status .` -- report review coverage
-- `booktx review next . --pass 1` -- create a review task for pass 1
-- `booktx review insert . --review-task-id TASK --file reviews/TASK.block.txt` -- accept review results
-- `booktx review activate . RECORD R1.2` -- manually activate a review candidate
-
-Review candidates are stored separately from translation versions in
-`translations/<profile>/reviews/`. The effective output resolves as
-`active_review (if valid) -> active_version -> missing`.
-
-Enable quality review by adding `[quality_review]` to the profile's `config.toml`.
-See `docs/profiles.md` for configuration reference.
-
-### Glossary correction
-
-```bash
-# Fix wrong forbidden targets (replaces, doesn't append).
-booktx glossary add . "empire" --target "Imperium" --forbid "Reich" --forbid "Empire"
-
-# Remove a wrong entry.
-booktx glossary remove . "empire"
-```
-
-### Mandatory glossary decisions
-
-For user terminology decisions (e.g. "always translate `tenday` as `Dekade`"),
-use `glossary mandate`. It sets `require_target = true` and defaults to
-`enforce = error` so the approved target is positively enforced.
-
-```bash
-booktx glossary mandate . "tenday" \
-  --source-variant "tendays" \
-  --target "Dekade" --target-variant "Dekaden" \
-  --forbid "Zehntag" --forbid "Zehntage" --forbid "zehn Tage" \
-  --category "calendar"
-```
-
-Longer mandatory phrases shadow contained shorter source terms. For example:
-
-```bash
-booktx glossary mandate . "Mole Cricket-kinden" \
-  --target "Maulwurfsgrillenart" --category "kinden"
-```
-
-This permits the natural compound without requiring the shorter
-`Cricket-kinden -> Grillenart` target token for that contained occurrence.
-Standalone shorter occurrences remain enforced. Any mandatory glossary change
-requires a fresh translation task, including batch and todo-created tasks.
-
-Use `glossary reset` for atomic entry replacement and `glossary add` for
-lighter advisory updates.
-
-### Auditing a term
-
-After a mandatory glossary change, audit the effective output for one term:
-
-```bash
-booktx context audit-term . "tenday" --profile de_deepseekv4_flash
-```
-
-Generate a safe correction-block template for violating records:
-
-```bash
-booktx context audit-term . "tenday" \
-  --write-block ingest/glossary-tenday-fixes.block.txt
-booktx translate revise-block . \
-  --file ingest/glossary-tenday-fixes.block.txt --format block --activate
-booktx validate . --fail-on-warnings
-```
-
-The ingest block contains only record headers and editable current targets.
-A companion reference-only source block is written alongside it. Only
-violating effective records are included; the generator never guesses the
-corrected translation.
-
-### Active-only validation
-
-`booktx validate` checks only the effective output by default. Historical
-inactive versions that contain forbidden terms no longer cause warnings. Use
-`--include-inactive` for history audits:
-
-```bash
-booktx validate . --include-inactive --fail-on-history-warnings
-```
-
-### Deterministic terminology correction
-
-Use `booktx translate search` for terminology fixes instead of inspecting stores directly. Combine source and target criteria with `--match all`, add regex/exclusion filters when needed, and write profile-local correction blocks with `--write-block`. Glossary rendering distinguishes binding rules from advisory and disabled entries; `enforce` alone is not binding without `require_target` or forbidden targets. Revision commands preserve baseline and chapter-scoped context-view metadata.
-
-### Translation preference dictionary / termbase
-
-Use the termbase for reusable cross-book lexical preferences and literalism traps
-that should appear only when their source cue matches the current records. Keep
-fixed terminology, names, and mandatory target enforcement in the glossary;
-keep softer word-sense and collocation guidance in termbase shards.
-
-Store the termbase as one JSON shard per target language/locale:
-
-```text
-~/.config/booktx/translation-termbase/de.json
-.booktx/termbase/de.json
-translations/<profile>/termbase-overrides/de-DE.json
-```
-
-Read-only commands can run from project root or isolated profile roots:
-
-```bash
-booktx termbase status . --json
-booktx termbase scan-source . --jsonl
-booktx termbase audit . --jsonl
-booktx termbase write-review . --pass 1
-```
-
-Global-only workflows also work outside a project:
-
-```bash
-booktx termbase add \
-  --scope global \
-  --language de \
-  --id LEX-MOULDY \
-  --source "mouldy principles" \
-  --source-regex "\\bmouldy\\s+principles(?:\\s+of\\s+magic)?\\b" \
-  --preferred "schäbige Prinzipien" \
-  --forbid "schimmligen Prinzipien" \
-  --approve
-
-booktx termbase export --scope global --language de --output ./termbase-de.json
-booktx termbase import --scope global --language de --input ./termbase-de.json --mode merge
-```
-
-Isolated profile-root mode may read the global termbase and write profile
-overlays, but it must not mutate global or project shards. Paths stay redacted
-(`~` or `$BOOKTX_TERMBASE_DIR/...`) instead of leaking absolute locations.
-
-When the user reports a bad context-sensitive translation:
-
-1. Fix the current effective output with `translate revise-record` or
-   `review revise-record`, depending on whether the effective target is a
-   translation or an active review.
-2. Add a local glossary entry only when the phrase is fixed and safely
-   enforceable.
-3. Add or promote a reusable termbase entry for the broader sense preference.
-4. Run `booktx termbase audit . --jsonl` and `booktx qa-scan . --forbidden --glossary --include-advisory --jsonl`.
-5. Use `booktx termbase write-review . --pass 1` when the termbase finding should
-   create normal review work instead of an immediate deterministic rewrite.
-
-### Starting the next book in a series
-
-Prefer the orchestration command:
-
-```bash
-booktx series prepare ./book5 \
-  --source-file ./book5/book5.epub \
-  --from-book ./book4 \
-  --from-profile de_glm_5_2 \
-  --profile de_glm_5_2 \
-  --series-id shadows-of-the-apt \
-  --title "Shadows of the Apt German series context" \
-  --target de \
-  --target-locale de-DE \
-  --model zai/glm-5.2@high \
-  --write \
-  --write-termbase \
-  --termbase-scope project
-```
-
-`booktx series prepare` stops before translation and before automatic
-`context mark-ready`. Review the generated context/questionnaire, approve any
-new source-analysis questions, then run `booktx context mark-ready` followed by
-`booktx agents write ... --mode isolated`.
-
-The manual `context export-pack` / `init` / `extract` / `profile create` /
-`context import-pack` / `source analyze` / `context prefill` sequence still
-works unchanged when you need full control.
+See the [documentation index](docs/index.md), [commands](docs/commands.md),
+[quickstart](docs/quickstart.md), [profiles](docs/profiles.md),
+[context](docs/context.md), [agent workflow](docs/agent-workflow.md),
+[format guides](docs/markdown.md), [EPUB guide](docs/epub.md),
+[translation contract](docs/translation-contract.md),
+[troubleshooting](docs/troubleshooting.md), and [API reference](docs/api.md).

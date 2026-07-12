@@ -1,138 +1,72 @@
 # Translation contract
 
-`booktx` now keeps translation state per profile.
-
-## Primary profile-local state
-
-- `translations/<profile>/translation-store.json`
-- `translations/<profile>/translation-version-ledger.json`
-- `translations/<profile>/tasks/`
-- `translations/<profile>/ingest/`
-- `translations/<profile>/translated/`
-- `translations/<profile>/todos/`
-
-## Todo files
-
-`translations/<profile>/todos/<todo-id>.{json,md}` are **run-control artifacts**
-written by `booktx translate todo-next`. They describe a bounded multi-chapter
-agent run (chapters to complete, per-task word budget, stop conditions).
-
-Todo files are NOT translation submissions. The agent reads the markdown loop
-instructions, fills ingest files, and runs `translate insert` for each batch.
-Do not submit todo JSON files through `translate insert`.
+Translation state is profile-local. The durable current record store is
+`translations/<profile>/translation-store.json` (`TranslationStoreV2`). The
+version ledger, context, tasks, submissions, reviews, and reports are also
+profile-local.
 
 ## Task metadata
 
-`booktx translate next` persists tasks with:
+`booktx translate next` records the profile, target language and locale,
+translation version, context view hash, source hash, and relevant profile and
+source configuration hashes. `booktx translate insert` rejects stale or
+profile-mismatched submissions.
 
-- `profile`
-- `target_language`
-- `target_locale`
-- `translation_version`
-- `context_sha256`
-- `source_sha256`
-- source/profile config hashes
-
-`booktx translate insert` rejects:
-
-- task/profile mismatches
-- submission/profile mismatches
-- stale task version metadata
-
-## Compatibility exports
-
-Compatibility translated chunk files remain JSON objects with `chunk_id` and
-ordered record targets, but they are profile-local:
-
-```text
-translations/<profile>/translated/NNNN.json
-```
-
-## Comparison rules
-
-- `booktx translate compare` is profile-local.
-- Cross-profile comparison is explicit under `booktx profile compare`.
-
-## Block submission schema
-
-`booktx translate next --format block` writes a durable ingest file under
-`translations/<profile>/ingest/<task>.block.txt`. Edit only that file and
-submit it back. Example:
+Block submissions are written under `translations/<profile>/ingest/`:
 
 ```text
 # booktx block submission
-# profile: PROFILE_A
-# task: bt-task-20260101T000000Z-ch01-0001r0001-a1b2c3d4
+# profile: PROFILE
+# task: TASK_ID
 # translation_version: 1.2
 >>> 0001-000001
-Translated text here.
->>> 0001-000002
-Second translated record.
+Translated text.
 ```
 
-Rules:
+Keep each record header unchanged, write only the target text, preserve
+placeholder tokens, and do not add commentary. JSON submissions use schema
+version 2 and must declare the matching profile and translation version.
 
-- Keep every `>>> RECORD_ID` header unchanged.
-- Write only the target translation under each header.
-- Preserve required placeholder tokens (for example `__NAME_001__`) exactly.
-- Preserve enclosing quotation marks when the source record is fully quoted. German targets may use either `„...“` or `»...«`, but both opening and closing quotation marks must be present as a valid pair. Do not mix quote styles within one outer pair.
-- Do not add commentary outside target text.
-- Do not edit `tasks/<task>.source.block.txt` as the submission.
+## Generated exports
 
-## JSON submission schema
+`translations/<profile>/translated/NNNN.json` is a compatibility export. It is
+derived from the store and is not the canonical state. Editor indexes, reports,
+and output are likewise generated artifacts.
 
-Submissions may also be supplied as JSON (`schema_version` 2). Example:
+## Versions and reviews
 
-```json
-{
-  "schema_version": 2,
-  "profile": "PROFILE_A",
-  "task_id": "bt-task-...",
-  "translation_version": "1.2",
-  "records": [{ "id": "0001-000001", "target": "Translated text here." }]
-}
-```
+`booktx translate compare` and `activate` operate on versions inside one
+profile. Cross-profile comparison is explicit through `booktx profile compare`
+or judge workflows. Review candidates are stored separately in the nested
+`reviews` data and use `R<pass>.<run>` references. Effective output resolves a
+valid review candidate before the current translation version.
 
-The `profile` and `translation_version` fields must match the target profile
-and the durable task metadata, or `booktx translate insert` rejects the
-submission.
+## Placeholders and Markdown
 
-## EPUB inline XHTML fragments
+Required placeholders such as `__NAME_001__` and `__TAG_001__` must be
+preserved exactly. Markdown links keep their URLs, code remains opaque, and
+front matter is preserved. Targets must be non-empty and record ids must not
+change.
 
-EPUB source records may contain constrained inline XHTML fragments. Targets must preserve equivalent inline XHTML semantics. A target that drops `<em>`, `<strong>`, link, span-class, code, superscript/subscript, or other source inline semantics is invalid unless the user explicitly approves a semantic change.
+## EPUB inline XHTML
 
-Translate only human-readable text nodes. Preserve tag names and attributes around the equivalent target-language phrase. Do not replace XHTML with Markdown markers. Do not invent block markup, comments, scripts, styles, or new attributes. Opaque inline elements such as `<code>...</code>` must stay unchanged.
+EPUB source records may use constrained inline XHTML. Targets preserve the
+same tag names and attributes around translated text nodes. Do not replace
+XHTML with Markdown, add block markup, change opaque inline elements, or invent
+attributes. Validation and build preflight check the inline skeleton and
+opaque-content preservation.
 
-## Review candidates
+## Context and provenance
 
-Review candidates are quality-improved targets stored separately from
-translation versions. They live under a separate `reviews[]` array in
-`StoredTranslationRecordV2` and use a separate ref namespace -- `R<pass>.<run>` (e.g. `R1.1`, `R2.1`) -- so they are visibly different from dotted version refs.
-
-- **Translation versions** answer: which source/context/model produced the initial target?
-- **Review candidates** answer: which quality pass improved or approved that target?
-
-Final output resolves as: `active_review (if valid) -> active_version -> missing`.
-A stale or invalid active review is reported as an error during validation.
-Review candidates are stored under `translations/<profile>/reviews/`.
-
-## Revision provenance
-
-`translate revise-record` and `translate revise-block` preserve provenance for revised candidates. The commands resolve the current translation version and baseline once, create chapter-scoped context-view snapshots for affected records, and write `baseline_ref`, `baseline_sha256`, `context_view_sha256`, `context_view_path`, and context-note scope metadata to the candidate. Revising an existing candidate at the same version amends that candidate; immutable correction-history references are not part of this contract.
+`context.json` is authoritative and `context.md` is rendered. Each task stores
+an immutable effective context view under
+`translations/<profile>/context-history/views/<sha>/`. Translation and review
+revisions retain baseline and context-view provenance. Do not edit the store or
+rendered context manually; use the CLI workflows.
 
 ## Glossary phrase collisions
 
-When a shorter source term is contained inside a longer configured source
-phrase, enforcement uses only the longest non-shadowed source span. A separate
-standalone occurrence of the shorter term remains active. Do not distort the
-target sentence merely to satisfy the shorter literal target token. Prefer one
-of:
-
-1. natural apposition or rephrasing that contains the approved target naturally;
-2. a longer source phrase glossary entry, which shadows the shorter entry;
-3. an explicit forbidden target for the bad correction pattern.
-
-Example: a binding `Mole Cricket-kinden -> Maulwurfsgrillenart` entry shadows
-`Cricket-kinden -> Grillenart` for that contained occurrence, allowing the
-natural German compound. Create the longer decision with `glossary mandate`.
-Apposition is only a fallback when no longer phrase decision exists.
+Glossary enforcement uses the longest non-shadowed source span. If a shorter
+term occurs inside a longer configured phrase, add the longer phrase or use
+natural apposition rather than forcing an unnatural target token. A standalone
+shorter occurrence remains subject to its own rule.
