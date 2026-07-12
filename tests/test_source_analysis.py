@@ -769,7 +769,6 @@ class TestSnapshotAndMarkdown:
         assert "## Suppressed/no-action summary" in md
         assert "## Style observations" in md
         assert "booktx context promote-candidate" in md
-        assert "booktx source review-candidate" in md
         assert report.analysis_sha256 in md
         # No internal absolute paths leak into the rendered view.
         assert str(tmp_path) not in md

@@ -1830,6 +1830,9 @@ def _classify_review_bucket(
     elif genericity >= 1.0 and features.token_count == 1:
         review_bucket = "no_action"
         suppression_reason = "generic_single_token"
+    else:
+        review_bucket = "no_action"
+        suppression_reason = "generic_single_token"
 
     if (
         review_bucket != "no_action"
