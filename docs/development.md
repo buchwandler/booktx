@@ -53,11 +53,20 @@ ruff check .
 mypy booktx
 ```
 
-For docs (requires the `docs` extra), build with warnings as errors:
+For documentation changes, install the `docs` extra and run the repository's
+warnings-as-errors check:
 
 ```bash
-sphinx-build -W -b html docs docs/_build/html
+python -m pytest tests/test_docs_consistency.py -q
+sphinx-build -W -b html docs docs/_build/check
+bash -n docs/build.sh
+git diff --check
 ```
+
+The same Sphinx check is available as `make -C docs check`. For a local HTML
+and optional PDF build after dependencies are installed, run `./docs/build.sh`;
+the script uses the same `-W` warnings-as-errors policy. Generated files stay
+under `docs/_build/` and should not be committed.
 
 ## Current test clusters
 

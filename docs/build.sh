@@ -2,14 +2,14 @@
 
 # Build script for booktx documentation
 
-set -e
+set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Building taskledger documentation...${NC}"
+echo -e "${YELLOW}Building booktx documentation...${NC}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -36,14 +36,14 @@ python -m pip install -e "$PROJECT_ROOT"
 echo -e "${YELLOW}Cleaning previous build...${NC}"
 rm -rf "$SCRIPT_DIR/_build/"
 
-# Build documentation
-echo -e "${YELLOW}Building HTML documentation...${NC}"
-sphinx-build -b html "$SCRIPT_DIR" "$SCRIPT_DIR/_build/html"
+# Build documentation with warnings treated as errors
+echo -e "${YELLOW}Building HTML documentation (warnings are errors)...${NC}"
+sphinx-build -W -b html "$SCRIPT_DIR" "$SCRIPT_DIR/_build/html"
 
 # Build PDF documentation (if latex is available)
 if command -v pdflatex &>/dev/null; then
-    echo -e "${YELLOW}Building PDF documentation...${NC}"
-    sphinx-build -b latex "$SCRIPT_DIR" "$SCRIPT_DIR/_build/latex"
+    echo -e "${YELLOW}Building PDF documentation (warnings are errors)...${NC}"
+    sphinx-build -W -b latex "$SCRIPT_DIR" "$SCRIPT_DIR/_build/latex"
     cd "$SCRIPT_DIR/_build/latex"
     make
 else

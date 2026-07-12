@@ -3,7 +3,7 @@
 
 # You can set these variables from the command line, and also
 # from the environment for the first two.
-SPHINXOPTS    ?=
+SPHINXOPTS    ?= -W
 SPHINXBUILD  ?= sphinx-build
 SOURCEDIR    = .
 BUILDDIR     = _build
@@ -20,9 +20,11 @@ help:
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 # Custom targets
+check:
+	@$(SPHINXBUILD) -W -b html "$(SOURCEDIR)" "$(BUILDDIR)/check"
+
 install:
-	pip install -r requirements.txt
-	pip install -e ..
+	python -m pip install -e "..[docs]"
 
 clean:
 	rm -rf $(BUILDDIR)/*
@@ -30,4 +32,4 @@ clean:
 livehtml:
 	sphinx-autobuild . $(BUILDDIR)/html
 
-.PHONY: install clean livehtml
+.PHONY: install check clean livehtml

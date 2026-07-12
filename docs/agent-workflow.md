@@ -215,7 +215,7 @@ booktx judge create-profile ./book JUDGE_PROFILE \
   --target-locale de-DE \
   --sources PROFILE_A,PROFILE_B \
   --context-from PROFILE_A \
-  --model gpt-5.5 \
+  --model gpt-5.5
 
 booktx judge accept-identical ./book \
   --profile JUDGE_PROFILE \

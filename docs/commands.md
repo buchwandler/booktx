@@ -416,7 +416,7 @@ Questions start as `open`. Agents may store draft defaults with `context recomme
 - `booktx review configure . --disable` -- disable quality review entirely
 - `booktx review status .` -- report review coverage by pass (eligible/reviewed/missing/stale/blocked); JSON includes `next_command`, `first_missing_record`, `first_missing_chapter`
 - `booktx review next . --pass 1` -- create the next durable review task for a pass; supports `--selection missing|stale|reviewed|all|changed-base` and `--base active_translation|active_review|pass:N`
-- `booktx review next . --pass 1ion reviewed --base active_review` -- rerun a pass over already-reviewed records, creating `R1.2` from `R1.1`
+- `booktx review next . --pass 1 --selection reviewed --base active_review` -- rerun a pass over already-reviewed records, creating `R1.2` from `R1.1`
 - `booktx review insert . --review-task-id TASK --file reviews/TASK.block.txt --format block` -- parse and accept a review submission
 - `booktx review activate . RECORD R1.2` -- manually activate an existing review candidate for a record
 - `booktx review deactivate . RECORD` -- deactivate the active review, falling back to the active translation version

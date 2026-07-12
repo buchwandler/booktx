@@ -83,7 +83,7 @@ booktx extract ./demo
 booktx profile create ./demo PROFILE \
   --target de \
   --target-locale de-DE \
-  --model codex-openai/gpt-5.5@low \
+  --model codex-openai/gpt-5.5@low
 
 
 booktx context init ./demo --profile PROFILE --non-interactive
@@ -252,9 +252,10 @@ booktx context chapter-note ./demo --profile PROFILE 0005 ...
 `--max-run-words` is advisory only: it tells the agent when to stop and report
 progress, but booktx does not hard-stop accepted work at that threshold. Prefer
 batches over chapter-sized tasks.
-**not** create a new dotted translation version. Dotted versions track baseline
-policy changes such as style, glossary, answered questions, global rules,
-readiness, source metadata, language metadata, or actor/model track changes.
+A chapter-note append does **not** create a new dotted translation version. Dotted
+versions track baseline policy changes such as style, glossary, answered questions,
+global rules, readiness, source metadata, language metadata, or actor/model track
+changes.
 
 ## Final release output
 
@@ -410,7 +411,7 @@ booktx judge create-profile ./demo JUDGE_PROFILE \
   --target-locale de-DE \
   --sources PROFILE,PROFILE_B \
   --context-from PROFILE \
-  --model gpt-5.5 \
+  --model gpt-5.5
 
 booktx judge status ./demo --profile JUDGE_PROFILE
 booktx judge accept-identical ./demo --profile JUDGE_PROFILE --sources PROFILE,PROFILE_B --unit chapter --chapter 0001 --max-records 100 --write
@@ -483,12 +484,24 @@ used for that task, and accepted candidates preserve that evidence.
 
 ## Documentation
 
-- [quickstart](docs/quickstart.md)
-- [project layout](docs/project-layout.md)
-- [profiles](docs/profiles.md)
-- [commands](docs/commands.md)
-- [context](docs/context.md)
-- [agent workflow](docs/agent-workflow.md)
+The [documentation index](docs/index.md) organizes the full guide set. Start with [installation](#install) and the [quickstart](docs/quickstart.md), then use the guides below for the workflow stage you are in:
+
+### Onboarding and operating workflows
+
+- [project layout](docs/project-layout.md) explains shared source state versus profile-local mutable state.
+- [profiles](docs/profiles.md) covers profile isolation, selection profiles, and version boundaries.
+- [context](docs/context.md) covers policy questions and the required human approval gate.
+- [agent workflow](docs/agent-workflow.md) describes collaborative and isolated harness operation.
+- [series](docs/series.md) covers preparing the next book and reusable context packs.
+- [commands](docs/commands.md) is the CLI reference.
+
+### Format and maintenance guides
+
+- [Markdown](docs/markdown.md) and [EPUB](docs/epub.md) document format-specific behavior.
+- [translation contract](docs/translation-contract.md) lists invariants for submissions and output.
+- [troubleshooting](docs/troubleshooting.md) maps common errors to safe remediation.
+- [development](docs/development.md) covers tests, linting, and the local documentation build.
+- [architecture](docs/architecture.md) and the [canonical store split](docs/architecture/canonical-store-split.md) explain implementation boundaries.
 
 ## Context approval
 

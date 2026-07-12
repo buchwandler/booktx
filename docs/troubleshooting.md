@@ -5,7 +5,8 @@
 Pass `--profile` or select one first:
 
 ```bash
-
+booktx profile list ./book
+booktx status ./book --profile PROFILE_A
 ```
 
 ## `no translation profile exists`

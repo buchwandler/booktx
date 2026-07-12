@@ -1,25 +1,44 @@
 # Documentation index
 
-Start here:
+booktx uses a profile-first lifecycle: initialize the source project, extract shared source state, create or select an isolated profile, approve its context, translate through profile-local task files, validate, and build the final output. The canonical state remains under `.booktx/` and `translations/<profile>/`; generated reports, translated exports, and output files are derived artifacts.
 
-1. Read [quickstart](quickstart.md) for the profile-first workflow.
-2. Read [project layout](project-layout.md) for shared vs profile-local state.
-3. Read [profiles](profiles.md) for the isolation model.
-4. Read [commands](commands.md) for CLI usage.
-5. Read [context](context.md) before working on translations.
-6. Read [series](series.md) for repeated next-book setup.
-7. Read [agent workflow](agent-workflow.md) for coding-agent operating rules.
+## Onboarding
 
-8. Initialize a source project.
-9. Extract source chunks into `.booktx/chunks/`.
-10. Create or select a translation profile.
-11. Build or approve `translations/<profile>/context.json` and `context.md`.
-12. Translate via `translations/<profile>/ingest/`.
-13. Validate the selected profile.
-14. Build the final document into `translations/<profile>/output/`.
+1. [Quickstart](quickstart.md) — install booktx and complete the first profile workflow.
+2. [Project layout](project-layout.md) — identify shared source state and profile-local mutable state.
+3. [Profiles](profiles.md) — understand profile selection and isolation.
+
+## Operating workflows
+
+- [Commands](commands.md) — CLI reference and copyable command patterns.
+- [Context](context.md) — policy questions and the required human approval gate.
+- [Agent workflow](agent-workflow.md) — collaborative and isolated harness rules.
+- [Series workflows](series.md) — prepare the next book and move reusable policy safely.
+
+## Format and reference
+
+- [Markdown](markdown.md) — Markdown extraction and rebuilding.
+- [EPUB](epub.md) — EPUB-specific records, inline XHTML, and output behavior.
+- [Translation contract](translation-contract.md) — invariants for accepted work.
+- [Concepts](concepts.md) — terminology and state model.
+
+## Maintenance and internals
+
+- [Troubleshooting](troubleshooting.md) — actionable remediation for common failures.
+- [Development](development.md) — tests, linting, and documentation checks.
+- [Architecture](architecture.md) and [canonical store split](architecture/canonical-store-split.md) — implementation boundaries.
+- [API](api.md) and [mypy baseline](mypy-baseline.md) — generated/reference material.
+
+The normal lifecycle is:
+
+1. Initialize a source project and extract source chunks into `.booktx/chunks/`.
+2. Create or select a translation profile.
+3. Build and review `translations/<profile>/context.json` and `context.md`; wait for user approval before marking context ready.
+4. Translate through `translations/<profile>/ingest/`.
+5. Validate the selected profile and build into `translations/<profile>/output/`.
 
 ```{toctree}
-:maxdepth: 2
+   :maxdepth: 2
 
 quickstart
 project-layout

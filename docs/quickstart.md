@@ -18,7 +18,7 @@ booktx extract ./demo
 booktx profile create ./demo PROFILE_A \
   --target de \
   --target-locale de-DE \
-  --model codex-openai/gpt-5.5@low \
+  --model codex-openai/gpt-5.5@low
 
 ```
 
@@ -115,3 +115,17 @@ Advanced/manual path:
 4. Run `booktx source analyze --write --sync-profiles`.
 5. Run `booktx context prefill --from-source-analysis --consolidate-imported-policy --write`.
 6. Review the context questionnaire, then mark ready and write isolated agent instructions.
+
+## Continue with the guides
+
+After the first build, use the guide for the next task:
+
+- [Project layout](project-layout.md) for shared source state and profile-local mutable state.
+- [Profiles](profiles.md) for isolation, profile selection, and version boundaries.
+- [Context](context.md) for policy questions and the required approval gate.
+- [Agent workflow](agent-workflow.md) for collaborative or isolated harness operation.
+- [Series workflows](series.md) when preparing another book from an existing profile.
+- [Markdown](markdown.md) or [EPUB](epub.md) for format-specific behavior.
+- [Commands](commands.md) for the complete CLI reference.
+- [Troubleshooting](troubleshooting.md) for common failures and safe remediation.
+- [Development](development.md) for tests and the local documentation build.
