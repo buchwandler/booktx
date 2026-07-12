@@ -21,8 +21,8 @@ from booktx.cli_support import (
     _require_no_source_drift,
     _require_ready_context,
     console,
-    load_profile_project,
 )
+from booktx.config import load_profile_project
 from booktx.errors import BooktxError
 from booktx.judge_sources import (
     configured_selection_sources,
