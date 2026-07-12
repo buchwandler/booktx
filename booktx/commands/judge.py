@@ -13,6 +13,7 @@ from rich.table import Table
 from booktx.cli_support import (
     _die,
     _handle_booktx_error,
+    _load_profile_project_or_exit,
     _load_runtime_or_exit,
     _project_relative,
     _project_status_snapshot,
@@ -21,7 +22,6 @@ from booktx.cli_support import (
     _require_no_source_drift,
     _require_ready_context,
     console,
-    load_profile_project,
 )
 from booktx.errors import BooktxError
 from booktx.judge_sources import (
@@ -257,7 +257,7 @@ def judge_prepare_grammar(
         _die("judge prepare-grammar requires --write")
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     _reject_if_isolated(runtime)
-    source_project = load_profile_project(runtime.project.root, source_profile)
+    source_project = _load_profile_project_or_exit(runtime.project.root, source_profile)
     source_cfg = source_project.profile_config
     if source_cfg is None or source_cfg.kind != "translation":
         _die("--source-profile must reference a translation profile")

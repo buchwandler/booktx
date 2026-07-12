@@ -317,12 +317,13 @@ def test_profile_show_uses_identity_json_after_model_set(tmp_path: Path):
     set_res = runner.invoke(
         app,
         [
-            "model",
+            "identity",
             "set",
             str(project_dir),
-            "codex-openai/gpt-5.5@low",
             "--profile",
             "de_gpt5_5",
+            "--model",
+            "codex-openai/gpt-5.5@low",
         ],
     )
     assert set_res.exit_code == 0, set_res.output
@@ -361,12 +362,13 @@ def test_profile_list_uses_identity_json_after_model_set(tmp_path: Path):
     runner.invoke(
         app,
         [
-            "model",
+            "identity",
             "set",
             str(project_dir),
-            "glm-5.2",
             "--profile",
             "de_gpt5_5",
+            "--model",
+            "glm-5.2",
         ],
     )
 

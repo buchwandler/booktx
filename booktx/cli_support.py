@@ -34,6 +34,7 @@ from booktx.command_hints import (
 )
 from booktx.config import (
     Project,
+    load_profile_project,
     load_translation_store,
     load_translation_task,
     load_translation_version_ledger,
@@ -284,6 +285,14 @@ def _load_project_or_exit(
         profile=profile,
         require_profile=require_profile,
     ).project
+
+
+def _load_profile_project_or_exit(root: Path, profile: str) -> Project:
+    try:
+        return load_profile_project(root, profile)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        raise typer.Exit(code=1) from exc
 
 
 # --- shared CLI-layer guards and rendering helpers -------------------------
