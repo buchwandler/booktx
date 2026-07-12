@@ -155,7 +155,7 @@ def _require_selection_profile(project: Project) -> None:
 
 def _serialize_model_text(model: object) -> str:
     """Exact on-disk text for a copied Pydantic model (indent=2 + newline)."""
-    return model.model_dump_json(indent=2) + "\n"  # type: ignore[attr-defined]
+    return model.model_dump_json(indent=2) + "\n"  # type: ignore[attr-defined, no-any-return]
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -210,7 +210,7 @@ def _snapshot_digest(
 def _build_profile_snapshot(
     selection_project: Project,
     source_project: Project,
-) -> tuple[JudgeSourceProfileSnapshot, dict[str, str | None], dict[str, str]]:
+) -> tuple[JudgeSourceProfileSnapshot, dict[str, str | None], dict[str, int]]:
     """Plan one per-profile snapshot from a live source project.
 
     Returns the snapshot model, the exact copied-file texts (``None`` when the
@@ -342,7 +342,7 @@ def _build_manifest(
         snap.model_copy(update={"copied_at": copied_at}) for snap in profile_snapshots
     ]
     return JudgeSourcesSnapshotManifest(
-        version=MANIFEST_VERSION,
+        version=MANIFEST_VERSION,  # type: ignore[arg-type]
         selection_profile=selection_project.profile or "",
         snapshot_id=snapshot_id,
         source_sha256=current_source_sha256(selection_project),

@@ -15,6 +15,7 @@ phrase such as ``ten days`` into a match for ``tenday``.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from booktx.context import GlossaryEntry
@@ -22,7 +23,9 @@ from booktx.termbase import TermbaseEntry
 from booktx.termbase_match import iter_boundary_matches, termbase_source_matches
 
 
-def iter_term_matches(text: str, term: str, *, case_sensitive: bool):
+def iter_term_matches(
+    text: str, term: str, *, case_sensitive: bool
+) -> list[re.Match[str]]:
     """Compatibility wrapper around the canonical termbase matcher."""
     return iter_boundary_matches(text, term, case_sensitive=case_sensitive)
 

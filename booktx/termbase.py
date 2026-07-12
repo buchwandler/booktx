@@ -11,7 +11,14 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from booktx.config import (
     Project,
@@ -222,7 +229,9 @@ class TermbaseUsageRule(BaseModel):
         "forbidden_target_literals",
     )
     @classmethod
-    def _validate_literal_lists(cls, value: list[str], info) -> list[str]:
+    def _validate_literal_lists(
+        cls, value: list[str], info: ValidationInfo
+    ) -> list[str]:
         return _dedupe_nonempty(value, field_name=str(info.field_name))
 
     @field_validator(
@@ -231,7 +240,7 @@ class TermbaseUsageRule(BaseModel):
         "forbidden_target_regexes",
     )
     @classmethod
-    def _validate_regex_lists(cls, value: list[str], info) -> list[str]:
+    def _validate_regex_lists(cls, value: list[str], info: ValidationInfo) -> list[str]:
         field_name = str(info.field_name)
         deduped = _dedupe_nonempty(value, field_name=field_name)
         return [_validate_regex(item, field_name=field_name) for item in deduped]
@@ -350,7 +359,9 @@ class TermbaseEntry(BaseModel):
         "target_regex_forbidden",
     )
     @classmethod
-    def _validate_target_lists(cls, value: list[str], info) -> list[str]:
+    def _validate_target_lists(
+        cls, value: list[str], info: ValidationInfo
+    ) -> list[str]:
         field_name = str(info.field_name)
         if field_name == "target_regex_forbidden":
             deduped = _dedupe_nonempty(value, field_name=field_name)
@@ -371,7 +382,7 @@ class TermbaseEntry(BaseModel):
 
     @field_validator("created_at", "updated_at")
     @classmethod
-    def _validate_timestamps(cls, value: str, info) -> str:
+    def _validate_timestamps(cls, value: str, info: ValidationInfo) -> str:
         return _parse_utc_timestamp(value, field_name=str(info.field_name))
 
     @model_validator(mode="after")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -54,7 +55,7 @@ class SourceInterviewLedger(BaseModel):
     items: list[SourceInterviewItem] = Field(default_factory=list)
 
 
-def source_interview_path(project: Project):
+def source_interview_path(project: Project) -> Path:
     if project.profile_dir is None:
         raise ValueError("source interview ledger requires a profile project")
     return project.profile_dir / "source-interview.json"
@@ -110,7 +111,7 @@ def _context_terms(context: TranslationContext) -> set[str]:
 def _termbase_terms(project: Project) -> set[str]:
     try:
         payload = termbase_status_workflow(
-            project.root, profile=project.profile_name, scope="effective", language=None
+            project.root, profile=project.profile, scope="effective", language=None
         )
     except Exception:
         return set()

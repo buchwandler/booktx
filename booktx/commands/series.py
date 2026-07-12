@@ -10,6 +10,7 @@ from booktx.cli_support import _handle_booktx_error, console
 from booktx.errors import BooktxError
 from booktx.workflows.series import (
     SeriesPrepareRequest,
+    SeriesPrepareResult,
     SeriesRecipeWriteOptions,
     build_series_recipe,
     prepare_series_book,
@@ -20,7 +21,7 @@ recipe_app = typer.Typer(help="Manage reusable series setup recipes.")
 series_app.add_typer(recipe_app, name="recipe")
 
 
-def _render_prepare_result(result) -> None:
+def _render_prepare_result(result: SeriesPrepareResult) -> None:
     if result.write:
         console.print(
             f"Prepared {result.project_dir.name} for profile {result.profile}."

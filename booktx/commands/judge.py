@@ -261,6 +261,7 @@ def judge_prepare_grammar(
     source_cfg = source_project.profile_config
     if source_cfg is None or source_cfg.kind != "translation":
         _die("--source-profile must reference a translation profile")
+    assert source_cfg is not None  # narrow after guard
     try:
         project = create_judge_profile_workflow(
             runtime.project.root,

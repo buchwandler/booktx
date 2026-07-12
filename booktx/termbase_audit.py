@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,6 +19,9 @@ from booktx.termbase_match import (
     termbase_source_matches,
 )
 from booktx.translation_store import effective_target_candidate
+
+if TYPE_CHECKING:
+    from booktx.status import StatusBundle
 
 __all__ = [
     "TermbaseMatch",
@@ -105,7 +108,7 @@ def _relevant_entries(
     return filtered
 
 
-def _chapter_ids(bundle, chapter_id: str | None) -> list[str]:
+def _chapter_ids(bundle: StatusBundle, chapter_id: str | None) -> list[str]:
     return (
         [chapter_id]
         if chapter_id is not None
@@ -115,7 +118,7 @@ def _chapter_ids(bundle, chapter_id: str | None) -> list[str]:
 
 def scan_source_termbase(
     project: Project,
-    bundle,
+    bundle: StatusBundle,
     effective: EffectiveTranslationTermbase,
     *,
     chapter_id: str | None = None,
@@ -187,7 +190,7 @@ def _materialize_match(
 
 def audit_termbase(
     project: Project,
-    bundle,
+    bundle: StatusBundle,
     effective: EffectiveTranslationTermbase,
     *,
     chapter_id: str | None = None,

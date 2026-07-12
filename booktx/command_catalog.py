@@ -669,14 +669,21 @@ def apply_command_catalog(
                 continue
             child_path = f"{prefix} {group_info.name}"
             apply_group(child_path, group_info)
-            walk(child_path, group_info.typer_instance)
+            typer_instance = group_info.typer_instance
+            if typer_instance is not None:
+                walk(child_path, typer_instance)
 
     for group_info in app.registered_groups:
         if not isinstance(group_info.name, str):
-            for command_info in group_info.typer_instance.registered_commands:
+            typer_instance = group_info.typer_instance
+            if typer_instance is None:
+                continue
+            for command_info in typer_instance.registered_commands:
                 if command_info.name is None:
                     continue
                 apply_command(command_info.name, command_info)
             continue
         apply_group(group_info.name, group_info)
-        walk(group_info.name, group_info.typer_instance)
+        typer_instance = group_info.typer_instance
+        if typer_instance is not None:
+            walk(group_info.name, typer_instance)

@@ -6,15 +6,17 @@ import json
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import tomli_w
 
+if TYPE_CHECKING:
+    from booktx.config import Project
+
 try:  # pragma: no cover - Python 3.11+ uses stdlib
-    import tomllib
+    import tomllib  # type: ignore[import-not-found]
 except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib
-
 from booktx.cli_support import _isolated_mode_error
 from booktx.config import (
     BooktxError,
@@ -369,14 +371,16 @@ def _validate_prepare_options(options: SeriesPrepareOptions) -> None:
             ) from exc
 
 
-def _maybe_load_existing_project(book: Path):
+def _maybe_load_existing_project(book: Path) -> Project | None:
     legacy_path = book / ".booktx" / "config.toml"
     if source_config_path(book).is_file() or legacy_path.is_file():
         return load_source_project(book)
     return None
 
 
-def _profile_conflicts(profile_project, options: SeriesPrepareOptions) -> list[str]:
+def _profile_conflicts(
+    profile_project: Project, options: SeriesPrepareOptions
+) -> list[str]:
     profile_cfg = load_profile_config(profile_project.root, options.profile)
     conflicts: list[str] = []
     if profile_cfg.kind != "translation":
@@ -524,7 +528,7 @@ def _write_prepare_reports(
     return report_json, report_md
 
 
-def _ensure_source_matches(project, options: SeriesPrepareOptions) -> None:
+def _ensure_source_matches(project: Project, options: SeriesPrepareOptions) -> None:
     if options.allow_existing_source:
         return
     source = find_source_file(project)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from booktx.command_hints import build_command, check_command
 from booktx.config import (
@@ -265,7 +265,7 @@ def build_guide_result(
             ),
             agent_next=None,
         )
-    if int(interview["open"]) > 0:
+    if int(cast(int, interview["open"])) > 0:
         return GuideResult(
             stage="source_interview_open",
             project=str(project.root),
@@ -341,7 +341,7 @@ def build_guide_result(
     )
     if (
         relevant_profile_entry is None
-        or relevant_profile_entry.inspection.state != "managed"
+        or relevant_profile_entry.inspection.state != "managed-valid"
         or relevant_profile_entry.stale
     ):
         return GuideResult(

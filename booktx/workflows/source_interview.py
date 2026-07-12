@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from booktx.config import load_profile_project
 from booktx.context import load_context
@@ -25,6 +25,11 @@ from booktx.source_interview import (
 )
 from booktx.workflows.termbase import termbase_promote_candidate_workflow
 
+if TYPE_CHECKING:
+    from booktx.config import Project
+    from booktx.context import TranslationContext
+    from booktx.source_analysis import SourceAnalysisReport
+
 
 @dataclass(frozen=True)
 class InterviewPlanResult:
@@ -33,7 +38,10 @@ class InterviewPlanResult:
     path: str
 
 
-def _load_inputs(project, profile: str):
+def _load_inputs(
+    project: Project,
+    profile: str,
+) -> tuple[SourceAnalysisReport, Project, TranslationContext]:
     report = read_canonical_report(project)
     if report is None:
         raise _err(
@@ -50,7 +58,9 @@ def _load_inputs(project, profile: str):
     return report, profile_project, context
 
 
-def interview_plan(project, *, profile: str, write: bool) -> InterviewPlanResult:
+def interview_plan(
+    project: Project, *, profile: str, write: bool
+) -> InterviewPlanResult:
     report, profile_project, context = _load_inputs(project, profile)
     ledger = build_ledger(
         profile, report, context, load_decisions(project), profile_project
@@ -67,7 +77,7 @@ def interview_plan(project, *, profile: str, write: bool) -> InterviewPlanResult
 
 
 def interview_status(
-    project, *, profile: str, fail_if_open: bool = False
+    project: Project, *, profile: str, fail_if_open: bool = False
 ) -> dict[str, object]:
     report, profile_project, context = _load_inputs(project, profile)
     ledger = load_ledger(profile_project)
@@ -97,8 +107,8 @@ def interview_status(
 
 
 def _load_fresh_ledger(
-    project, profile: str, *, for_write: bool
-) -> tuple[SourceInterviewLedger, object, object, object]:
+    project: Project, profile: str, *, for_write: bool
+) -> tuple[SourceInterviewLedger, SourceAnalysisReport, Project, TranslationContext]:
     report, profile_project, context = _load_inputs(project, profile)
     ledger = load_ledger(profile_project)
     if ledger is None:
@@ -117,7 +127,7 @@ def _load_fresh_ledger(
 
 
 def interview_next(
-    project, *, profile: str
+    project: Project, *, profile: str
 ) -> tuple[SourceInterviewLedger, SourceInterviewItem, str]:
     ledger, _report, _profile_project, _context = _load_fresh_ledger(
         project, profile, for_write=False
@@ -141,7 +151,7 @@ def _find_item(ledger: SourceInterviewLedger, candidate_id: str) -> SourceInterv
 
 
 def interview_answer(
-    project,
+    project: Project,
     *,
     profile: str,
     candidate_id: str,
@@ -191,7 +201,7 @@ def interview_answer(
 
 
 def interview_skip(
-    project,
+    project: Project,
     *,
     profile: str,
     candidate_id: str,
@@ -209,7 +219,7 @@ def interview_skip(
                 project,
                 report,
                 candidate_id=candidate_id,
-                disposition=disposition,
+                disposition=disposition,  # type: ignore[arg-type]
                 reason=reason,
                 decided_by="source-interview",
                 write=True,

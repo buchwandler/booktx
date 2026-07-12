@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
+    from booktx.runtime import RuntimeContext
     from booktx.source_analysis import SourceAnalysisReport
 
 import typer
@@ -384,7 +385,7 @@ def source_review_candidate_cmd(
     )
 
 
-def _load_project_root_runtime(project_dir: Path, command_name: str):
+def _load_project_root_runtime(project_dir: Path, command_name: str) -> RuntimeContext:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
     if runtime.mode.isolated_output:
         _die(f"source {command_name} is a project-root command")
@@ -512,9 +513,9 @@ def source_interview_answer_cmd(
             target=target,
             forbid=forbid or [],
             rationale=rationale,
-            storage=storage,
+            storage=cast(Literal["context", "termbase", "both"], storage),
             write=write,
-        )  # type: ignore[arg-type]
+        )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return
@@ -546,10 +547,10 @@ def source_interview_skip_cmd(
             runtime.project,
             profile=profile,
             candidate_id=candidate_id,
-            disposition=disposition,
+            disposition=cast(Literal["ignored", "reviewed", "deferred"], disposition),
             reason=reason,
             write=write,
-        )  # type: ignore[arg-type]
+        )
     except BooktxError as exc:
         _handle_booktx_error(exc)
         return

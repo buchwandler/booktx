@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
+if TYPE_CHECKING:
+    from booktx.config import Project
+    from booktx.context import TranslationContext
 from booktx.cli_support import _load_project_or_exit, _project_status_snapshot
 from booktx.context import load_context
 from booktx.errors import _err
@@ -151,7 +154,9 @@ def glossary_add_workflow(
     )
 
 
-def _load_context_project(project_dir: Path | None, profile: str | None):
+def _load_context_project(
+    project_dir: Path | None, profile: str | None
+) -> tuple[Project, TranslationContext]:
     if project_dir is None:
         raise _err(
             "glossary_project_required",
@@ -264,8 +269,8 @@ def glossary_audit_workflow(
     payload = result.as_dict()
     payload["source"] = source
     payload["chapter"] = chapter
-    payload["finding_count"] = len(payload["records"]) + len(
-        payload["inactive_records"]
+    payload["finding_count"] = len(cast(list[Any], payload["records"])) + len(
+        cast(list[Any], payload["inactive_records"])
     )
     payload["records_with_matches"] = result.records_with_source_term
     return payload

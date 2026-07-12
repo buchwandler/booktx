@@ -310,8 +310,8 @@ def _classified_occurrence_hits(
         selected = ordered
     else:
         occurrence_keys: list[tuple[int, int, str]] = []
-        for hit in ordered:
-            key = (hit.start, hit.end, hit.text)
+        for chit in ordered:
+            key = (chit.start, chit.end, chit.text)
             if key not in occurrence_keys:
                 occurrence_keys.append(key)
         if occurrence_index >= len(occurrence_keys):
@@ -319,11 +319,11 @@ def _classified_occurrence_hits(
         else:
             chosen = occurrence_keys[occurrence_index]
             selected = [
-                hit for hit in ordered if (hit.start, hit.end, hit.text) == chosen
+                chit for chit in ordered if (chit.start, chit.end, chit.text) == chosen
             ]
-    required = [hit.text for hit in selected if hit.category == "required"]
-    allowed = [hit.text for hit in selected if hit.category == "allowed"]
-    forbidden = [hit.text for hit in selected if hit.category == "forbidden"]
+    required = [chit.text for chit in selected if chit.category == "required"]
+    allowed = [chit.text for chit in selected if chit.category == "allowed"]
+    forbidden = [chit.text for chit in selected if chit.category == "forbidden"]
     return required, allowed, forbidden
 
 

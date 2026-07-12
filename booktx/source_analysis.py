@@ -337,7 +337,9 @@ def _bundled_generic_lemmas(language: str) -> frozenset[str]:
     lang = (language or "").lower().split("-")[0]
     if lang != "en":
         return frozenset()
-    resource = resources.files("booktx").joinpath("data", f"common_lemmas_{lang}.txt")
+    resource = (
+        resources.files("booktx").joinpath("data").joinpath(f"common_lemmas_{lang}.txt")
+    )
     try:
         raw = resource.read_text("utf-8")
     except OSError as exc:  # pragma: no cover - packaging/runtime guard
@@ -1763,15 +1765,17 @@ def _classify_review_bucket(
     high_risk_singleton: bool,
     min_count: int,
     risk_score: float,
-) -> tuple[str, str, str | None]:
-    review_bucket: SourceReviewBucket = "maybe"
-    suggested_action: Literal[
+) -> tuple[
+    SourceReviewBucket,
+    Literal[
         "none",
         "ask_question",
         "add_advisory_glossary",
         "review_name_policy",
         "review_for_binding_glossary",
-    ] = "none"
+    ],
+    str | None,
+]:
     suppression_reason: str | None = None
 
     if features.matches_exclude_pattern:
@@ -1845,7 +1849,7 @@ def _classify_review_bucket(
     if review_bucket == "no_action":
         suggested_action = "none"
 
-    return review_bucket, suggested_action, suppression_reason
+    return review_bucket, suggested_action, suppression_reason  # type: ignore[return-value]
 
 
 def _classify_candidate(
