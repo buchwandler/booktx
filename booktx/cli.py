@@ -17,7 +17,7 @@ from booktx.commands.context import context_app
 from booktx.commands.epub import epub_app
 from booktx.commands.glossary import glossary_app
 from booktx.commands.guide import guide_app
-from booktx.commands.identity import identity_app, model_app
+from booktx.commands.identity import identity_app
 from booktx.commands.judge import judge_app
 from booktx.commands.profile import profile_app
 from booktx.commands.review import review_app
@@ -64,7 +64,7 @@ app.add_typer(glossary_app, name="glossary")
 app.add_typer(termbase_app, name="termbase")
 app.add_typer(identity_app, name="identity")
 app.add_typer(agents_app, name="agents")
-app.add_typer(model_app, name="model")
+
 apply_command_catalog(app, root_app=root_app)
 
 
