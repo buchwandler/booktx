@@ -26,10 +26,9 @@ from booktx.config import (
     translation_review_ingest_block_path,
     translation_review_source_block_path,
     write_profile_config,
-    write_translation_store,
 )
 from booktx.errors import BooktxError
-from booktx.models import QualityReviewConfig, ReviewPassConfig
+from booktx.models import QualityReviewConfig, ReviewPassConfig, TranslationStoreV2
 from booktx.record_refs import parse_record_ref
 from booktx.review_status import compute_review_snapshot
 
@@ -342,31 +341,42 @@ def accept_review_submission_workflow(
 
 def activate_review_workflow(proj: Project, *, record_ref: str, review_ref: str) -> str:
     """Activate an existing review candidate for a single record."""
+    from booktx.store import StoreFormat, open_translation_store
     from booktx.translation_store import find_review_candidate, review_chain_is_stale
 
-    store = load_translation_store(proj)
     record_id = parse_record_ref(record_ref).canonical_id
-    stored = store.records.get(record_id)
-    if stored is None:
-        raise _err("review_no_record", f"record {record_id} has no stored translations")
-    candidate = find_review_candidate(stored, review_ref)
-    if candidate is None:
-        raise _err(
-            "review_no_candidate",
-            f"record {record_id} has no review {review_ref}",
-        )
-    if candidate.status != "accepted":
-        raise _err(
-            "review_not_accepted",
-            f"review {review_ref} is {candidate.status!r}, not accepted",
-        )
-    if review_chain_is_stale(stored, candidate.review_ref):
-        raise _err(
-            "review_stale_chain", f"review {review_ref} has a stale derivation chain"
-        )
-    stored.active_review = candidate.review_ref
-    write_translation_store(proj, store)
-    return f"{record_id} -> {candidate.review_ref}"
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    activated_ref: str | None = None
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        nonlocal activated_ref
+        stored = store.records.get(record_id)
+        if stored is None:
+            raise _err(
+                "review_no_record", f"record {record_id} has no stored translations"
+            )
+        candidate = find_review_candidate(stored, review_ref)
+        if candidate is None:
+            raise _err(
+                "review_no_candidate",
+                f"record {record_id} has no review {review_ref}",
+            )
+        if candidate.status != "accepted":
+            raise _err(
+                "review_not_accepted",
+                f"review {review_ref} is {candidate.status!r}, not accepted",
+            )
+        if review_chain_is_stale(stored, candidate.review_ref):
+            raise _err(
+                "review_stale_chain",
+                f"review {review_ref} has a stale derivation chain",
+            )
+        stored.active_review = candidate.review_ref
+        activated_ref = candidate.review_ref
+
+    repo.edit_v2(_mutate, summary="activate review candidate")
+    assert activated_ref is not None
+    return f"{record_id} -> {activated_ref}"
 
 
 def deactivate_review_workflow(
@@ -380,16 +390,26 @@ def deactivate_review_workflow(
     Returns ``(deactivation_message, record_id)`` so the command can render
     the recheck hint with the chapter id.
     """
-    store = load_translation_store(proj)
     record_id = parse_record_ref(record_ref).canonical_id
-    stored = store.records.get(record_id)
-    if stored is None:
-        raise _err("review_no_record", f"record {record_id} has no stored translations")
-    if stored.active_review is None:
-        raise _err("review_no_active", "no active review to deactivate")
-    old_ref = stored.active_review
-    stored.active_review = None
-    write_translation_store(proj, store)
+    from booktx.store import StoreFormat, open_translation_store
+
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    old_ref: str | None = None
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        nonlocal old_ref
+        stored = store.records.get(record_id)
+        if stored is None:
+            raise _err(
+                "review_no_record", f"record {record_id} has no stored translations"
+            )
+        if stored.active_review is None:
+            raise _err("review_no_active", "no active review to deactivate")
+        old_ref = stored.active_review
+        stored.active_review = None
+
+    repo.edit_v2(_mutate, summary="deactivate review candidate")
+    assert old_ref is not None
     return f"{record_id}: deactivated review {old_ref}", record_id
 
 
@@ -417,58 +437,68 @@ def revise_review_record_workflow(
     from booktx.translation_store import find_review_candidate, review_chain_is_stale
 
     record_id = parse_record_ref(record_ref).canonical_id
-    store = load_translation_store(proj)
-    stored = store.records.get(record_id)
-    if stored is None:
-        raise _err("review_no_record", f"record {record_id} has no stored translations")
-    existing = find_review_candidate(stored, base_review)
-    if existing is None:
-        raise _err(
-            "review_no_candidate", f"record {record_id} has no review {base_review}"
-        )
-    if existing.status != "accepted":
-        raise _err(
-            "review_not_accepted",
-            f"review {base_review} is {existing.status!r}, not accepted",
-        )
-    if review_chain_is_stale(stored, existing.review_ref):
-        raise _err(
-            "review_stale_chain", f"review {base_review} has a stale derivation chain"
-        )
+    from booktx.store import StoreFormat, open_translation_store
 
-    # Determine next run number for this pass: max existing run + 1.
-    next_run = (
-        max(
-            (
-                r.run_number
-                for r in stored.reviews
-                if r.pass_number == existing.pass_number
-            ),
-            default=0,
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    new_ref: str | None = None
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        nonlocal new_ref
+        stored = store.records.get(record_id)
+        if stored is None:
+            raise _err(
+                "review_no_record", f"record {record_id} has no stored translations"
+            )
+        existing = find_review_candidate(stored, base_review)
+        if existing is None:
+            raise _err(
+                "review_no_candidate", f"record {record_id} has no review {base_review}"
+            )
+        if existing.status != "accepted":
+            raise _err(
+                "review_not_accepted",
+                f"review {base_review} is {existing.status!r}, not accepted",
+            )
+        if review_chain_is_stale(stored, existing.review_ref):
+            raise _err(
+                "review_stale_chain",
+                f"review {base_review} has a stale derivation chain",
+            )
+
+        next_run = (
+            max(
+                (
+                    r.run_number
+                    for r in stored.reviews
+                    if r.pass_number == existing.pass_number
+                ),
+                default=0,
+            )
+            + 1
         )
-        + 1
-    )
-    new_ref = f"R{existing.pass_number}.{next_run}"
-    created_at = utc_timestamp()
-    candidate = TranslationReviewCandidate(
-        pass_number=existing.pass_number,
-        run_number=next_run,
-        review_ref=new_ref,
-        base_kind="review",
-        base_ref=existing.review_ref,
-        base_target_sha256=existing.target_sha256,
-        target=target_text,
-        target_sha256=sha256(target_text.encode("utf-8")).hexdigest(),
-        status="accepted",
-        created_at=created_at,
-        updated_at=created_at,
-        review_task_id=None,
-        review_note=f"Revised from {base_review}.",
-    )
-    stored.reviews.append(candidate)
-    if activate:
-        stored.active_review = new_ref
-    write_translation_store(proj, store)
+        new_ref = f"R{existing.pass_number}.{next_run}"
+        created_at = utc_timestamp()
+        candidate = TranslationReviewCandidate(
+            pass_number=existing.pass_number,
+            run_number=next_run,
+            review_ref=new_ref,
+            base_kind="review",
+            base_ref=existing.review_ref,
+            base_target_sha256=existing.target_sha256,
+            target=target_text,
+            target_sha256=sha256(target_text.encode("utf-8")).hexdigest(),
+            status="accepted",
+            created_at=created_at,
+            updated_at=created_at,
+            review_task_id=None,
+            review_note=f"Revised from {base_review}.",
+        )
+        stored.reviews.append(candidate)
+        if activate:
+            stored.active_review = new_ref
+
+    repo.edit_v2(_mutate, summary="revise review record")
+    assert new_ref is not None
     message = f"revised: {record_id} -> {new_ref}" + (
         " (activated)" if activate else ""
     )

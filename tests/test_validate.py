@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import tomli_w
@@ -401,6 +402,11 @@ def test_missing_ledger_version_is_an_error_for_v2_store(tmp_path: Path):
     (proj.chunks_dir / "0001.json").write_text(
         source.model_dump_json(), encoding="utf-8"
     )
+    from booktx.config import translation_store_v3_root
+
+    v3_root = translation_store_v3_root(proj)
+    if v3_root.exists():
+        shutil.rmtree(v3_root)
     write_translation_store(
         proj,
         TranslationStoreV2(

@@ -46,10 +46,8 @@ from booktx.config import (
     load_manifest,
     load_project,
     load_source_project,
-    load_translation_store,
     project_source_sha256,
     protected_terms_sha256,
-    translation_store_path,
 )
 from booktx.context import context_markdown_path
 from booktx.epub_io import EpubExtraction, extract_epub
@@ -250,10 +248,12 @@ def _has_accepted_store_records(proj: Project) -> bool:
     else:
         candidates = [proj]
     for candidate in candidates:
-        path = translation_store_path(candidate)
-        if not path.is_file():
+        from booktx.store import StoreFormat, open_translation_store
+
+        repo = open_translation_store(candidate, default_format=StoreFormat.V2)
+        if repo.is_empty():
             continue
-        store = load_translation_store(candidate)
+        store = repo.materialize_v2()
         if any(
             any(rec.status == "accepted" for rec in record.versions)
             for record in store.records.values()

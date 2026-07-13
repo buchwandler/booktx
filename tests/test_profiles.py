@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from booktx.cli import app
-from booktx.config import load_profile_project, load_project, translation_store_path
+from booktx.config import (
+    load_profile_project,
+    load_project,
+    translation_store_path,
+    translation_store_v3_root,
+)
 
 runner = CliRunner()
 
@@ -249,6 +255,9 @@ def test_profile_compare_reads_profile_local_store_targets(tmp_path: Path):
         ("de_glm_5_2", "B"),
     ):
         proj = load_profile_project(project_dir, profile_name)
+        v3_root = translation_store_v3_root(proj)
+        if v3_root.exists():
+            shutil.rmtree(v3_root)
         translation_store_path(proj).write_text(
             json.dumps(
                 {

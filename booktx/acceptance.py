@@ -36,8 +36,6 @@ from typing import TYPE_CHECKING
 from booktx.config import (
     Project,
     _err,
-    load_translation_store,
-    write_translation_store,
 )
 from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import utc_timestamp
@@ -49,7 +47,7 @@ from booktx.validate import Severity, load_validation_context, validate_record_p
 from booktx.versioning import resolve_current_version
 
 if TYPE_CHECKING:
-    from booktx.models import TranslationTask
+    from booktx.models import TranslationStoreV2, TranslationTask
     from booktx.status import StatusBundle
     from booktx.validate import Finding
 
@@ -272,38 +270,45 @@ def _write_accepted(
     task: TranslationTask | None,
 ) -> tuple[str, str]:
     """Persist accepted records atomically and return timestamp plus version_ref."""
+    from booktx.store import StoreFormat, open_translation_store
+
     source_by_id = bundle.index.source_by_id
     updated_at = utc_timestamp()
-    store = load_translation_store(proj)
-    store.source_sha256 = bundle.snapshot.source.source_sha256
-    for item in submitted:
-        source_view = source_by_id[item.id]
-        record = ensure_store_record(
-            store,
-            item.id,
-            source=source_view.source,
-            source_sha256=source_view.source_sha256,
-        )
-        upsert_translation_version(
-            record,
-            version_ref,
-            item.target,
-            updated_at=updated_at,
-            baseline_ref=task.baseline_ref if task is not None else None,
-            baseline_sha256=task.baseline_sha256 if task is not None else None,
-            context_view_sha256=(
-                task.context_view_sha256 if task is not None else None
-            ),
-            context_view_path=task.context_view_path if task is not None else None,
-            context_notes_scope=task.context_notes_scope if task is not None else None,
-            context_target_chapter_id=(
-                task.context_target_chapter_id if task is not None else None
-            ),
-            context_notes_through_chapter_id=(
-                task.context_notes_through_chapter_id if task is not None else None
-            ),
-        )
-    write_translation_store(proj, store)
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        store.source_sha256 = bundle.snapshot.source.source_sha256
+        for item in submitted:
+            source_view = source_by_id[item.id]
+            record = ensure_store_record(
+                store,
+                item.id,
+                source=source_view.source,
+                source_sha256=source_view.source_sha256,
+            )
+            upsert_translation_version(
+                record,
+                version_ref,
+                item.target,
+                updated_at=updated_at,
+                baseline_ref=task.baseline_ref if task is not None else None,
+                baseline_sha256=task.baseline_sha256 if task is not None else None,
+                context_view_sha256=(
+                    task.context_view_sha256 if task is not None else None
+                ),
+                context_view_path=task.context_view_path if task is not None else None,
+                context_notes_scope=task.context_notes_scope
+                if task is not None
+                else None,
+                context_target_chapter_id=(
+                    task.context_target_chapter_id if task is not None else None
+                ),
+                context_notes_through_chapter_id=(
+                    task.context_notes_through_chapter_id if task is not None else None
+                ),
+            )
+
+    repo.edit_v2(_mutate, summary="accept translation records")
     return updated_at, version_ref
 
 

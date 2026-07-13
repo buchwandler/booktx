@@ -19,7 +19,12 @@ book/
     context.json
     context.md
     context-history/views/<sha>/
-    translation-store.json
+    translation-store/
+      manifest.json
+      current/
+      translation-candidates/
+      review-candidates/
+      transactions/
     translation-version-ledger.json
     tasks/
     todos/
@@ -47,9 +52,9 @@ book/
 ## Profile-local state
 
 Each `translations/<profile>/` directory is an isolation boundary. The
-`translation-store.json` file is the current `TranslationStoreV2` store;
-`context.json` and the version ledger are also durable state. Tasks, todos,
-submission files, reviews, judge artifacts, and reports remain profile-local.
+`translation-store/` directory is the canonical store backend; `context.json`
+and the version ledger are also durable state. Tasks, todos, submission files,
+reviews, judge artifacts, and reports remain profile-local.
 
 `translated/`, editor indexes, and `output/` are generated artifacts. They are
 rebuildable from source state and the profile store and are not the source of

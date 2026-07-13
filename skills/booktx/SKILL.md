@@ -24,12 +24,22 @@ translations/<profile>/     one profile's mutable translation state
 `.booktx/` contains source configuration, manifests, protected names, chapter
 maps, chunks, and source-analysis evidence. A profile contains
 `.booktx-profile.json`, `config.toml`, `identity.json`, `context.json`,
-`context.md`, `translation-store.json`, version ledgers, tasks, todos, ingest,
-reviews, reports, and output.
+`context.md`, a shard-based `translation-store/` directory, version ledgers,
+tasks, todos, ingest, reviews, reports, and output.
 
-`translation-store.json` is the current `TranslationStoreV2` record store.
+`translation-store/` is the canonical store backend. Its current live layout is:
+
+```text
+translation-store/
+  manifest.json
+  current/<chunk>.json
+  translation-candidates/<chunk>.json
+  review-candidates/<chunk>.json
+  transactions/
+```
+
 Generated translated exports, indexes, reports, and output are derived files.
-Never edit the store or generated files directly.
+Never edit canonical store shards or generated files directly.
 
 ## Runtime modes
 

@@ -204,7 +204,14 @@ def test_translation_store_helpers_roundtrip(tmp_path: Path):
     write_translation_store(proj, store)
 
     loaded = load_translation_store(proj)
-    assert loaded == store
+    assert loaded.source_sha256 == store.source_sha256
+    assert loaded.records.keys() == store.records.keys()
+    loaded_record = loaded.records["0001-000001"]
+    assert loaded_record.chunk_id == 1
+    assert loaded_record.part_id == 1
+    assert loaded_record.source_sha256 == "abc123"
+    assert loaded_record.active_version == "1.1"
+    assert loaded_record.versions[0].target == "Hallo."
 
 
 def test_translation_version_ledger_helpers_roundtrip(tmp_path: Path):

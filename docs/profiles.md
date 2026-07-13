@@ -52,12 +52,12 @@ are outside the isolated workflow.
 
 - `.booktx-profile.json`, `config.toml`, and `identity.json`
 - `context.json`, `context.md`, and `context-history/`
-- `translation-store.json` and `translation-version-ledger.json`
+- `translation-store/` and `translation-version-ledger.json`
 - `tasks/`, `todos/`, `ingest/`, `reviews/`, `review-todos/`, and judge artifacts
 - generated `translated/`, indexes, `reports/`, and `output/`
 
 Never use sibling profile paths in an isolated profile-root workflow. Never edit
-`translation-store.json` or generated exports directly; use the CLI surfaces.
+canonical store shards or generated exports directly; use the CLI surfaces.
 
 ## Context transfer
 

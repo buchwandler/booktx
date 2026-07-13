@@ -79,11 +79,10 @@ from booktx.config import (
     translation_store_path,
     translation_task_source_block_path,
     write_identity,
-    write_translation_store,
 )
 from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.editor_indexes import EditorIndexError, export_editor_indexes
-from booktx.errors import BooktxError
+from booktx.errors import BooktxError, _err
 from booktx.models import (
     StoredTranslationRecordV2,
     TranslatedChunk,
@@ -92,6 +91,7 @@ from booktx.models import (
     TranslationIdentity,
     TranslationReviewCandidate,
     TranslationStore,
+    TranslationStoreV2,
 )
 from booktx.path_display import display_path
 from booktx.progress import (
@@ -907,7 +907,8 @@ def translate_import_legacy_workflow(
     """Import valid legacy translated chunk files into the translation store."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     _require_chunks(proj)
-    store = load_translation_store(proj)
+    from booktx.store import StoreFormat, open_translation_store
+
     resolution = resolve_current_version(
         proj,
         note="Imported valid legacy translated chunks into nested translation store.",
@@ -915,42 +916,47 @@ def translate_import_legacy_workflow(
     imported_records = 0
     imported_chunks = 0
     source_chunks = {chunk.chunk_id: chunk for chunk in load_source_chunks(proj)}
-    for chunk_id, source_chunk in source_chunks.items():
-        if proj.translated_dir is None:
-            continue
-        path = proj.translated_dir / f"{chunk_id}.json"
-        if not path.is_file():
-            continue
-        findings = validate_chunk_pair(source_chunk, path, load_context(proj))
-        if any(finding.severity == Severity.ERROR for finding in findings):
-            continue
-        translated_chunk, err = strict_load_translated(path)
-        if err is not None or translated_chunk is None:
-            continue
-        imported_chunks += 1
-        source_records = {record.id: record for record in source_chunk.records}
-        for record in translated_chunk.records:
-            source_record = source_records[record.id]
-            stored = ensure_store_record(
-                store,
-                record.id,
-                source=source_record.source,
-                source_sha256=source_record_sha256(source_record.source),
-            )
-            if active_candidate(stored) is not None:
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        nonlocal imported_records, imported_chunks
+        for chunk_id, source_chunk in source_chunks.items():
+            if proj.translated_dir is None:
                 continue
-            upsert_translation_version(
-                stored,
-                resolution.version_ref,
-                record.target,
-                updated_at=datetime.now(timezone.utc)
-                .replace(microsecond=0)
-                .isoformat()
-                .replace("+00:00", "Z"),
-            )
-            imported_records += 1
-    store.source_sha256 = project_source_sha256(proj)
-    write_translation_store(proj, store)
+            path = proj.translated_dir / f"{chunk_id}.json"
+            if not path.is_file():
+                continue
+            findings = validate_chunk_pair(source_chunk, path, load_context(proj))
+            if any(finding.severity == Severity.ERROR for finding in findings):
+                continue
+            translated_chunk, err = strict_load_translated(path)
+            if err is not None or translated_chunk is None:
+                continue
+            imported_chunks += 1
+            source_records = {record.id: record for record in source_chunk.records}
+            for record in translated_chunk.records:
+                source_record = source_records[record.id]
+                stored = ensure_store_record(
+                    store,
+                    record.id,
+                    source=source_record.source,
+                    source_sha256=source_record_sha256(source_record.source),
+                )
+                if active_candidate(stored) is not None:
+                    continue
+                upsert_translation_version(
+                    stored,
+                    resolution.version_ref,
+                    record.target,
+                    updated_at=datetime.now(timezone.utc)
+                    .replace(microsecond=0)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                )
+                imported_records += 1
+        store.source_sha256 = project_source_sha256(proj)
+
+    repo.edit_v2(_mutate, summary="import legacy translated chunks")
     console.print(
         f"imported: {imported_records} record(s) from {imported_chunks} legacy chunk(s)"
     )
@@ -960,6 +966,8 @@ def translate_migrate_store_workflow(
     project_dir: Path,
     profile: str | None = None,
     write: bool = False,
+    target_format: str | None = None,
+    as_json: bool = False,
     actor: str | None = None,
     harness: str | None = None,
     model: str | None = None,
@@ -968,6 +976,47 @@ def translate_migrate_store_workflow(
 ) -> None:
     """Inspect or rewrite a legacy translation-store.json into the v2 schema."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    from booktx.store import (
+        StoreFormat,
+        execute_store_migration,
+        open_translation_store,
+    )
+
+    if target_format is not None:
+        target = StoreFormat(target_format)
+        result = execute_store_migration(proj, target_format=target, dry_run=not write)
+        if as_json:
+            console.print_json(
+                data={
+                    "source_format": result.plan.source_format.value,
+                    "target_format": result.plan.target_format.value,
+                    "records": result.records,
+                    "chunk_ids": result.chunk_ids,
+                    "backup_path": (
+                        str(result.backup_path)
+                        if result.backup_path is not None
+                        else None
+                    ),
+                    "report_path": (
+                        str(result.report_path)
+                        if result.report_path is not None
+                        else None
+                    ),
+                    "changed": result.changed,
+                }
+            )
+            return
+        verb = "migrated" if write else "dry-run: would migrate"
+        console.print(
+            f"{verb} {result.records} record(s) from "
+            f"{result.plan.source_format.value} to {result.plan.target_format.value}"
+        )
+        if result.backup_path is not None:
+            console.print(f"backup: {_project_relative(result.backup_path, proj.root)}")
+        if result.report_path is not None:
+            console.print(f"report: {_project_relative(result.report_path, proj.root)}")
+        return
+
     path = translation_store_path(proj)
     if not path.is_file():
         _die("translation-store.json is missing")
@@ -1021,7 +1070,9 @@ def translate_migrate_store_workflow(
             "cannot migrate store with missing source records: "
             + ", ".join(migration.missing_source_ids)
         )
-    write_translation_store(proj, migration.store)
+    open_translation_store(proj, default_format=StoreFormat.V2).write_materialized_v2(
+        migration.store
+    )
     console.print(
         f"migrated: {migration.migrated_records} record(s) to store v2 at "
         f"{_project_relative(path, proj.root)}"
@@ -1533,19 +1584,35 @@ def translation_activate_workflow(
 ) -> None:
     """Activate one stored candidate version for a single record."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    store = load_translation_store(proj)
+    from booktx.store import StoreFormat, open_translation_store
+
     record_id = parse_record_ref(record_ref).canonical_id
-    stored = store.records.get(record_id)
-    if stored is None:
-        _die(f"record {record_id} has no stored translations")
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    activated_ref: str | None = None
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        nonlocal activated_ref
+        stored = store.records.get(record_id)
+        if stored is None:
+            raise _err(
+                "translate_no_record", f"record {record_id} has no stored translations"
+            )
+        candidate = find_candidate(stored, version_ref)
+        if candidate is None:
+            raise _err(
+                "translate_no_version",
+                f"record {record_id} has no version {version_ref}",
+            )
+        stored.active_version = candidate.version_ref
+        activated_ref = candidate.version_ref
+
+    try:
+        repo.edit_v2(_mutate, summary="activate translation version")
+    except BooktxError as exc:
+        _die(str(exc))
         return
-    candidate = find_candidate(stored, version_ref)
-    if candidate is None:
-        _die(f"record {record_id} has no version {version_ref}")
-        return
-    stored.active_version = candidate.version_ref
-    write_translation_store(proj, store)
-    console.print(f"{record_id} -> {candidate.version_ref}")
+    assert activated_ref is not None
+    console.print(f"{record_id} -> {activated_ref}")
 
 
 def translation_review_workflow(
@@ -1557,32 +1624,48 @@ def translation_review_workflow(
 ) -> None:
     """Review one stored candidate and optionally activate it."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
-    store = load_translation_store(proj)
+    from booktx.store import StoreFormat, open_translation_store
+
     record_id = parse_record_ref(record_ref).canonical_id
-    stored = store.records.get(record_id)
-    if stored is None:
-        _die(f"record {record_id} has no stored translations")
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    reviewed_ref: str | None = None
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        nonlocal reviewed_ref
+        stored = store.records.get(record_id)
+        if stored is None:
+            raise _err(
+                "translate_no_record", f"record {record_id} has no stored translations"
+            )
+        candidate = (
+            find_candidate(stored, activate)
+            if activate is not None
+            else active_candidate(stored)
+        )
+        if candidate is None:
+            raise _err(
+                "translate_no_candidate",
+                f"record {record_id} has no matching review target",
+            )
+        if activate is not None:
+            stored.active_version = candidate.version_ref
+        candidate.reviewed_at = (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        candidate.reviewed_by = _resolved_identity(proj).actor
+        candidate.review_note = note
+        reviewed_ref = candidate.version_ref
+
+    try:
+        repo.edit_v2(_mutate, summary="record translation review metadata")
+    except BooktxError as exc:
+        _die(str(exc))
         return
-    candidate = (
-        find_candidate(stored, activate)
-        if activate is not None
-        else active_candidate(stored)
-    )
-    if candidate is None:
-        _die(f"record {record_id} has no matching review target")
-        return
-    if activate is not None:
-        stored.active_version = candidate.version_ref
-    candidate.reviewed_at = (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-    candidate.reviewed_by = _resolved_identity(proj).actor
-    candidate.review_note = note
-    write_translation_store(proj, store)
-    console.print(f"{record_id} reviewed {candidate.version_ref}")
+    assert reviewed_ref is not None
+    console.print(f"{record_id} reviewed {reviewed_ref}")
 
 
 def translate_set_record_workflow(
@@ -1732,8 +1815,7 @@ def translation_revise_record_workflow(
         _die(f"empty target for record {record_id}")
 
     # Load store and check the record exists.
-    store = load_translation_store(proj)
-    stored = store.records.get(record_id)
+    stored = load_translation_store(proj).records.get(record_id)
     if stored is None:
         _die(f"record {record_id} has no stored translations")
     assert stored is not None
@@ -1788,27 +1870,33 @@ def translation_revise_record_workflow(
         proj, bundle=bundle, record_ids={record_id}
     )[bundle.index.record_to_chapter[record_id]]
     version_ref = write_context.version_ref
-    ensure_store_record(
-        store,
-        record_id,
-        source=source_view.source,
-        source_sha256=source_view.source_sha256,
-    )
-    upsert_translation_version(
-        store.records[record_id],
-        version_ref,
-        target_text,
-        updated_at=utc_timestamp(),
-        activate=activate,
-        baseline_ref=write_context.baseline_ref,
-        baseline_sha256=write_context.baseline_sha256,
-        context_view_sha256=write_context.context_view_sha256,
-        context_view_path=write_context.context_view_path,
-        context_notes_scope=write_context.context_notes_scope,
-        context_target_chapter_id=write_context.context_target_chapter_id,
-        context_notes_through_chapter_id=write_context.context_notes_through_chapter_id,
-    )
-    write_translation_store(proj, store)
+    from booktx.store import StoreFormat, open_translation_store
+
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        ensure_store_record(
+            store,
+            record_id,
+            source=source_view.source,
+            source_sha256=source_view.source_sha256,
+        )
+        upsert_translation_version(
+            store.records[record_id],
+            version_ref,
+            target_text,
+            updated_at=utc_timestamp(),
+            activate=activate,
+            baseline_ref=write_context.baseline_ref,
+            baseline_sha256=write_context.baseline_sha256,
+            context_view_sha256=write_context.context_view_sha256,
+            context_view_path=write_context.context_view_path,
+            context_notes_scope=write_context.context_notes_scope,
+            context_target_chapter_id=write_context.context_target_chapter_id,
+            context_notes_through_chapter_id=write_context.context_notes_through_chapter_id,
+        )
+
+    repo.edit_v2(_mutate, summary="revise translation record")
 
     console.print(
         f"revised: {record_id} -> {version_ref}" + (" (activated)" if activate else "")
@@ -1927,30 +2015,36 @@ def translation_revise_block_workflow(
         proj, bundle=bundle, record_ids=submitted_ids
     )
     version_ref = next(iter(write_contexts.values())).version_ref
-    for item in submitted:
-        source_view = source_views[item.id]
-        write_context = write_contexts[bundle.index.record_to_chapter[item.id]]
-        ensure_store_record(
-            store,
-            item.id,
-            source=source_view.source,
-            source_sha256=source_view.source_sha256,
-        )
-        upsert_translation_version(
-            store.records[item.id],
-            version_ref,
-            item.target,
-            updated_at=utc_timestamp(),
-            activate=activate,
-            baseline_ref=write_context.baseline_ref,
-            baseline_sha256=write_context.baseline_sha256,
-            context_view_sha256=write_context.context_view_sha256,
-            context_view_path=write_context.context_view_path,
-            context_notes_scope=write_context.context_notes_scope,
-            context_target_chapter_id=write_context.context_target_chapter_id,
-            context_notes_through_chapter_id=write_context.context_notes_through_chapter_id,
-        )
-    write_translation_store(proj, store)
+    from booktx.store import StoreFormat, open_translation_store
+
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+
+    def _mutate(store_to_edit: TranslationStoreV2) -> None:
+        for item in submitted:
+            source_view = source_views[item.id]
+            write_context = write_contexts[bundle.index.record_to_chapter[item.id]]
+            ensure_store_record(
+                store_to_edit,
+                item.id,
+                source=source_view.source,
+                source_sha256=source_view.source_sha256,
+            )
+            upsert_translation_version(
+                store_to_edit.records[item.id],
+                version_ref,
+                item.target,
+                updated_at=utc_timestamp(),
+                activate=activate,
+                baseline_ref=write_context.baseline_ref,
+                baseline_sha256=write_context.baseline_sha256,
+                context_view_sha256=write_context.context_view_sha256,
+                context_view_path=write_context.context_view_path,
+                context_notes_scope=write_context.context_notes_scope,
+                context_target_chapter_id=write_context.context_target_chapter_id,
+                context_notes_through_chapter_id=write_context.context_notes_through_chapter_id,
+            )
+
+    repo.edit_v2(_mutate, summary="revise translation block")
     chapters = sorted(
         {
             bundle.index.record_to_chapter.get(item.id, "")

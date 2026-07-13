@@ -7,8 +7,10 @@ separate API contract says otherwise.
 
 The durable model names currently include `TranslationStoreV2`, translation
 records and review candidates, context models, profile configuration, source
-manifests, and EPUB span metadata. The profile-local store is
-`translations/<profile>/translation-store.json`.
+manifests, EPUB span metadata, and the v3 shard models in
+`booktx.store.models`. The profile-local canonical store is the
+`translations/<profile>/translation-store/` directory; `TranslationStoreV2`
+remains the compatibility materialization model.
 
 The reference is intentionally broad so generated documentation can expose
 model fields and service helpers. It should not be read as a promise that every

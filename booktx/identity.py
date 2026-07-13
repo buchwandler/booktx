@@ -7,20 +7,18 @@ lives.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from booktx.config import (
     Project,
-    load_translation_store,
     load_translation_version_ledger,
     project_source_sha256,
-    translation_store_path,
 )
 from booktx.context import context_path, load_context
 from booktx.path_display import display_path
 from booktx.runtime import RuntimeMode
+from booktx.store import StoreFormat, detect_store_format, open_translation_store
 from booktx.versioning import canonical_json_sha256, resolve_identity
 
 __all__ = [
@@ -82,33 +80,33 @@ def context_identity_payload(
 
 
 def store_identity_payload(proj: Project) -> dict[str, Any]:
-    path = translation_store_path(proj)
-    if not path.is_file():
+    try:
+        store_format = detect_store_format(proj)
+    except Exception:
+        store_format = StoreFormat.MISSING
+    if store_format == StoreFormat.MISSING:
         return {
             "exists": False,
             "version": None,
+            "format": None,
             "record_count": None,
             "status": "missing",
         }
     try:
-        store = load_translation_store(proj)
+        repo = open_translation_store(proj, default_format=StoreFormat.V2)
+        store = repo.materialize_v2()
     except Exception:
-        version = None
-        try:
-            raw = json.loads(path.read_text("utf-8"))
-        except Exception:  # noqa: BLE001
-            raw = {}
-        if isinstance(raw, dict) and isinstance(raw.get("version"), int):
-            version = raw["version"]
         return {
             "exists": True,
-            "version": version,
+            "version": 3 if store_format == StoreFormat.V3 else None,
+            "format": store_format.value,
             "record_count": None,
             "status": "invalid",
         }
     return {
         "exists": True,
-        "version": store.version,
+        "version": 3 if store_format == StoreFormat.V3 else store.version,
+        "format": store_format.value,
         "record_count": len(store.records),
         "status": "ok",
     }

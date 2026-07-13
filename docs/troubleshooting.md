@@ -31,7 +31,7 @@ selected profile. Request a fresh task and use the matching profile-local
 booktx translate next ./book --profile PROFILE --format block
 ```
 
-Do not edit `translation-store.json` to work around a mismatch.
+Do not edit canonical translation store shards to work around a mismatch.
 
 ## Legacy paths after migration
 

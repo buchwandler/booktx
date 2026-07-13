@@ -128,7 +128,7 @@ chapter, fill the `booktx context chapter-note` template printed by
 
 If validation flags an old accepted record during a bounded run, use
 `booktx translate revise-record . RECORD_ID --target "..."` to fix it.
-Never edit `translation-store.json` directly.
+Never edit canonical translation store shards directly.
 That chapter-note append affects the next task's context view, but it does not
 mint a new dotted version by itself.
 Stop when the todo goal is complete, when `todo-status` says it is complete, or
@@ -143,7 +143,7 @@ budget runs low. `--max-run-words` is advisory only.
 - Use `booktx context sync` for same-book sibling policy propagation instead of
   copying context files or hand-repeating glossary decisions.
 - Never edit `.booktx/chunks/*.json` directly during normal translation work.
-- Never edit `translations/<profile>/translation-store.json` directly. If validation flags an old accepted record, use `booktx translate revise-record` to fix it.
+- Never edit `translations/<profile>/translation-store/` directly. If validation flags an old accepted record, use `booktx translate revise-record` to fix it.
 - Never edit `translations/<profile>/translated/*.json` directly; use `booktx translate export`.
 - Use `booktx profile compare` for cross-profile review instead of mixing store files manually.
 - Use project-root mode to create or refresh a judge source snapshot. After

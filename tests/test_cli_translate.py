@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -12,7 +13,9 @@ from booktx.config import (
     find_source_file,
     init_project,
     load_project,
+    load_translation_store,
     translation_store_path,
+    translation_store_v3_root,
 )
 from booktx.context import GlossaryEntry, load_context, write_context
 
@@ -96,6 +99,14 @@ def _store_path(project_dir: Path) -> Path:
     return translation_store_path(_proj(project_dir))
 
 
+def _store_payload(project_dir: Path) -> dict[str, object]:
+    return load_translation_store(_proj(project_dir)).model_dump(mode="json")
+
+
+def _store_text(project_dir: Path) -> str:
+    return load_translation_store(_proj(project_dir)).model_dump_json(indent=2)
+
+
 def _tasks_dir(project_dir: Path) -> Path:
     path = _proj(project_dir).tasks_dir
     assert path is not None
@@ -125,6 +136,9 @@ def _identity_legacy_chunk(project_dir: Path, chunk_id: str) -> None:
 
 
 def _write_legacy_store(project_dir: Path, payload: dict[str, object]) -> None:
+    v3_root = translation_store_v3_root(_proj(project_dir))
+    if v3_root.exists():
+        shutil.rmtree(v3_root)
     _store_path(project_dir).write_text(
         json.dumps(payload),
         encoding="utf-8",
@@ -314,7 +328,7 @@ def test_translate_next_creates_ingest_file_and_insert_updates_store(tmp_path: P
     assert insert_res.exit_code == 0, insert_res.output
     assert "version: 1.1" in insert_res.output
     assert ingest_file.is_file()
-    assert _store_path(project_dir).is_file()
+    assert _store_payload(project_dir)["records"]
     assert not list(_translated_dir(project_dir).glob("*.json"))
 
     status_res = runner.invoke(
@@ -448,7 +462,7 @@ def test_translate_insert_block_accepts_batch(tmp_path: Path):
 
     assert insert_res.exit_code == 0, insert_res.output
     assert "accepted:" in insert_res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     for record in task["records"]:
         assert record["id"] in store["records"]
 
@@ -552,7 +566,7 @@ def test_translate_insert_accepts_task_after_live_baseline_change(tmp_path: Path
 
     assert insert_res.exit_code == 0, insert_res.output
     assert "version: 1.1" in insert_res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     candidate = store["records"][task["records"][0]["id"]]["versions"][0]
     assert candidate["version_ref"] == "1.1"
     assert candidate["baseline_ref"] == task["baseline_ref"]
@@ -693,7 +707,7 @@ def test_translate_insert_block_preserves_multiline_target(tmp_path: Path):
     )
 
     assert insert_res.exit_code == 0, insert_res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     assert store["records"][record_id]["active_version"] == "1.1"
     assert (
         store["records"][record_id]["versions"][0]["target"]
@@ -891,8 +905,7 @@ def test_invalid_insert_is_atomic(tmp_path: Path):
         ],
     )
     task = json.loads(next_res.output)
-    before = _store_path(project_dir)
-    before_text = before.read_text("utf-8") if before.is_file() else None
+    before_text = _store_text(project_dir)
 
     payload = {
         "task_id": task["task_id"],
@@ -906,8 +919,7 @@ def test_invalid_insert_is_atomic(tmp_path: Path):
 
     assert insert_res.exit_code == 1
     assert "submission rejected" in insert_res.output
-    after = _store_path(project_dir)
-    after_text = after.read_text("utf-8") if after.is_file() else None
+    after_text = _store_text(project_dir)
     assert after_text == before_text
 
 
@@ -919,7 +931,7 @@ def test_translate_import_legacy_and_export_roundtrip(tmp_path: Path):
         app, ["translate", "import-legacy", str(project_dir), "--profile", "de_default"]
     )
     assert import_res.exit_code == 0, import_res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     assert any(record_id.startswith("0001-") for record_id in store["records"])
 
     legacy_file = _translated_dir(project_dir) / "0001.json"
@@ -1021,7 +1033,7 @@ def test_translate_migrate_store_write_creates_v2_and_ledger(tmp_path: Path):
     )
 
     assert res.exit_code == 0, res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     ledger = json.loads(_ledger_path(project_dir).read_text("utf-8"))
     assert store["version"] == 2
     migrated = store["records"][record["id"]]
@@ -1367,7 +1379,8 @@ def test_whoami_reports_active_version_and_scoped_identity(tmp_path: Path):
     assert payload["context"]["ready"] is True
     assert payload["context"]["sha256"]
     assert payload["store"]["exists"] is True
-    assert payload["store"]["version"] == 2
+    assert payload["store"]["version"] == 3
+    assert payload["store"]["format"] == "v3"
     assert payload["store"]["record_count"] >= 1
 
 
@@ -1757,7 +1770,7 @@ def test_block_parser_ignores_generated_comments(tmp_path: Path):
     )
 
     assert res.exit_code == 0, res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     for record in task["records"]:
         assert (
             store["records"][record["id"]]["versions"][0]["target"]
@@ -1806,7 +1819,7 @@ def test_record_stdin_commit(tmp_path: Path):
     )
 
     assert res.exit_code == 0, res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     assert (
         store["records"][record_id]["versions"][0]["target"]
         == "Er sagte:\n„Geh jetzt.“"
@@ -2301,8 +2314,7 @@ def test_translate_revise_record_store_stays_valid(tmp_path: Path):
     )
 
     # Reload the store and verify it parses.
-    store_path = _store_path(project_dir)
-    raw = json.loads(store_path.read_text("utf-8"))
+    raw = _store_payload(project_dir)
     assert "records" in raw
     assert record_id in raw["records"]
     stored = raw["records"][record_id]
@@ -2395,8 +2407,7 @@ def test_translate_insert_rejects_missing_final_quote(tmp_path: Path):
     project_dir = _make_quoted_project(tmp_path)
     task, record = _first_task_record(project_dir)
     record_id = record["id"]
-    before = _store_path(project_dir)
-    before_text = before.read_text("utf-8") if before.is_file() else None
+    before_text = _store_text(project_dir)
 
     # Block submission: target opens „ but never closes.
     block = f">>> {record_id}\n„Sie werden keine Rücksicht auf mich nehmen.\n"
@@ -2424,8 +2435,7 @@ def test_translate_insert_rejects_missing_final_quote(tmp_path: Path):
     assert "source:" in insert_res.output
     assert "target:" in insert_res.output
     # The candidate must NOT have been written.
-    after = _store_path(project_dir)
-    after_text = after.read_text("utf-8") if after.is_file() else None
+    after_text = _store_text(project_dir)
     assert after_text == before_text
 
 
@@ -2453,7 +2463,7 @@ def test_translate_insert_normalizes_ascii_german_closing_quote(tmp_path: Path):
     )
 
     assert insert_res.exit_code == 0, insert_res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     active = store["records"][record_id]["active_version"]
     [version] = [
         v for v in store["records"][record_id]["versions"] if v["version_ref"] == active
@@ -2486,7 +2496,7 @@ def test_translate_revise_record_rejects_missing_final_quote(tmp_path: Path):
         input=valid_block,
     )
     assert ok_res.exit_code == 0, ok_res.output
-    store = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store = _store_payload(project_dir)
     active = store["records"][record_id]["active_version"]
     valid_versions = [
         v for v in store["records"][record_id]["versions"] if v["version_ref"] == active
@@ -2515,7 +2525,7 @@ def test_translate_revise_record_rejects_missing_final_quote(tmp_path: Path):
     assert "target:" in rev_res.output
 
     # The store must be unchanged: the active target still ends with the valid “.
-    store_after = json.loads(_store_path(project_dir).read_text("utf-8"))
+    store_after = _store_payload(project_dir)
     active_after = store_after["records"][record_id]["active_version"]
     active_versions = [
         v

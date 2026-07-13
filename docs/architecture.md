@@ -6,8 +6,8 @@
 source document
   -> booktx extract
   -> .booktx/chunks/*.json and source manifests
-  -> selected profile context and TranslationStoreV2
-  -> translations/<profile>/translation-store.json
+  -> selected profile context and canonical translation store
+  -> translations/<profile>/translation-store/
   -> booktx validate/check
   -> generated translated exports and reports
   -> booktx build
@@ -36,14 +36,15 @@ uses the marker-bound profile and brokers access to shared source data.
 
 ## Store and provenance
 
-The current persisted record model is `TranslationStoreV2` in
-`translations/<profile>/translation-store.json`. Records contain translation
-versions and nested review candidates. Effective output chooses a valid review
+The canonical persisted backend is the shard-based v3 store under
+`translations/<profile>/translation-store/`. It stores a manifest plus
+per-chunk current, translation-candidate, and review-candidate shards.
+`TranslationStoreV2` remains the compatibility materialization model returned by
+the Python loader surface. Effective output still chooses a valid review
 candidate before the current translation version. Task context views and
 revision metadata preserve the source, baseline, and policy evidence needed to
 validate provenance.
 
 Generated compatibility exports, indexes, reports, and output are derived from
-this store and can be regenerated. The documentation does not describe a
-separate canonical v3 store or candidate-shard layout because that design is
-not implemented.
+the canonical store and can be regenerated. Agents and operators should inspect
+generated indexes or CLI output, not edit shard files directly.

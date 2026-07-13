@@ -28,9 +28,9 @@ resolution.
 
 ## State of truth
 
-`translations/<profile>/translation-store.json` is the current
-`TranslationStoreV2` record store. It contains nested translation versions and
-review candidates. `translation-version-ledger.json` records version history.
+`translations/<profile>/translation-store/` is the canonical shard-based record
+store. `TranslationStoreV2` is the compatibility materialization model used by
+the loader surface. `translation-version-ledger.json` records version history.
 Generated `translated/`, editor indexes, reports, and output files are derived
 artifacts and can be rebuilt.
 

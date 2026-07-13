@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import tomli_w
@@ -10,7 +11,12 @@ from ebooklib import epub
 from typer.testing import CliRunner
 
 from booktx.cli import app
-from booktx.config import load_manifest, load_project, translation_store_path
+from booktx.config import (
+    load_manifest,
+    load_project,
+    translation_store_path,
+    translation_store_v3_root,
+)
 
 runner = CliRunner()
 
@@ -85,7 +91,11 @@ def _write_accepted_store_record(project_dir: Path) -> None:
         next((project_dir / ".booktx" / "chunks").glob("*.json")).read_text("utf-8")
     )
     record = chunk["records"][0]
-    translation_store_path(load_project(project_dir, profile="de_default")).write_text(
+    proj = load_project(project_dir, profile="de_default")
+    v3_root = translation_store_v3_root(proj)
+    if v3_root.exists():
+        shutil.rmtree(v3_root)
+    translation_store_path(proj).write_text(
         json.dumps(
             {
                 "version": 2,

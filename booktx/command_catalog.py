@@ -411,7 +411,8 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "translate todo-resume": "Resume the next task from a bounded translation todo.",
     "translate import-legacy": "Import legacy translated chunk files into the store.",
     "translate migrate-store": (
-        "Migrate legacy translation store state to the current schema."
+        "Inspect, migrate, verify, or roll back the profile's canonical "
+        "translation store format.",
     ),
     "translate export": "Export accepted translations as legacy-compatible files.",
     "translate export-index": "Export generated editor QA indexes.",

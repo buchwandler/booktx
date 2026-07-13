@@ -339,6 +339,16 @@ def translate_migrate_store(
         None, "--profile", help="Translation profile name."
     ),
     write: bool = typer.Option(False, "--write", help="Rewrite the store as v2."),
+    target_format: str | None = typer.Option(
+        None,
+        "--to",
+        help="Target canonical store format (v2 or v3). Dry-run unless --write is set.",
+    ),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Render migration inspection or result payload as JSON.",
+    ),
     actor: str | None = typer.Option(
         None, "--actor", help="Actor for migrated ledger."
     ),
@@ -364,6 +374,8 @@ def translate_migrate_store(
         project_dir,
         profile,
         write,
+        target_format,
+        as_json,
         actor,
         harness,
         model,

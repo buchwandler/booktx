@@ -128,6 +128,8 @@ __all__ = [
     "current_source_sha256",
     "extracted_source_sha256",
     "translation_store_path",
+    "translation_store_v3_root",
+    "translation_store_v3_manifest_path",
     "translation_version_ledger_path",
     "identity_path",
     "load_translation_store",
@@ -1060,7 +1062,17 @@ def create_profile(
     )
     write_profile_root_marker(source_project, profile_name, profile_config=cfg)
     _materialize_source_analysis_snapshot(source_project, profile_name)
-    return load_profile_project(source_project.root, profile_name)
+    profile_project = load_profile_project(source_project.root, profile_name)
+    from booktx.store import StoreFormat, open_translation_store
+
+    try:
+        source_sha256 = project_source_sha256(profile_project)
+    except BooktxError:
+        source_sha256 = ""
+    open_translation_store(profile_project, default_format=StoreFormat.V3).clear_all(
+        source_sha256=source_sha256
+    )
+    return profile_project
 
 
 def init_project(
@@ -1187,6 +1199,14 @@ def translation_store_path(project: Project) -> Path:
     return project.booktx_dir / "translation-store.json"
 
 
+def translation_store_v3_root(project: Project) -> Path:
+    return translation_store_path(project).with_name("translation-store")
+
+
+def translation_store_v3_manifest_path(project: Project) -> Path:
+    return translation_store_v3_root(project) / "manifest.json"
+
+
 def translation_version_ledger_path(project: Project) -> Path:
     if project.ledger_path is not None:
         return project.ledger_path
@@ -1295,20 +1315,11 @@ def identity_path(project: Project) -> Path:
 
 
 def load_translation_store(project: Project) -> TranslationStoreV2:
-    path = translation_store_path(project)
-    if not path.is_file():
-        return TranslationStoreV2()
-    raw = json.loads(path.read_text("utf-8"))
-    if raw.get("version") == 2:
-        return TranslationStoreV2.model_validate(raw)
-    legacy = TranslationStore.model_validate(raw)
-    from booktx.progress import load_source_records
-    from booktx.translation_store import legacy_store_to_v2
+    from booktx.store import StoreFormat, open_translation_store
 
-    source_records = {
-        record.record_id: record for record in load_source_records(project)
-    }
-    return legacy_store_to_v2(legacy, source_records=source_records)
+    return open_translation_store(
+        project, default_format=StoreFormat.V2
+    ).materialize_v2()
 
 
 def load_translation_version_ledger(project: Project) -> TranslationVersionLedger:
@@ -1342,10 +1353,25 @@ def load_translation_selection_ledger(project: Project) -> TranslationSelectionL
     return TranslationSelectionLedger.model_validate_json(path.read_text("utf-8"))
 
 
-def write_translation_store(project: Project, store: TranslationStoreV2) -> None:
-    from booktx.io_utils import write_json_model_atomic
+def write_translation_store(
+    project: Project, store: TranslationStore | TranslationStoreV2
+) -> None:
+    from booktx.store import StoreFormat, open_translation_store
+    from booktx.translation_store import legacy_store_to_v2
 
-    write_json_model_atomic(translation_store_path(project), store)
+    if isinstance(store, TranslationStore):
+        from booktx.progress import load_source_records
+
+        source_records = {
+            record.record_id: record for record in load_source_records(project)
+        }
+        store_v2 = legacy_store_to_v2(store, source_records=source_records)
+    else:
+        store_v2 = store
+
+    open_translation_store(
+        project, default_format=StoreFormat.V2
+    ).write_materialized_v2(store_v2)
 
 
 def write_translation_version_ledger(

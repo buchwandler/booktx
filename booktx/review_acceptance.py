@@ -18,8 +18,6 @@ from booktx.acceptance import SubmissionValidationError
 from booktx.config import (
     Project,
     _err,
-    load_translation_store,
-    write_translation_store,
 )
 from booktx.io_utils import utc_timestamp
 from booktx.models import (
@@ -41,6 +39,7 @@ from booktx.validate import (
 )
 
 if TYPE_CHECKING:
+    from booktx.models import TranslationStoreV2
     from booktx.status import StatusBundle
     from booktx.validate import Finding
 
@@ -229,74 +228,77 @@ def accept_review_submission(
         raise SubmissionValidationError(errors)
 
     # Base drift and idempotency checks against the live store.
-    store = load_translation_store(project)
     timestamp = utc_timestamp()
     activated = False
     created_refs: list[str] = []
+    from booktx.store import StoreFormat, open_translation_store
 
-    for item in submitted:
-        record_id = item.id
-        task_rec = task_records[record_id]
-        stored = store.records.get(record_id)
-        if stored is None:
-            raise _err(
-                "missing_store_record",
-                f"record {record_id} has no stored translation to review",
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
+
+    def _mutate(store: TranslationStoreV2) -> None:
+        nonlocal activated
+        for item in submitted:
+            record_id = item.id
+            task_rec = task_records[record_id]
+            stored = store.records.get(record_id)
+            if stored is None:
+                raise _err(
+                    "missing_store_record",
+                    f"record {record_id} has no stored translation to review",
+                )
+            base = resolve_review_base(stored, task_rec.base_kind, task_rec.base_ref)
+            if base is None:
+                raise _err(
+                    "review_base_missing",
+                    f"record {record_id} base {task_rec.base_ref!r} is missing",
+                )
+            if sha256_text(base.target) != task_rec.base_target_sha256:
+                raise _err(
+                    "review_base_drift",
+                    f"record {record_id} base {task_rec.base_ref!r} changed since "
+                    f"review task {task.review_task_id} was created",
+                )
+            target_sha = sha256_text(item.target)
+            existing = find_review_candidate(stored, task_rec.review_ref)
+            if existing is not None:
+                if (
+                    existing.review_task_id == task.review_task_id
+                    and existing.target_sha256 == target_sha
+                ):
+                    created_refs.append(existing.review_ref)
+                    continue
+                raise _err(
+                    "review_ref_conflict",
+                    f"review_ref {task_rec.review_ref!r} already exists for record "
+                    f"{record_id} with different provenance or target; use a new run ref",
+                )
+            candidate = TranslationReviewCandidate(
+                pass_number=task_rec.pass_number,
+                run_number=int(task_rec.review_ref.split(".")[1]),
+                review_ref=task_rec.review_ref,
+                base_kind=task_rec.base_kind,
+                base_ref=task_rec.base_ref,
+                base_target_sha256=task_rec.base_target_sha256,
+                target=item.target,
+                target_sha256=target_sha,
+                status="accepted",
+                created_at=timestamp,
+                updated_at=timestamp,
+                review_task_id=task.review_task_id,
             )
-        base = resolve_review_base(stored, task_rec.base_kind, task_rec.base_ref)
-        if base is None:
-            raise _err(
-                "review_base_missing",
-                f"record {record_id} base {task_rec.base_ref!r} is missing",
-            )
-        if sha256_text(base.target) != task_rec.base_target_sha256:
-            raise _err(
-                "review_base_drift",
-                f"record {record_id} base {task_rec.base_ref!r} changed since "
-                f"review task {task.review_task_id} was created",
-            )
-        target_sha = sha256_text(item.target)
-        existing = find_review_candidate(stored, task_rec.review_ref)
-        if existing is not None:
-            # Idempotent only with same provenance and identical target.
-            if (
-                existing.review_task_id == task.review_task_id
-                and existing.target_sha256 == target_sha
+            stored.reviews.append(candidate)
+            created_refs.append(candidate.review_ref)
+            if _should_activate(
+                stored,
+                candidate,
+                quality_cfg=quality_cfg,
+                activate=activate,
+                no_activate=no_activate,
             ):
-                created_refs.append(existing.review_ref)
-                continue
-            raise _err(
-                "review_ref_conflict",
-                f"review_ref {task_rec.review_ref!r} already exists for record "
-                f"{record_id} with different provenance or target; use a new run ref",
-            )
-        candidate = TranslationReviewCandidate(
-            pass_number=task_rec.pass_number,
-            run_number=int(task_rec.review_ref.split(".")[1]),
-            review_ref=task_rec.review_ref,
-            base_kind=task_rec.base_kind,
-            base_ref=task_rec.base_ref,
-            base_target_sha256=task_rec.base_target_sha256,
-            target=item.target,
-            target_sha256=target_sha,
-            status="accepted",
-            created_at=timestamp,
-            updated_at=timestamp,
-            review_task_id=task.review_task_id,
-        )
-        stored.reviews.append(candidate)
-        created_refs.append(candidate.review_ref)
-        if _should_activate(
-            stored,
-            candidate,
-            quality_cfg=quality_cfg,
-            activate=activate,
-            no_activate=no_activate,
-        ):
-            stored.active_review = candidate.review_ref
-            activated = True
+                stored.active_review = candidate.review_ref
+                activated = True
 
-    write_translation_store(project, store)
+    repo.edit_v2(_mutate, summary="accept review submission")
     return ReviewAcceptResult(
         accepted_records=len(submitted),
         activated=activated,

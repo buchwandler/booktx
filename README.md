@@ -48,7 +48,12 @@ book/
     identity.json
     context.json
     context.md
-    translation-store.json
+    translation-store/
+      manifest.json
+      current/
+      translation-candidates/
+      review-candidates/
+      transactions/
     translation-version-ledger.json
     tasks/
     ingest/
@@ -60,7 +65,9 @@ book/
 
 `.booktx/` contains source configuration, manifests, protected names, chapter
 metadata, and extracted chunks. Translation records, context, tasks, reviews,
-ledgers, reports, and output belong under the selected profile.
+ledgers, reports, and output belong under the selected profile. The canonical
+store is shard-based under `translation-store/`; do not edit shard files
+directly.
 
 ## Quickstart
 

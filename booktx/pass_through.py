@@ -21,15 +21,12 @@ from booktx.config import (
     extracted_source_sha256,
     load_profile_project,
     load_source_project,
-    load_translation_store,
-    write_translation_store,
 )
 from booktx.io_utils import write_json_model_atomic
 from booktx.models import (
     Chunk,
     TranslatedChunk,
     TranslatedRecord,
-    TranslationStoreV2,
 )
 from booktx.validate import ValidationReport, validate_project
 
@@ -158,18 +155,17 @@ def write_pass_through_chunks(
 
 
 def ensure_no_store_override(project: Project, *, clear_store: bool = False) -> None:
-    store = load_translation_store(project)
-    if store.records and not clear_store:
+    from booktx.store import StoreFormat, open_translation_store
+
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    if not repo.is_empty() and not clear_store:
         raise _err(
             "pass_through_store_not_empty",
-            "pass-through output would be overridden by translation-store.json; "
+            "pass-through output would be overridden by the canonical translation store; "
             "use a fresh pass-through profile or pass --clear-store",
         )
-    if store.records and clear_store:
-        write_translation_store(
-            project,
-            TranslationStoreV2(source_sha256=current_source_sha256(project)),
-        )
+    if not repo.is_empty() and clear_store:
+        repo.clear_all(source_sha256=current_source_sha256(project))
 
 
 def run_pass_through(

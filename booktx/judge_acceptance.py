@@ -19,7 +19,6 @@ from booktx.config import (
     load_translation_store,
     load_translation_version_ledger,
     write_translation_selection_ledger,
-    write_translation_store,
 )
 from booktx.context import TranslationContext
 from booktx.errors import BooktxError
@@ -61,7 +60,7 @@ from booktx.validate import (
 from booktx.versioning import canonical_json_sha256, lookup_version, resolve_identity
 
 if TYPE_CHECKING:
-    from booktx.models import Chunk
+    from booktx.models import Chunk, TranslationStoreV2
     from booktx.progress import SourceRecordView
     from booktx.status import StatusBundle
     from booktx.validate import Finding
@@ -794,10 +793,10 @@ def accept_judge_submission(
         )
 
     findings: list[Finding] = []
-    store = load_translation_store(project)
     ledger = load_translation_selection_ledger(project)
     version_ledger = load_translation_version_ledger(project)
     from booktx.io_utils import utc_timestamp
+    from booktx.store import StoreFormat, open_translation_store
 
     timestamp = utc_timestamp()
     accepted_versions: list[str] = []
@@ -832,72 +831,75 @@ def accept_judge_submission(
         raise SubmissionValidationError(errors)
     non_blocking_findings = [f for f in findings if f not in errors]
 
-    for item in submitted:
-        task_record = task_records[item.id]
-        source_view = source_by_id[item.id]
-        target_text = resolved_target_by_id[item.id]
-        ensure_store_record(
-            store,
-            item.id,
-            source=source_view.source,
-            source_sha256=source_view.source_sha256,
-        )
-        _track, subversion = lookup_version(
-            version_ledger, task_record.output_version_ref
-        )
-        upsert_translation_version(
-            store.records[item.id],
-            task_record.output_version_ref,
-            target_text,
-            updated_at=timestamp,
-            activate=True,
-            baseline_ref=task_record.output_version_ref,
-            baseline_sha256=subversion.baseline_sha256,
-            context_view_sha256=task.context_view_sha256,
-            context_view_path=task.context_view_path,
-        )
-        accepted_versions.append(task_record.output_version_ref)
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
 
-        selected_candidate = (
-            _candidate_for_label(task_record, item.selected)
-            if item.selected and item.selected != "edited"
-            else None
-        )
-        candidate_evidence = [
-            _candidate_evidence(candidate) for candidate in task_record.candidates
-        ]
-        ledger.records[item.id] = JudgeDecision(
-            record_id=item.id,
-            output_version_ref=task_record.output_version_ref,
-            output_target_sha256=sha256_text(target_text)
-            if task.selection_purpose == "revise"
-            else None,
-            decision_kind=item.decision_kind,  # type: ignore[arg-type]
-            selected_profile=selected_candidate.profile
-            if selected_candidate is not None
-            else None,
-            selected_kind=selected_candidate.selected_kind
-            if selected_candidate is not None
-            else None,
-            selected_ref=selected_candidate.selected_ref
-            if selected_candidate is not None
-            else None,
-            selected_target_sha256=selected_candidate.target_sha256
-            if selected_candidate is not None
-            else None,
-            judge_task_id=task.judge_task_id,
-            judge_model=resolve_identity(project).model,
-            reason=item.reason,
-            candidate_evidence_sha256=canonical_json_sha256(
-                [entry.model_dump(mode="json") for entry in candidate_evidence]
-            ),
-            candidate_evidence=candidate_evidence,
-            created_at=timestamp,
-            updated_at=timestamp,
-        )
+    def _mutate(store: TranslationStoreV2) -> None:
+        store.source_sha256 = bundle.snapshot.source.source_sha256
+        for item in submitted:
+            task_record = task_records[item.id]
+            source_view = source_by_id[item.id]
+            target_text = resolved_target_by_id[item.id]
+            ensure_store_record(
+                store,
+                item.id,
+                source=source_view.source,
+                source_sha256=source_view.source_sha256,
+            )
+            _track, subversion = lookup_version(
+                version_ledger, task_record.output_version_ref
+            )
+            upsert_translation_version(
+                store.records[item.id],
+                task_record.output_version_ref,
+                target_text,
+                updated_at=timestamp,
+                activate=True,
+                baseline_ref=task_record.output_version_ref,
+                baseline_sha256=subversion.baseline_sha256,
+                context_view_sha256=task.context_view_sha256,
+                context_view_path=task.context_view_path,
+            )
+            accepted_versions.append(task_record.output_version_ref)
 
-    store.source_sha256 = bundle.snapshot.source.source_sha256
-    write_translation_store(project, store)
+            selected_candidate = (
+                _candidate_for_label(task_record, item.selected)
+                if item.selected and item.selected != "edited"
+                else None
+            )
+            candidate_evidence = [
+                _candidate_evidence(candidate) for candidate in task_record.candidates
+            ]
+            ledger.records[item.id] = JudgeDecision(
+                record_id=item.id,
+                output_version_ref=task_record.output_version_ref,
+                output_target_sha256=sha256_text(target_text)
+                if task.selection_purpose == "revise"
+                else None,
+                decision_kind=item.decision_kind,  # type: ignore[arg-type]
+                selected_profile=selected_candidate.profile
+                if selected_candidate is not None
+                else None,
+                selected_kind=selected_candidate.selected_kind
+                if selected_candidate is not None
+                else None,
+                selected_ref=selected_candidate.selected_ref
+                if selected_candidate is not None
+                else None,
+                selected_target_sha256=selected_candidate.target_sha256
+                if selected_candidate is not None
+                else None,
+                judge_task_id=task.judge_task_id,
+                judge_model=resolve_identity(project).model,
+                reason=item.reason,
+                candidate_evidence_sha256=canonical_json_sha256(
+                    [entry.model_dump(mode="json") for entry in candidate_evidence]
+                ),
+                candidate_evidence=candidate_evidence,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+
+    repo.edit_v2(_mutate, summary="accept judge submission")
     ledger.profile = project.profile or ledger.profile
     ledger.source_sha256 = bundle.snapshot.source.source_sha256
     ledger.source_profiles = list(task.source_profiles)
