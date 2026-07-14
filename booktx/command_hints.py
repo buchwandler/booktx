@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 __all__ = [
     "profile_option_fragment",
     "translate_next_command",
+    "translate_lint_block_command",
     "translate_insert_command",
+    "translate_todo_next_command",
     "translate_todo_status_command",
     "translate_todo_resume_command",
     "context_chapter_note_command",
@@ -101,6 +103,52 @@ def translate_insert_command(
         f"booktx translate insert .{profile_part} --task-id {task_id}"
         f" --file {file_path} --format {input_format}"
     )
+
+
+def translate_lint_block_command(
+    project: Project,
+    *,
+    mode: RuntimeMode | None = None,
+    task_id: str,
+    file_path: str,
+) -> str:
+    """Build a ``booktx translate lint-block`` command string."""
+    return (
+        f"booktx translate lint-block .{profile_option_fragment(project, mode)}"
+        f" --task-id {task_id} --file {file_path} --format block"
+    )
+
+
+def translate_todo_next_command(
+    project: Project,
+    *,
+    mode: RuntimeMode | None = None,
+    chapters: int,
+    batch_words: int,
+    max_run_words: int | None = None,
+    start_chapter: str | None = None,
+    skip_current: bool = False,
+    write: bool = True,
+    resume: bool = False,
+    output_format: str = "block",
+) -> str:
+    """Build a ``booktx translate todo-next`` command string."""
+    parts = [
+        f"booktx translate todo-next .{profile_option_fragment(project, mode)}",
+        f"--chapters {chapters}",
+        f"--batch-words {batch_words}",
+    ]
+    if max_run_words is not None:
+        parts.append(f"--max-run-words {max_run_words}")
+    if start_chapter:
+        parts.append(f"--start-chapter {start_chapter}")
+    if skip_current:
+        parts.append("--skip-current")
+    if write:
+        parts.append("--write")
+    if resume:
+        parts.extend(["--resume", f"--format {output_format}"])
+    return " ".join(parts)
 
 
 def translate_todo_status_command(

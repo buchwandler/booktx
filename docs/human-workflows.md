@@ -36,6 +36,16 @@ booktx agents write ./book --mode isolated --profile PROFILE
 Start the harness in `translations/PROFILE/`. Project-root administration and
 cross-profile comparison remain outside the isolated workflow.
 
+To start a bounded translation run in one command from the profile root:
+
+```bash
+booktx translate todo-next . --chapters 3 --batch-words 800 --write --resume --format block
+```
+
+The generated task contract is authoritative: read `tasks/TASK.agent.md` first,
+edit only `ingest/TASK.block.txt`, lint before the first insert, and submit only
+after lint passes.
+
 ## Prepare the next series book
 
 ```bash

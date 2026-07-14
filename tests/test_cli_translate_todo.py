@@ -21,7 +21,12 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from booktx.cli import app
-from booktx.config import load_project, translation_store_path
+from booktx.config import (
+    load_project,
+    load_translation_store,
+    translation_store_path,
+    write_translation_store,
+)
 from booktx.context import (
     ChapterContext,
     load_context,
@@ -535,7 +540,9 @@ def test_todo_next_resume_prints_first_task_for_created_todo(tmp_path: Path):
     assert res.exit_code == 0, res.output
     assert "todo:" in res.output
     assert "task:" in res.output
-    assert "Submit durable file with:" in res.output
+    assert "Task brief:" in res.output
+    assert "4. Lint the completed block:" in res.output
+    assert "5. Submit only after lint passes:" in res.output
 
 
 def test_lint_block_reports_missing_task_records(tmp_path: Path):
@@ -1285,16 +1292,16 @@ def _corrupt_store_record_target(
 ) -> None:
     """Directly set a record's target in the store (test helper)."""
     proj = _proj(project_dir)
-    path = translation_store_path(proj)
-    store = json.loads(path.read_text("utf-8"))
-    records = store.get("records", {})
-    if record_id in records:
-        versions = records[record_id].get("versions", [])
-        for v in versions:
-            if v.get("version_ref") == records[record_id].get("active_version"):
-                v["target"] = new_target
-                break
-    path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+    store = load_translation_store(proj)
+    record = store.records.get(record_id)
+    assert record is not None
+    active_version = record.active_version
+    assert active_version is not None
+    for version in record.versions:
+        if version.version_ref == active_version:
+            version.target = new_target
+            break
+    write_translation_store(proj, store)
 
 
 def test_todo_status_scoped_does_not_block_on_out_of_scope_error(tmp_path: Path):

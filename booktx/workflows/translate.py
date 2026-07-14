@@ -67,6 +67,7 @@ from booktx.command_hints import (
     check_command,
     context_chapter_note_command,
     translate_next_command,
+    translate_todo_next_command,
     translate_todo_resume_command,
     translate_todo_status_command,
 )
@@ -178,31 +179,22 @@ def translate_next_workflow(
             from booktx.todo_resume import ensure_single_chapter_todo
 
             if large_chapter_mode == "error":
-                from booktx.command_hints import (
-                    profile_option_fragment,
-                    translate_todo_resume_command,
-                )
-
                 console.print(
                     f"Chapter {selected_chapter.chapter_id} has "
                     f"{selected_chapter.source_words_remaining:,} source words remaining, "
                     f"exceeding the safe budget of {limit}."
                 )
-                prof = profile_option_fragment(proj, runtime.mode)
-                console.print("Create a bounded todo:")
+                console.print("Create and resume a bounded todo:")
                 console.print(
-                    f"booktx translate todo-next .{prof}"
-                    f" --start-chapter {selected_chapter.chapter_id}"
-                    f" --chapters 1 --batch-words {max_words} --write",
-                    soft_wrap=True,
-                    markup=False,
-                )
-                console.print("Resume the todo:")
-                console.print(
-                    translate_todo_resume_command(
+                    translate_todo_next_command(
                         proj,
                         mode=runtime.mode,
-                        latest=True,
+                        chapters=1,
+                        batch_words=max_words,
+                        start_chapter=selected_chapter.chapter_id,
+                        write=True,
+                        resume=True,
+                        output_format="block",
                     ),
                     soft_wrap=True,
                     markup=False,
@@ -430,22 +422,21 @@ def translate_insert_workflow(
         # Current chapter still incomplete — stay on it.
         # Warn if this looks like an oversized chapter task (no todo backing).
         if task is not None and not task.todo_id and task.unit == "chapter":
-            from booktx.command_hints import profile_option_fragment
-
             console.print(
                 "[yellow]warning:[/yellow] this looks like an oversized chapter task. "
                 "Use a bounded todo instead:"
             )
-            prof = profile_option_fragment(proj, runtime.mode)
             console.print(
-                f"booktx translate todo-next .{prof}"
-                f" --start-chapter {result.chapter_id}"
-                f" --chapters 1 --batch-words {max_words} --write",
-                soft_wrap=True,
-                markup=False,
-            )
-            console.print(
-                f"booktx translate todo-resume .{prof} --latest --format block",
+                translate_todo_next_command(
+                    proj,
+                    mode=runtime.mode,
+                    chapters=1,
+                    batch_words=max_words,
+                    start_chapter=result.chapter_id,
+                    write=True,
+                    resume=True,
+                    output_format="block",
+                ),
                 soft_wrap=True,
                 markup=False,
             )

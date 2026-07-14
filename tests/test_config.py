@@ -42,6 +42,7 @@ from booktx.config import (
     translation_review_task_path,
     translation_selection_ledger_path,
     translation_store_path,
+    translation_task_agent_brief_path,
     translation_task_path,
     translation_task_source_block_path,
     translation_version_ledger_path,
@@ -415,9 +416,14 @@ def test_translation_task_helpers_roundtrip(tmp_path: Path):
         translation_ingest_block_path(proj, "bt-task-1").name == "bt-task-1.block.txt"
     )
     assert (
+        translation_task_agent_brief_path(proj, "bt-task-1").name
+        == "bt-task-1.agent.md"
+    )
+    assert (
         translation_task_source_block_path(proj, "bt-task-1").name
         == "bt-task-1.source.block.txt"
     )
+    assert translation_task_agent_brief_path(proj, "bt-task-1").parent == proj.tasks_dir
     assert (
         translation_task_source_block_path(proj, "bt-task-1").parent == proj.tasks_dir
     )

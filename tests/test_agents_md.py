@@ -57,13 +57,18 @@ def test_isolated_render_contains_required_commands():
     assert "booktx mode ." in text
     assert "booktx doctor isolation ." in text
     assert "booktx context status ." in text
-    assert "booktx translate todo-next . --chapters N --batch-words 800 --write" in text
+    assert (
+        "booktx translate todo-next . --chapters N --batch-words 800 --write "
+        "--resume --format block" in text
+    )
     assert "booktx translate todo-status . --latest" in text
     assert "booktx translate todo-resume . --latest --format block" in text
     assert (
         "booktx translate lint-block . --task-id TASK"
         " --file ingest/TASK.block.txt --format block"
     ) in text
+    assert "Read `tasks/TASK.agent.md` first." in text
+    assert "Always lint the completed block before the first insert with" in text
     assert "If the installed booktx package fails to import in isolated mode" in text
     # bounded-todo completion does not require a whole-book build
     assert "booktx build . --require-complete" in text
@@ -163,7 +168,10 @@ def test_collaborative_render_contains_required_commands():
     assert "booktx profile list ." in text
     assert "--profile PROFILE" in text
     assert "booktx agents write . --mode isolated --profile PROFILE" in text
-    assert "booktx translate todo-next . --profile PROFILE --chapters 3" in text
+    assert (
+        "booktx translate todo-next . --profile PROFILE --chapters 3 "
+        "--batch-words 800 --write --resume --format block" in text
+    )
 
 
 # --- case 4: inspect returns managed-valid metadata ----------------------

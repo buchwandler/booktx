@@ -7,6 +7,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_package_compiles() -> None:
     assert compileall.compile_dir(Path("booktx"), quiet=1)
@@ -19,7 +21,6 @@ def test_cli_imports() -> None:
 
 
 def test_basic_cli_import_does_not_import_source_analysis() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
     code = textwrap.dedent(
         """
         import builtins
@@ -39,13 +40,13 @@ def test_basic_cli_import_does_not_import_source_analysis() -> None:
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = (
-        f"{repo_root}{os.pathsep}{env['PYTHONPATH']}"
+        f"{REPO_ROOT}{os.pathsep}{env['PYTHONPATH']}"
         if env.get("PYTHONPATH")
-        else str(repo_root)
+        else str(REPO_ROOT)
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
-        cwd=repo_root,
+        cwd=REPO_ROOT,
         env=env,
         capture_output=True,
         text=True,
@@ -54,3 +55,47 @@ def test_basic_cli_import_does_not_import_source_analysis() -> None:
 
     assert result.returncode == 0, result.stderr or result.stdout
     assert result.stdout.strip() == "booktx"
+
+
+def _run_booktx_subprocess(*args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        f"{REPO_ROOT}{os.pathsep}{env['PYTHONPATH']}"
+        if env.get("PYTHONPATH")
+        else str(REPO_ROOT)
+    )
+    booktx_path = Path(sys.executable).with_name("booktx")
+    return subprocess.run(
+        [str(booktx_path), *args],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_cli_import_subprocess() -> None:
+    result = _run_booktx_subprocess("--help")
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "booktx" in result.stdout
+
+
+def test_root_help_subprocess() -> None:
+    result = _run_booktx_subprocess("--help")
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "booktx prepares books for agent-assisted translation" in result.stdout
+
+
+def test_mode_help_subprocess() -> None:
+    result = _run_booktx_subprocess("mode", "--help")
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "mode" in result.stdout.lower()
+
+
+def test_translate_migrate_store_help_subprocess() -> None:
+    result = _run_booktx_subprocess("translate", "migrate-store", "--help")
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "Inspect, migrate, verify, or roll back" in result.stdout
+    assert "canonical translation" in result.stdout
+    assert "store format" in result.stdout

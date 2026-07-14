@@ -28,6 +28,7 @@ from booktx.config import (
     write_translation_store,
 )
 from booktx.context import GlossaryEntry, TranslationContext, load_context
+from booktx.glossary_tasking import applicable_glossary_snapshots
 from booktx.judge_acceptance import _binding_glossary_findings
 from booktx.judge_sources import (
     judge_sources_manifest_sha256,
@@ -79,6 +80,30 @@ def test_judge_glossary_findings_respect_longer_phrase_shadow() -> None:
     )
 
     assert findings == []
+
+
+def test_judge_glossary_tasking_helper_respects_longer_phrase_shadow() -> None:
+    snapshots = applicable_glossary_snapshots(
+        "The Empire State watches.",
+        [
+            GlossaryEntry(
+                source="Empire",
+                target="Imperium",
+                require_target=True,
+                status="approved",
+                enforce="error",
+            ),
+            GlossaryEntry(
+                source="Empire State",
+                target="Imperium State",
+                require_target=True,
+                status="approved",
+                enforce="error",
+            ),
+        ],
+    )
+    assert [snapshot.source for snapshot in snapshots] == ["Empire State"]
+    assert snapshots[0].matched_source_cue == "Empire State"
 
 
 DOC = """\

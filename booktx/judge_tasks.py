@@ -16,11 +16,8 @@ from booktx.config import (
     judge_task_source_block_path,
     write_judge_task,
 )
-from booktx.context import GlossaryEntry, ensure_context_view_snapshot, load_context
-from booktx.glossary_match import (
-    applicable_entry_indexes,
-    source_glossary_matches,
-)
+from booktx.context import ensure_context_view_snapshot, load_context
+from booktx.glossary_tasking import applicable_glossary_snapshots
 from booktx.io_utils import write_text_atomic
 from booktx.judge_sources import (
     judge_sources_manifest_sha256,
@@ -34,11 +31,7 @@ from booktx.judge_store import (
     require_selection_profile,
     selected_record_ids,
 )
-from booktx.models import (
-    ApplicableGlossaryEntrySnapshot,
-    JudgeTask,
-    JudgeTaskRecord,
-)
+from booktx.models import JudgeTask, JudgeTaskRecord
 from booktx.progress import count_words
 from booktx.record_refs import parse_record_ref
 from booktx.selection_mode import revision_focus, selection_purpose
@@ -370,47 +363,6 @@ def render_judge_ingest(task: JudgeTask, output_format: str) -> str:
 
 def _line_count(text: str) -> int:
     return len(text.splitlines())
-
-
-def applicable_glossary_snapshots(
-    source: str, glossary: list[GlossaryEntry]
-) -> list[ApplicableGlossaryEntrySnapshot]:
-    """Binding glossary entries applicable to ``source``.
-
-    Includes only non-shadowed entries with ``enforce != off`` and either a
-    required approved target or a forbidden target, so the judge task shows the
-    exact approved/forbidden policy next to the source record.
-    """
-    spans = source_glossary_matches(source, glossary)
-    applicable = applicable_entry_indexes(source, glossary)
-    matched_by_entry: dict[int, str] = {}
-    for span in spans:
-        if span.shadowed:
-            continue
-        matched_by_entry.setdefault(span.entry_index, span.matched_term)
-    snapshots: list[ApplicableGlossaryEntrySnapshot] = []
-    for idx, entry in enumerate(glossary):
-        if idx not in applicable:
-            continue
-        if entry.enforce == "off":
-            continue
-        if not (entry.require_target or entry.forbidden_targets):
-            continue
-        snapshots.append(
-            ApplicableGlossaryEntrySnapshot(
-                source=entry.source,
-                source_variants=list(entry.source_variants),
-                matched_source_cue=matched_by_entry.get(idx, entry.source),
-                target=entry.target,
-                target_variants=list(entry.target_variants),
-                require_target=entry.require_target,
-                forbidden_targets=list(entry.forbidden_targets),
-                enforce=entry.enforce,
-                case_sensitive=entry.case_sensitive,
-                notes=entry.notes,
-            )
-        )
-    return snapshots
 
 
 def _build_judge_task_model(

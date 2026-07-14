@@ -1419,6 +1419,11 @@ def translation_task_source_block_path(project: Project, task_id: str) -> Path:
     return translation_task_dir(project) / f"{safe_task_id}.source.block.txt"
 
 
+def translation_task_agent_brief_path(project: Project, task_id: str) -> Path:
+    safe_task_id = safe_artifact_id(task_id, kind="task")
+    return translation_task_dir(project) / f"{safe_task_id}.agent.md"
+
+
 def translation_ingest_dir(project: Project) -> Path:
     if project.ingest_dir is not None:
         return project.ingest_dir

@@ -43,6 +43,7 @@ class SourceRecordView(BaseModel):
     source_sha256: str = ""
     span_index: int | None = None
     span_record_index: int | None = None
+    block_id: str | None = None
 
 
 class RecordProgress(BaseModel):
@@ -125,6 +126,7 @@ def load_source_records(project: Project) -> list[SourceRecordView]:
                     source_sha256=source_record_sha256(record.source),
                     span_index=getattr(record, "span_index", None),
                     span_record_index=getattr(record, "span_record_index", None),
+                    block_id=getattr(record, "block_id", None),
                 )
             )
     return out

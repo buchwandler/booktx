@@ -106,9 +106,22 @@ booktx translate todo-status ./book --profile PROFILE --latest
 booktx translate todo-resume ./book --profile PROFILE --latest --format block
 ```
 
-When planned chapters are complete, create a new bounded todo with
-`translate todo-next`. Keep todo files as run-control artifacts, not submission
-files.
+When planned chapters are complete, create and resume a new bounded todo with:
+
+```bash
+booktx translate todo-next ./book --profile PROFILE --chapters 3 \
+  --batch-words 800 --write --resume --format block
+```
+
+Keep todo files as run-control artifacts, not submission files.
+
+## source_directive_in_target
+
+If `translate lint-block` or `translate insert` reports
+`source_directive_in_target`, the ingest file contains a copied source-only
+directive such as `# glossary:`, `# style:`, or `# termbase:` under a `>>>`
+target header. Remove the copied directive, keep only translated prose in the
+target block, rerun lint, and submit only after lint passes.
 
 ## Glossary and termbase
 

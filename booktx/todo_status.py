@@ -9,7 +9,7 @@ from pydantic import PydanticUserError, ValidationError
 
 from booktx.command_hints import (
     check_command,
-    profile_option_fragment,
+    translate_todo_next_command,
     translate_todo_resume_command,
 )
 from booktx.config import (
@@ -188,17 +188,17 @@ def recreate_todo_command(
     start_chapter: str | None = None,
     chapters: int | None = None,
 ) -> str:
-    profile = profile_option_fragment(project, mode)
-    command = (
-        f"booktx translate todo-next .{profile}"
-        f" --chapters {chapters if chapters is not None else todo.chapters_requested}"
-        f" --batch-words {todo.batch_words} --write"
+    return translate_todo_next_command(
+        project,
+        mode=mode,
+        chapters=chapters if chapters is not None else todo.chapters_requested,
+        batch_words=todo.batch_words,
+        max_run_words=todo.max_run_words,
+        start_chapter=start_chapter,
+        write=True,
+        resume=True,
+        output_format="block",
     )
-    if start_chapter:
-        command += f" --start-chapter {start_chapter}"
-    if todo.max_run_words is not None:
-        command += f" --max-run-words {todo.max_run_words}"
-    return command
 
 
 def _current_context_sha256(project: Project, bundle: StatusBundle) -> str | None:

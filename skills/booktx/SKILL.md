@@ -60,6 +60,7 @@ booktx doctor isolation .
 booktx source status .
 booktx context status .
 booktx translate next . --unit batch --max-words 800 --format block
+booktx translate lint-block . --task-id TASK --file ingest/TASK.block.txt --format block
 booktx translate insert . --task-id TASK --file ingest/TASK.block.txt --format block
 booktx validate .
 booktx build .
@@ -139,9 +140,21 @@ ready. Request one bounded task:
 booktx translate next . --unit batch --max-words 800 --format block
 ```
 
-Edit only the generated `ingest/TASK.block.txt`. Keep record headers,
-placeholder tokens, protected names, and required inline markup unchanged.
-Submit it with:
+This writes `tasks/TASK.agent.md`, `tasks/TASK.source.block.txt`,
+`ingest/TASK.block.txt`, and `ingest/TASK.json`.
+
+Read `tasks/TASK.agent.md` first. Edit only the generated
+`ingest/TASK.block.txt`. Keep record headers, placeholder tokens, protected
+names, and required inline markup unchanged. Treat `# glossary:`, `# style:`,
+and `# termbase:` as source-only directives and never copy them into target
+text. Lint before the first insert:
+
+```bash
+booktx translate lint-block . \
+  --task-id TASK --file ingest/TASK.block.txt --format block
+```
+
+Submit only after lint passes:
 
 ```bash
 booktx translate insert . \
@@ -155,9 +168,7 @@ source hash, profile hashes, and an immutable effective context view under
 For multi-chapter work, use a bounded todo:
 
 ```bash
-booktx translate todo-next . --chapters 3 --batch-words 800 --write
-booktx translate todo-status . --latest
-booktx translate todo-resume . --latest --format block
+booktx translate todo-next . --chapters 3 --batch-words 800 --write --resume --format block
 ```
 
 Do not bypass a failed todo with a large unbounded task. Report the error and

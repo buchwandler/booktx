@@ -34,24 +34,33 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from booktx.block_protocol import SOURCE_ONLY_DIRECTIVE_PREFIXES
+from booktx.command_hints import translate_insert_command, translate_lint_block_command
 from booktx.config import (
     Project,
     load_translation_version_ledger,
     translation_ingest_block_path,
     translation_ingest_path,
+    translation_task_agent_brief_path,
     translation_task_source_block_path,
 )
-from booktx.context import ensure_context_view_snapshot, load_context
-from booktx.glossary_match import (
-    entry_is_binding,
-    live_mandatory_glossary_sha256,
-    source_glossary_matches,
-    target_terms,
+from booktx.context import (
+    TranslationContext,
+    ensure_context_view_snapshot,
+    load_context,
 )
+from booktx.glossary_match import live_mandatory_glossary_sha256
+from booktx.glossary_tasking import applicable_glossary_snapshots
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
-from booktx.models import TranslationTask, TranslationTaskRecord
+from booktx.models import (
+    ApplicableGlossaryEntrySnapshot,
+    ApplicableTermbaseEntrySnapshot,
+    TranslationTask,
+    TranslationTaskRecord,
+)
 from booktx.path_display import display_path
 from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
+from booktx.validate import load_validation_context
 from booktx.versioning import canonical_json_sha256, resolve_current_version
 
 if TYPE_CHECKING:
@@ -99,9 +108,10 @@ def make_task_id(chapter_id: str, first_record_id: str, record_ids: list[str]) -
 
 @dataclass(frozen=True, slots=True)
 class TaskPaths:
-    """The four durable files owned by one translation task."""
+    """The durable files owned by one translation task."""
 
     task_json: Path
+    agent_brief: Path
     source_block: Path
     ingest_json: Path
     ingest_block: Path
@@ -114,6 +124,11 @@ class TaskPaths:
                 display_path(self.task_json, mode)
                 if mode is not None
                 else project_relative(self.task_json, root)
+            ),
+            agent_brief=(
+                display_path(self.agent_brief, mode)
+                if mode is not None
+                else project_relative(self.agent_brief, root)
             ),
             source_block=(
                 display_path(self.source_block, mode)
@@ -185,6 +200,7 @@ class TaskPathDisplay:
     """Project-relative display strings for a task's durable files."""
 
     task_json: str
+    agent_brief: str
     source_block: str
     ingest_json: str
     ingest_block: str
@@ -201,10 +217,349 @@ def task_paths(project: Project, task_id: str) -> TaskPaths:
 
     return TaskPaths(
         task_json=translation_task_dir(project) / f"{task_id}.json",
+        agent_brief=translation_task_agent_brief_path(project, task_id),
         source_block=translation_task_source_block_path(project, task_id),
         ingest_json=translation_ingest_path(project, task_id),
         ingest_block=translation_ingest_block_path(project, task_id),
     )
+
+
+def _context_markdown_path(task: TranslationTask) -> str:
+    if not task.context_view_path:
+        return ""
+    return task.context_view_path.replace("context.json", "context.md")
+
+
+def _style_directives_for_record(record: TranslationTaskRecord) -> list[str]:
+    directives: list[str] = []
+    if "\u2013" in record.source or "\u2014" in record.source:
+        directives.append(
+            "source contains an en/em dash; preserve a German dash cue "
+            "(– or —) in the target unless the meaning is truly removed"
+        )
+    return directives
+
+
+def _render_glossary_snapshot(snapshot: ApplicableGlossaryEntrySnapshot) -> str:
+    approved = (
+        " / ".join(
+            [item for item in [snapshot.target, *snapshot.target_variants] if item]
+        )
+        or "(none)"
+    )
+    forbidden = " / ".join(snapshot.forbidden_targets) or "(none)"
+    policy: list[str] = []
+    if snapshot.require_target:
+        policy.append("required")
+    if snapshot.forbidden_targets:
+        policy.append("forbidden")
+    policy_text = ", ".join(policy) or "binding"
+    match_policy = "case-sensitive" if snapshot.case_sensitive else "case-insensitive"
+    note = f"; note: {snapshot.notes}" if snapshot.notes else ""
+    return (
+        f"# glossary: {snapshot.source} -> {approved}; "
+        f"{policy_text}; forbidden: {forbidden}; "
+        f"matched source cue: {snapshot.matched_source_cue}; "
+        f"target match is literal, boundary-aware, {match_policy}{note}"
+    )
+
+
+def _render_termbase_snapshot(snapshot: ApplicableTermbaseEntrySnapshot) -> str:
+    note = snapshot.sense or snapshot.rationale
+    return f"# termbase: {snapshot.entry_id} — {note}".rstrip(" —")
+
+
+def _record_group_label(record: TranslationTaskRecord) -> str | None:
+    if record.block_id:
+        return f"Block {record.block_id}"
+    if record.span_index is not None:
+        return f"Span {record.span_index}"
+    return None
+
+
+def _load_task_context_snapshot(
+    project: Project, task: TranslationTask
+) -> TranslationContext | None:
+    if task.context_view_path:
+        return load_validation_context(
+            project, context_view_path=task.context_view_path
+        )
+    return load_context(project)
+
+
+def _task_relevant_glossary(
+    task: TranslationTask,
+) -> list[ApplicableGlossaryEntrySnapshot]:
+    seen: set[tuple[object, ...]] = set()
+    snapshots: list[ApplicableGlossaryEntrySnapshot] = []
+    for record in task.records:
+        for snapshot in record.applicable_glossary:
+            key = (
+                snapshot.source,
+                tuple(snapshot.source_variants),
+                snapshot.matched_source_cue,
+                snapshot.target,
+                tuple(snapshot.target_variants),
+                snapshot.require_target,
+                tuple(snapshot.forbidden_targets),
+                snapshot.enforce,
+                snapshot.case_sensitive,
+                snapshot.notes,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            snapshots.append(snapshot)
+    snapshots.sort(key=lambda item: (item.source.casefold(), item.matched_source_cue))
+    return snapshots
+
+
+def _task_relevant_termbase(
+    task: TranslationTask,
+) -> list[ApplicableTermbaseEntrySnapshot]:
+    snapshots: dict[str, ApplicableTermbaseEntrySnapshot] = {}
+    for record in task.records:
+        for snapshot in record.applicable_termbase:
+            snapshots.setdefault(snapshot.entry_id, snapshot)
+    return [snapshots[key] for key in sorted(snapshots)]
+
+
+def _render_action_contract_section(
+    display: TaskPathDisplay,
+    lint_hint: str,
+    submit_hint: str,
+    task: TranslationTask,
+) -> list[str]:
+    lines = [
+        "# booktx translation task brief",
+        "",
+        "## Action contract",
+        "",
+        f"- Read this brief first: {display.agent_brief}",
+        f"- Edit only: {display.ingest_block}",
+        f"- Source reference only: {display.source_block}",
+        "- Write only translated target prose under each `>>>` header.",
+        "- Reserved directives are source-only and must never be copied into target text: "
+        + ", ".join(SOURCE_ONLY_DIRECTIVE_PREFIXES),
+        f"- Lint before submit: {lint_hint}",
+        f"- Submit only after lint passes: {submit_hint}",
+    ]
+    if task.context_view_path:
+        lines.append(
+            f"- Full immutable context snapshot: {_context_markdown_path(task)}"
+        )
+    return lines
+
+
+def _render_task_identity_section(task: TranslationTask) -> list[str]:
+    return [
+        "",
+        "## Task identity",
+        "",
+        f"- task: {task.task_id}",
+        f"- todo: {task.todo_id or 'none'}",
+        f"- chapter: {task.chapter_id} {task.chapter_title}".rstrip(),
+        f"- record count: {task.record_count}",
+        f"- source words: {task.source_words}",
+        f"- target locale: {task.target_locale or task.target_language}",
+        f"- context view sha256: {task.context_view_sha256 or ''}",
+        f"- source sha256: {task.source_sha256 or ''}",
+    ]
+
+
+def _render_global_policy_section(
+    context: TranslationContext | None,
+) -> list[str]:
+    if context is None:
+        return []
+    style = context.style
+    lines: list[str] = ["", "## Global translation policy", ""]
+    if style.prose_style:
+        lines.append(f"- prose style: {style.prose_style}")
+    if style.dialogue_style:
+        lines.append(f"- dialogue: {style.dialogue_style}")
+    if style.register_level:
+        lines.append(f"- register: {style.register_level}")
+    if style.sentence_policy:
+        lines.append(f"- sentence policy: {style.sentence_policy}")
+    if style.punctuation_policy:
+        lines.append(f"- punctuation: {style.punctuation_policy}")
+    if style.units_policy:
+        lines.append(f"- units: {style.units_policy}")
+    for rule in context.global_rules:
+        lines.append(f"- global rule: {rule}")
+    answered = [
+        question
+        for question in context.questions
+        if question.status == "answered" and (question.answer or "").strip()
+    ]
+    if answered:
+        lines.append("- answered decisions:")
+        for question in answered:
+            topic = question.topic.replace("_", " ")
+            lines.append(f"  - {topic}: {question.answer}")
+    return lines
+
+
+def _render_terminology_section(
+    glossary: list[ApplicableGlossaryEntrySnapshot],
+    termbase: list[ApplicableTermbaseEntrySnapshot],
+    protected_terms: list[str],
+) -> list[str]:
+    lines: list[str] = ["", "## Task-relevant terminology", ""]
+    if glossary:
+        lines.append("### Glossary")
+        for snapshot in glossary:
+            approved = (
+                " / ".join(
+                    [
+                        item
+                        for item in [snapshot.target, *snapshot.target_variants]
+                        if item
+                    ]
+                )
+                or "(none)"
+            )
+            forbidden = " / ".join(snapshot.forbidden_targets) or "(none)"
+            lines.append(
+                f"- {snapshot.source} -> {approved}; matched: {snapshot.matched_source_cue}; "
+                f"forbidden: {forbidden}"
+            )
+        lines.append("")
+    if termbase:
+        lines.append("### Termbase")
+        for snapshot in termbase:
+            preferred = " / ".join(snapshot.target_preferred) or "(none)"
+            forbidden = " / ".join(snapshot.target_forbidden) or "(none)"
+            note = snapshot.sense or snapshot.rationale
+            lines.append(
+                f"- {snapshot.entry_id}: {snapshot.source} -> {preferred}; "
+                f"forbidden: {forbidden}; matched: {snapshot.matched_source_cue}; "
+                f"note: {note or '(none)'}"
+            )
+        lines.append("")
+    if protected_terms:
+        lines.append("### Protected terms and names")
+        for term in protected_terms:
+            lines.append(f"- {term}")
+        lines.append("")
+    return lines
+
+
+def _render_continuity_section(
+    context: TranslationContext | None,
+    task: TranslationTask,
+) -> list[str]:
+    lines: list[str] = ["## Continuity", ""]
+    if context is not None and context.chapter_contexts:
+        previous = context.chapter_contexts[-1]
+        lines.append(
+            f"- previous chapter note: {previous.chapter_id} {previous.title}".rstrip()
+        )
+        if previous.translation_summary:
+            lines.append(
+                f"- previous translation summary: {previous.translation_summary}"
+            )
+        if previous.decisions_added:
+            lines.append("- previous decisions: " + "; ".join(previous.decisions_added))
+        open_issues = [
+            issue for note in context.chapter_contexts for issue in note.open_issues
+        ]
+        if open_issues:
+            lines.append("- unresolved issues:")
+            for issue in open_issues:
+                lines.append(f"  - {issue}")
+    else:
+        lines.append("- no prior chapter note is available for this task.")
+    if task.context_view_path:
+        lines.append(f"- full context snapshot: {_context_markdown_path(task)}")
+    return lines
+
+
+def _render_source_records_section(task: TranslationTask) -> list[str]:
+    lines: list[str] = ["", "## Source records", ""]
+    current_group: str | None = None
+    for record in task.records:
+        label = _record_group_label(record)
+        if label and label != current_group:
+            if current_group is not None:
+                lines.append("")
+            lines.extend([f"### {label}", ""])
+            current_group = label
+        lines.append(f">>> {record.id}")
+        lines.append(f"SOURCE: {record.source}")
+        if record.applicable_glossary:
+            lines.append("GLOSSARY:")
+            for snapshot in record.applicable_glossary:
+                lines.append("  " + _render_glossary_snapshot(snapshot)[2:])
+        else:
+            lines.append("GLOSSARY: (none)")
+        if record.applicable_termbase:
+            lines.append("TERMBASE:")
+            for snapshot in record.applicable_termbase:
+                lines.append("  " + _render_termbase_snapshot(snapshot)[2:])
+        else:
+            lines.append("TERMBASE: (none)")
+        styles = _style_directives_for_record(record)
+        if styles:
+            lines.append("STYLE:")
+            for style in styles:
+                lines.append(f"  - {style}")
+        else:
+            lines.append("STYLE: (none)")
+        lines.append("")
+    return lines
+
+
+def _render_task_agent_brief(
+    project: Project,
+    task: TranslationTask,
+    *,
+    mode: RuntimeMode | None = None,
+) -> str:
+    paths = task_paths(project, task.task_id)
+    display = paths.display(project.root, mode=mode)
+    lint_hint = translate_lint_block_command(
+        project,
+        mode=mode,
+        task_id=task.task_id,
+        file_path=display.ingest_block,
+    )
+    submit_hint = translate_insert_command(
+        project,
+        mode=mode,
+        task_id=task.task_id,
+        file_path=display.ingest_block,
+        input_format="block",
+    )
+    context = _load_task_context_snapshot(project, task)
+    glossary = _task_relevant_glossary(task)
+    termbase = _task_relevant_termbase(task)
+    protected_terms = sorted(
+        {term for record in task.records for term in record.protected_terms},
+        key=str.casefold,
+    )
+    lines = _render_action_contract_section(display, lint_hint, submit_hint, task)
+    lines.extend(_render_task_identity_section(task))
+    lines.extend(_render_global_policy_section(context))
+    lines.extend(_render_terminology_section(glossary, termbase, protected_terms))
+    lines.extend(_render_continuity_section(context, task))
+    lines.extend(_render_source_records_section(task))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_task_agent_brief(
+    project: Project,
+    task: TranslationTask,
+    *,
+    mode: RuntimeMode | None = None,
+) -> Path:
+    """Create the deterministic read-only task brief for a translation task."""
+    path = translation_task_agent_brief_path(project, task.task_id)
+    if path.exists():
+        return path
+    write_text_atomic(path, _render_task_agent_brief(project, task, mode=mode))
+    return path
 
 
 def write_ingest_template(project: Project, task: TranslationTask) -> Path:
@@ -243,10 +598,16 @@ def write_block_ingest_template(
     paths = task_paths(project, task.task_id)
     display = paths.display(project.root, mode=mode)
     source_display = display.source_block
+    brief_display = display.agent_brief
     block_display = display.ingest_block
-    from booktx.command_hints import translate_insert_command
 
     submit_hint = translate_insert_command(
+        project,
+        mode=mode,
+        task_id=task.task_id,
+        file_path=block_display,
+    )
+    lint_hint = translate_lint_block_command(
         project,
         mode=mode,
         task_id=task.task_id,
@@ -259,7 +620,14 @@ def write_block_ingest_template(
     )
     record_chunks = sorted({record.chunk_id for record in task.records})
     headers = [
-        "# booktx block submission",
+        "# editable target-only block",
+        "# under each >>> header, write only translated target prose",
+        "# do not paste # glossary:, # style:, or # termbase: lines from the source block",
+        f"# task brief: {brief_display}",
+        f"# source reference: {source_display}",
+        f"# lint before submit: {lint_hint}",
+        f"# submit after lint passes: {submit_hint}",
+        "# metadata below is read-only and ignored by the parser",
         f"# profile: {task.profile or 'none'}",
         f"# target: {task.target_locale or task.target_language}",
         f"# task: {task.task_id}",
@@ -287,7 +655,12 @@ def write_block_ingest_template(
     return path
 
 
-def write_task_source_block(project: Project, task: TranslationTask) -> Path:
+def write_task_source_block(
+    project: Project,
+    task: TranslationTask,
+    *,
+    mode: RuntimeMode | None = None,
+) -> Path:
     """Create the durable source-view file for a task without overwriting work.
 
     Holds the original source text for each record in the task so a coding
@@ -296,7 +669,34 @@ def write_task_source_block(project: Project, task: TranslationTask) -> Path:
     path = translation_task_source_block_path(project, task.task_id)
     if path.exists():
         return path
+    display = task_paths(project, task.task_id).display(project.root, mode=mode)
+    lint_hint = translate_lint_block_command(
+        project,
+        mode=mode,
+        task_id=task.task_id,
+        file_path=display.ingest_block,
+    )
+    submit_hint = translate_insert_command(
+        project,
+        mode=mode,
+        task_id=task.task_id,
+        file_path=display.ingest_block,
+        input_format="block",
+    )
     parts = [
+        "# booktx translation source block",
+        "# reference only: do not edit or submit this file",
+        "# translate each source body into the matching header in the ingest file",
+        "# source-only directives:",
+        "#   # glossary: binding terminology instruction",
+        "#   # style: record-local style instruction",
+        "#   # termbase: semantic terminology context",
+        "# never copy source-only directives into target text",
+        f"# editable file: {display.ingest_block}",
+        f"# lint: {lint_hint}",
+        f"# submit: {submit_hint}",
+        f"# task brief: {display.agent_brief}",
+        "",
         f"# profile: {task.profile or 'none'}",
         f"# target: {task.target_locale or task.target_language}",
         f"# task: {task.task_id}",
@@ -327,47 +727,17 @@ def write_task_source_block(project: Project, task: TranslationTask) -> Path:
                 f"# {snapshot.entry_id} | {snapshot.source} | {preferred} | {forbidden} | {note}".rstrip()
             )
         parts.append("")
-    try:
-        context = load_context(project)
-        glossary = list(context.glossary) if context is not None else []
-    except FileNotFoundError:
-        glossary = []
 
     for idx, record in enumerate(task.records):
         if idx:
             parts.append("")
         parts.append(f">>> {record.id}")
-        for span in source_glossary_matches(record.source, glossary):
-            if span.shadowed:
-                continue
-            entry = glossary[span.entry_index]
-            if not entry_is_binding(entry):
-                continue
-            approved = " / ".join(target_terms(entry)) or "(none)"
-            forbidden = " / ".join(entry.forbidden_targets) or "(none)"
-            policy: list[str] = []
-            if entry.require_target:
-                policy.append("required")
-            if entry.forbidden_targets:
-                policy.append("forbidden")
-            policy_text = ", ".join(policy) or "binding"
-            match_policy = (
-                "case-sensitive" if entry.case_sensitive else "case-insensitive"
-            )
-            parts.append(
-                "# glossary: "
-                f"{entry.source} -> {approved}; "
-                f"{policy_text}; forbidden: {forbidden}; "
-                f"target match is literal, boundary-aware, {match_policy}"
-            )
-        if "\u2013" in record.source or "\u2014" in record.source:
-            parts.append(
-                "# style: source contains an en/em dash; preserve a German dash cue "
-                "(– or —) in the target unless the meaning is truly removed"
-            )
+        for snapshot in record.applicable_glossary:
+            parts.append(_render_glossary_snapshot(snapshot))
+        for style in _style_directives_for_record(record):
+            parts.append(f"# style: {style}")
         for snapshot in record.applicable_termbase:
-            note = snapshot.sense or snapshot.rationale
-            parts.append(f"# termbase: {snapshot.entry_id} — {note}".rstrip(" —"))
+            parts.append(_render_termbase_snapshot(snapshot))
         parts.append(record.source)
     write_text_atomic(path, "\n".join(parts).rstrip() + "\n")
     return path
@@ -485,6 +855,8 @@ def create_translation_task(
     record_sources = {
         record_id: source_by_id[record_id].source for record_id in record_ids
     }
+    live_context = load_context(project)
+    glossary = list(live_context.glossary) if live_context is not None else []
     applicable_termbase, applicable_termbase_sha256 = (
         collect_applicable_termbase_for_record_sources(project, record_sources)
     )
@@ -531,13 +903,19 @@ def create_translation_task(
                 source=source_by_id[record_id].source,
                 protected_terms=list(source_by_id[record_id].protected_terms),
                 placeholders=list(source_by_id[record_id].placeholders),
+                applicable_glossary=applicable_glossary_snapshots(
+                    source_by_id[record_id].source, glossary
+                ),
                 applicable_termbase=applicable_termbase.get(record_id, []),
+                span_index=source_by_id[record_id].span_index,
+                block_id=source_by_id[record_id].block_id,
             )
             for record_id in record_ids
         ],
     )
     write_translation_task(project, task)
     write_ingest_template(project, task)
+    write_task_source_block(project, task, mode=mode)
+    write_task_agent_brief(project, task, mode=mode)
     write_block_ingest_template(project, task, mode=mode)
-    write_task_source_block(project, task)
     return task

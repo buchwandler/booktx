@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from booktx.acceptance import SubmittedRecord
+from booktx.block_protocol import source_only_directive_prefix
 from booktx.config import _err
 from booktx.models import TranslatedRecord
 from booktx.record_refs import parse_version_ref
@@ -188,6 +189,14 @@ def parse_block_submission(text: str) -> ParsedSubmission:
         nonlocal current_id, current_lines
         if current_id is None:
             return
+        for line in current_lines:
+            prefix = source_only_directive_prefix(line)
+            if prefix is not None:
+                raise _err(
+                    "source_directive_in_target",
+                    f"record {current_id} contains source-only directive {prefix!r}; "
+                    "remove it and keep only translated prose",
+                )
         # Strip trailing separator lines (blank or comment) that sit between
         # this record and the next header (or EOF). Internal and leading
         # comment lines are preserved as target text.

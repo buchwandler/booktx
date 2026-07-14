@@ -761,11 +761,14 @@ def test_translate_next_format_block_prints_concise_summary(tmp_path: Path):
     assert block_res.exit_code == 0, block_res.output
     # Concise default: task summary + file paths + submit/view hints only.
     assert "task:" in block_res.output
+    assert "Task brief:" in block_res.output
     # Each translate next call creates a new task; verify the output contains
     # the expected file patterns rather than comparing exact paths across tasks.
+    assert ".agent.md" in block_res.output
     assert ".source.block.txt" in block_res.output
     assert ".block.txt" in block_res.output
-    assert "--format block" in block_res.output
+    assert "Lint the completed block:" in block_res.output
+    assert "Submit only after lint passes:" in block_res.output
     # Source text and heredoc body must NOT appear by default. Use a
     # distinctive prose source (not a heading that matches a chapter title).
     prose_source = next(r["source"] for r in task["records"] if "." in r["source"])
@@ -1524,11 +1527,20 @@ def test_translate_next_writes_source_block_file(tmp_path: Path):
     )
     assert next_res.exit_code == 0, next_res.output
     task = json.loads(next_res.output)
+    agent_brief = project_dir / task["agent_brief_path"]
     source_block = project_dir / task["source_block_path"]
 
+    assert agent_brief.is_file()
     assert source_block.is_file()
+    brief_text = agent_brief.read_text("utf-8")
     text = source_block.read_text("utf-8")
+    assert "Read this brief first" in brief_text
+    assert "## Source records" in brief_text
     assert f"# task: {task['task_id']}" in text
+    assert "# booktx translation source block" in text
+    assert "# reference only: do not edit or submit this file" in text
+    assert "# lint: booktx translate lint-block" in text
+    assert f"# task brief: {task['agent_brief_path']}" in text
     for record in task["records"]:
         assert f">>> {record['id']}" in text
         assert record["source"] in text
@@ -1614,6 +1626,157 @@ def test_translate_next_source_block_flags_required_glossary_and_dash(tmp_path: 
     assert "# glossary: Commonweal -> Commonweal; required" in text
     assert "target match is literal, boundary-aware" in text
     assert "# style: source contains an en/em dash" in text
+
+
+def test_translate_persists_glossary_snapshot_source_block_immutable(
+    tmp_path: Path,
+):
+    src = tmp_path / "book.md"
+    src.write_text("# One\n\nEmpire State watches Empire.\n", encoding="utf-8")
+    project_dir = tmp_path / "book"
+    res = runner.invoke(
+        app,
+        [
+            "init",
+            str(project_dir),
+            "--target",
+            "de",
+            "--source-file",
+            str(src),
+            "--chunk-size",
+            "5",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
+    init_res = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    assert init_res.exit_code == 0, init_res.output
+    proj = load_project(project_dir, profile="de_default")
+    ctx = load_context(proj)
+    ctx.glossary.extend(
+        [
+            GlossaryEntry(
+                source="Empire",
+                target="Imperium",
+                require_target=True,
+                status="approved",
+                enforce="error",
+            ),
+            GlossaryEntry(
+                source="Empire State",
+                target="Imperium State",
+                require_target=True,
+                status="approved",
+                enforce="error",
+            ),
+        ]
+    )
+    write_context(proj, ctx)
+    ready_res = runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--force",
+            "--reason",
+            "test setup",
+        ],
+    )
+    assert ready_res.exit_code == 0, ready_res.output
+
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "batch",
+            "--max-words",
+            "20",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    task_json = (_tasks_dir(project_dir) / f"{task['task_id']}.json").read_text("utf-8")
+    task_payload = json.loads(task_json)
+    matching_record = next(
+        record
+        for record in task_payload["records"]
+        if "Empire State watches Empire." in record["source"]
+    )
+    snapshots = matching_record["applicable_glossary"]
+    assert [snapshot["source"] for snapshot in snapshots] == ["Empire", "Empire State"]
+    assert [snapshot["matched_source_cue"] for snapshot in snapshots] == [
+        "Empire",
+        "Empire State",
+    ]
+    source_block = project_dir / task["source_block_path"]
+    original = source_block.read_text("utf-8")
+    assert "# glossary: Empire State -> Imperium State; required" in original
+    assert "# glossary: Empire -> Imperium; required" in original
+
+    ctx = load_context(proj)
+    ctx.glossary[0].target = "Reich"
+    ctx.glossary[1].target = "Reichsstaat"
+    write_context(proj, ctx)
+
+    assert source_block.read_text("utf-8") == original
+    reloaded = json.loads(
+        (_tasks_dir(project_dir) / f"{task['task_id']}.json").read_text("utf-8")
+    )
+    matching_record = next(
+        record
+        for record in reloaded["records"]
+        if "Empire State watches Empire." in record["source"]
+    )
+    assert matching_record["applicable_glossary"][0]["target"] == "Imperium"
+
+
+def test_translate_agent_brief_groups_records_by_span(tmp_path: Path) -> None:
+    project_dir = _make_project(tmp_path)
+
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--unit",
+            "batch",
+            "--max-words",
+            "20",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    agent_brief = project_dir / task["agent_brief_path"]
+    text = agent_brief.read_text("utf-8")
+
+    assert "## Source records" in text
+    assert "### Span 0" in text
+    for record in task["records"]:
+        assert f">>> {record['id']}" in text
+        assert f"SOURCE: {record['source']}" in text
 
 
 def test_translate_insert_missing_file_is_concise(tmp_path: Path):

@@ -197,6 +197,7 @@ def _render_json_output(payload: dict[str, Any]) -> None:
 def _render_tsv_output(
     task: TranslationTask,
     display: TaskPathDisplay,
+    block_lint: str,
     json_submit: str,
 ) -> None:
     """Render task as TSV."""
@@ -204,15 +205,18 @@ def _render_tsv_output(
     console.print(f"# chapter: {task.chapter_id}\t{task.chapter_title}".rstrip())
     for record in task.records:
         console.print(f"{record.id}\t{record.source}")
+    console.print(f"# task brief: {display.agent_brief}")
+    console.print(f"# source reference: {display.source_block}")
     console.print(f"# write translation JSON to: {display.ingest_json}")
+    console.print(f"# lint block before submit: {block_lint}")
     console.print(f"# submit: {json_submit}")
 
 
 def _render_block_output(
     task: TranslationTask,
     display: TaskPathDisplay,
+    lint_command: str,
     block_submit: str,
-    view_sources: str,
     block_stdin: str,
     context_display_path: str | None,
     show_template: bool,
@@ -221,6 +225,11 @@ def _render_block_output(
     """Render task in block (durable agent workflow) format."""
     _print_task_header(task, context_display_path)
     console.print()
+    console.print(
+        f"Task brief: {display.agent_brief}",
+        soft_wrap=True,
+        markup=False,
+    )
     console.print(
         f"Source file: {display.source_block}",
         soft_wrap=True,
@@ -231,15 +240,33 @@ def _render_block_output(
         soft_wrap=True,
         markup=False,
     )
+    console.print("Next actions:")
     console.print(
-        f"Submit durable file with: {block_submit}",
+        f"1. Read task brief first: {display.agent_brief}",
         soft_wrap=True,
         markup=False,
     )
-    console.print(f"View sources: {view_sources}", soft_wrap=True, markup=False)
     console.print(
-        "Submit only the template you filled. The JSON template targets "
-        "are intentionally empty unless you choose JSON mode.",
+        f"2. Review source reference only: {display.source_block}",
+        soft_wrap=True,
+        markup=False,
+    )
+    console.print(
+        f"3. Fill the durable ingest file: {display.ingest_block}",
+        soft_wrap=True,
+        markup=False,
+    )
+    console.print(
+        f"4. Lint the completed block: {lint_command}", soft_wrap=True, markup=False
+    )
+    console.print(
+        f"5. Submit only after lint passes: {block_submit}",
+        soft_wrap=True,
+        markup=False,
+    )
+    console.print(
+        "The generated task contract is authoritative. Do not inspect booktx "
+        "source code to determine block semantics.",
         soft_wrap=True,
         markup=False,
     )
@@ -268,6 +295,7 @@ def _render_block_output(
 def _render_default_output(
     task: TranslationTask,
     display: TaskPathDisplay,
+    block_lint: str,
     json_submit: str,
     context_display_path: str | None,
 ) -> None:
@@ -280,6 +308,12 @@ def _render_default_output(
         console.print(record.id)
         console.print(record.source)
     console.print()
+    console.print("Read task brief:")
+    console.print(display.agent_brief)
+    console.print("Read source reference:")
+    console.print(display.source_block)
+    console.print("Lint block before submit:")
+    console.print(block_lint)
     console.print("Write translation JSON to:")
     console.print(display.ingest_json)
     console.print("Submit with:")
@@ -303,7 +337,10 @@ def print_translate_task(
     """
     paths = task_paths(project, task.task_id)
     display = paths.display(project.root, mode=mode)
-    from booktx.command_hints import translate_insert_command
+    from booktx.command_hints import (
+        translate_insert_command,
+        translate_lint_block_command,
+    )
 
     json_submit = translate_insert_command(
         project,
@@ -319,8 +356,13 @@ def print_translate_task(
         file_path=display.ingest_block,
         input_format="block",
     )
+    block_lint = translate_lint_block_command(
+        project,
+        mode=mode,
+        task_id=task.task_id,
+        file_path=display.ingest_block,
+    )
     block_stdin = paths.block_stdin_submit_hint(task.task_id, mode=mode)
-    view_sources = f"cat {display.source_block}"
     context_view_display = None
     if task.context_view_path:
         raw_context_path = resolve_stored_path(project, task.context_view_path)
@@ -359,9 +401,11 @@ def print_translate_task(
         "requested_max_words": task.requested_max_words,
         "todo_id": task.todo_id,
         "records": [record.model_dump(mode="json") for record in task.records],
+        "agent_brief_path": display.agent_brief,
         "ingest_path": display.ingest_json,
         "block_ingest_path": display.ingest_block,
         "source_block_path": display.source_block,
+        "block_lint_hint": block_lint,
         "submit_hint": json_submit,
         "block_submit_hint": block_submit,
     }
@@ -369,20 +413,22 @@ def print_translate_task(
     if as_json:
         _render_json_output(payload)
     elif output_format == "tsv":
-        _render_tsv_output(task, display, json_submit)
+        _render_tsv_output(task, display, block_lint, json_submit)
     elif output_format == "block":
         _render_block_output(
             task,
             display,
+            block_lint,
             block_submit,
-            view_sources,
             block_stdin,
             context_display_path,
             show_template,
             show_sources,
         )
     else:
-        _render_default_output(task, display, json_submit, context_display_path)
+        _render_default_output(
+            task, display, block_lint, json_submit, context_display_path
+        )
 
 
 def render_submission_failures(findings: list[Finding]) -> None:

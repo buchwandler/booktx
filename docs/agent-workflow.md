@@ -70,6 +70,7 @@ booktx translate next . --unit batch --max-words 800 --format block
 
 This writes:
 
+- `tasks/TASK.agent.md`
 - `tasks/TASK.source.block.txt`
 - `ingest/TASK.block.txt`
 - `ingest/TASK.json`
@@ -79,16 +80,27 @@ context-view snapshot used for that task.
 
 ## 4. Fill the durable ingest file
 
-Translate only the record bodies. Keep record ids and placeholders unchanged.
+Read `tasks/TASK.agent.md` first. Translate only the record bodies in
+`ingest/TASK.block.txt`. Keep record ids and placeholders unchanged. Treat
+`# glossary:`, `# style:`, and `# termbase:` as source-only directives; never
+copy them into target text.
 
-## 5. Submit the result
+## 5. Lint, then submit the result
 
 ```bash
+booktx translate lint-block . \
+  --task-id TASK \
+  --file ingest/TASK.block.txt \
+  --format block
+
 booktx translate insert . \
   --task-id TASK \
   --file ingest/TASK.block.txt \
   --format block
 ```
+
+Lint is read-only. If lint fails, repair the same ingest file and rerun lint
+once. If the same failure class remains, stop and report it.
 
 ## 6. Validate and build
 
@@ -117,9 +129,8 @@ When the user asks to continue for multiple chapters, do not request one huge
 chapter task. Create a todo instead:
 
 ```bash
-booktx translate todo-next . --profile PROFILE_A --chapters 3 --batch-words 800 --write
-booktx translate todo-status . --profile PROFILE_A --latest
-booktx translate todo-resume . --profile PROFILE_A --latest --format block
+booktx translate todo-next . --profile PROFILE_A --chapters 3 \
+  --batch-words 800 --write --resume --format block
 ```
 
 Read the generated todo markdown and follow its loop. After each completed

@@ -41,6 +41,31 @@ class CommandDescriptor:
     example: str | None = None
     group_help: bool = False
 
+    def __post_init__(self) -> None:
+        text_fields = {
+            "path": self.path,
+            "stage": self.stage,
+            "summary": self.summary,
+        }
+        for name, value in text_fields.items():
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"CommandDescriptor.{name} must be str, got {type(value).__name__}"
+                )
+        optional_text_fields = {
+            "replacement": self.replacement,
+            "help_panel": self.help_panel,
+            "next_human_action": self.next_human_action,
+            "next_agent_action": self.next_agent_action,
+            "example": self.example,
+        }
+        for name, value in optional_text_fields.items():
+            if value is not None and not isinstance(value, str):
+                raise TypeError(
+                    f"CommandDescriptor.{name} must be str | None, got "
+                    f"{type(value).__name__}"
+                )
+
     def render_help(self) -> str:
         lines = [self.summary]
         audience = {
@@ -464,6 +489,19 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "model set": "Persist the model default used for new version tracks.",
     "model clear": "Clear the stored model default back to the local fallback.",
 }
+
+
+def _validate_summary_overrides(values: dict[str, object]) -> None:
+    invalid = {
+        path: type(value).__name__
+        for path, value in values.items()
+        if not isinstance(value, str)
+    }
+    if invalid:
+        raise TypeError(f"invalid command summaries: {invalid}")
+
+
+_validate_summary_overrides(SUMMARY_OVERRIDES)
 
 
 PANEL_BY_AUDIENCE = {

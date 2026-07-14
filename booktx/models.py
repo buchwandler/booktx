@@ -698,9 +698,14 @@ class TranslationTaskRecord(BaseModel):
     source: str = Field(..., description="Source text with placeholders")
     protected_terms: list[str] = Field(default_factory=list)
     placeholders: list[Placeholder] = Field(default_factory=list)
+    applicable_glossary: list[ApplicableGlossaryEntrySnapshot] = Field(
+        default_factory=list
+    )
     applicable_termbase: list[ApplicableTermbaseEntrySnapshot] = Field(
         default_factory=list
     )
+    span_index: int | None = None
+    block_id: str | None = None
 
 
 class TranslationTask(BaseModel):

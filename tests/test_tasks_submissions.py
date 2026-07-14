@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from booktx.cli import app
@@ -56,10 +57,12 @@ def test_task_paths_bundles_four_durable_files(tmp_path: Path):
     paths = task_paths(proj, "bt-task-x")
     assert isinstance(paths, TaskPaths)
     assert paths.task_json.name == "bt-task-x.json"
+    assert paths.agent_brief.name == "bt-task-x.agent.md"
     assert paths.source_block.name == "bt-task-x.source.block.txt"
     assert paths.ingest_json.name == "bt-task-x.json"
     assert paths.ingest_block.name == "bt-task-x.block.txt"
     display = paths.display(proj.root)
+    assert display.agent_brief.startswith("translations/de_default/tasks")
     assert display.source_block.startswith("translations/de_default/tasks")
     hint = paths.block_submit_hint("bt-task-x", proj.root)
     assert hint.startswith("booktx translate insert")
@@ -102,6 +105,30 @@ def test_parse_block_submission_preserves_internal_comments():
     assert [r.id for r in parsed.records] == ["r1", "r2"]
     assert parsed.records[0].target == "first\n# keep me\nmore"
     assert parsed.records[1].target == "second"
+
+
+@pytest.mark.parametrize("directive", ["# glossary:", "# style:", "# termbase:"])
+def test_parse_block_submission_rejects_source_only_directives_in_target(
+    directive: str,
+) -> None:
+    from booktx.config import BooktxError
+
+    with pytest.raises(BooktxError, match="source-only directive"):
+        parse_block_submission(f">>> r1\nTranslated\n{directive} copied\n")
+
+
+def test_parse_block_submission_accepts_markdown_heading_target() -> None:
+    parsed = parse_block_submission(">>> r1\n# Kapitel 13\n\nText.\n")
+    assert parsed.records[0].target == "# Kapitel 13\n\nText."
+
+
+def test_parse_block_submission_accepts_metadata_comments_before_first_record() -> None:
+    parsed = parse_block_submission(
+        "# profile: de_default\n# translation_version: 1.1\n\n>>> r1\nHallo.\n"
+    )
+    assert parsed.profile == "de_default"
+    assert parsed.translation_version == "1.1"
+    assert parsed.records[0].target == "Hallo."
 
 
 def test_submission_parsers_normalize_only_ascii_german_closers_outside_tags():

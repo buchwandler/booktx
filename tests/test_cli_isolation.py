@@ -334,6 +334,7 @@ def test_translate_next_from_profile_root_keeps_output_and_artifacts_local(
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
+    assert payload["agent_brief_path"].startswith("tasks/")
     assert payload["ingest_path"].startswith("ingest/")
     assert payload["block_ingest_path"].startswith("ingest/")
     assert payload["source_block_path"].startswith("tasks/")
@@ -345,6 +346,7 @@ def test_translate_next_from_profile_root_keeps_output_and_artifacts_local(
 
     artifact_paths = [
         profile_root / "tasks" / f"{payload['task_id']}.json",
+        profile_root / "tasks" / f"{payload['task_id']}.agent.md",
         profile_root / "tasks" / f"{payload['task_id']}.source.block.txt",
         profile_root / "ingest" / f"{payload['task_id']}.json",
         profile_root / "ingest" / f"{payload['task_id']}.block.txt",
@@ -559,10 +561,13 @@ def test_todo_resume_from_profile_root_writes_local_task_and_submit_hints(
         ["translate", "todo-resume", ".", "--todo-id", todo_id, "--format", "block"],
     )
     assert resume.exit_code == 0, resume.output
+    assert "Task brief: tasks/" in resume.output
     assert "Source file: tasks/" in resume.output
     assert "Durable block template: ingest/" in resume.output
+    assert "4. Lint the completed block: booktx translate lint-block ." in resume.output
     assert (
-        "Submit durable file with: booktx translate insert . --task-id" in resume.output
+        "5. Submit only after lint passes: booktx translate insert . --task-id"
+        in resume.output
     )
     assert " --file ingest/" in resume.output
     assert "--profile" not in resume.output
@@ -572,7 +577,9 @@ def test_todo_resume_from_profile_root_writes_local_task_and_submit_hints(
 
     block = next((profile_root / "ingest").glob("*.block.txt"))
     text = block.read_text("utf-8")
+    assert "# task brief: tasks/" in text
     assert "# source: tasks/" in text
+    assert "# lint before submit: booktx translate lint-block . --task-id" in text
     assert "# submit: booktx translate insert . --task-id" in text
     assert " --file ingest/" in text
     assert "--profile" not in text
