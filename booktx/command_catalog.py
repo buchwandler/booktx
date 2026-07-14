@@ -412,7 +412,7 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "translate import-legacy": "Import legacy translated chunk files into the store.",
     "translate migrate-store": (
         "Inspect, migrate, verify, or roll back the profile's canonical "
-        "translation store format.",
+        "translation store format."
     ),
     "translate export": "Export accepted translations as legacy-compatible files.",
     "translate export-index": "Export generated editor QA indexes.",
