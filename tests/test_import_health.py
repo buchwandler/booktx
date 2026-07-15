@@ -4,6 +4,7 @@ import compileall
 import os
 import subprocess
 import sys
+import sysconfig
 import textwrap
 from pathlib import Path
 
@@ -64,7 +65,8 @@ def _run_booktx_subprocess(*args: str) -> subprocess.CompletedProcess[str]:
         if env.get("PYTHONPATH")
         else str(REPO_ROOT)
     )
-    booktx_path = Path(sys.executable).with_name("booktx")
+    booktx_name = "booktx.exe" if os.name == "nt" else "booktx"
+    booktx_path = Path(sysconfig.get_path("scripts")) / booktx_name
     return subprocess.run(
         [str(booktx_path), *args],
         cwd=REPO_ROOT,
