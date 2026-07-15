@@ -1,0 +1,363 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.5.0
+git_base_ref: v0.4.3
+git_base_sha: 8fd2041aa75035c38c24d877e9f9dc320c5ea628
+git_head_ref: HEAD
+git_head_sha: 6d6fd5b4c08ee806e038c8c631908ae9f02bfa09
+git_range: 8fd2041aa75035c38c24d877e9f9dc320c5ea628..6d6fd5b4c08ee806e038c8c631908ae9f02bfa09
+commit_count: 7
+rows:
+  - sha: de9bab5a1a049a58767d039a576588624087ed07
+    source_ref: git:de9bab5a1a049a58767d039a576588624087ed07
+    short_sha: de9bab5
+    changed_paths:
+      - .taskledger.toml
+      - README.md
+      - booktx/acceptance.py
+      - booktx/command_catalog.py
+      - booktx/commands/translate.py
+      - booktx/config.py
+      - booktx/identity.py
+      - booktx/judge_acceptance.py
+      - booktx/pass_through.py
+      - booktx/review_acceptance.py
+      - booktx/store/__init__.py
+      - booktx/store/detect.py
+      - booktx/store/doctor.py
+      - booktx/store/migration.py
+      - booktx/store/models.py
+      - booktx/store/paths.py
+      - booktx/store/transactions.py
+      - booktx/store/v1_v2.py
+      - booktx/store/v3.py
+      - booktx/workflows/review.py
+      - booktx/workflows/root.py
+      - booktx/workflows/translate.py
+      - docs/agent-workflow.md
+      - docs/api.md
+      - docs/architecture.md
+      - docs/concepts.md
+      - docs/profiles.md
+      - docs/project-layout.md
+      - docs/troubleshooting.md
+      - skills/booktx/SKILL.md
+      - tests/test_acceptance.py
+      - tests/test_cli.py
+      - tests/test_cli_translate.py
+      - tests/test_config.py
+      - tests/test_profiles.py
+      - tests/test_store_backend_v3.py
+      - tests/test_store_migration_v3.py
+      - tests/test_store_models_v3.py
+      - tests/test_store_transactions.py
+      - tests/test_validate.py
+    stats:
+      files_changed: 0
+      insertions: 2242
+      deletions: 482
+    inspected: true
+    inspected_paths:
+      - booktx/store/__init__.py
+      - booktx/store/v3.py
+      - booktx/store/v1_v2.py
+      - booktx/store/transactions.py
+      - booktx/store/detect.py
+      - booktx/store/doctor.py
+      - booktx/store/migration.py
+      - booktx/store/models.py
+      - booktx/store/paths.py
+      - booktx/commands/translate.py
+      - booktx/workflows/translate.py
+      - booktx/workflows/review.py
+      - booktx/acceptance.py
+      - booktx/review_acceptance.py
+      - booktx/judge_acceptance.py
+      - booktx/identity.py
+      - booktx/pass_through.py
+      - booktx/config.py
+      - docs/architecture.md
+      - docs/concepts.md
+      - docs/api.md
+    observed_behavior:
+      Introduces the booktx/store package with a backend-neutral TranslationStoreRepository
+      interface, an open_translation_store factory, a v3 shard-based repository, a transactional
+      commit journal, a store doctor, and a v1->v2 migration helper. Migrates acceptance,
+      review, judge, identity, and pass_through writers to mutate the canonical store
+      through the new repository API instead of direct file load/save. Adds --to, --json,
+      and --keep-legacy-copy to translate migrate-store and rewrites the catalog summary
+      for it. Documents the v3 shard layout and removes the claim that v3 is not implemented.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: new translation storage v3"
+    target_entry_id: entry-0001
+  - sha: f8b8081e2dd13fe0a3a3339236cb95ce2872d6ac
+    source_ref: git:f8b8081e2dd13fe0a3a3339236cb95ce2872d6ac
+    short_sha: f8b8081
+    changed_paths:
+      - booktx/command_catalog.py
+    stats:
+      files_changed: 0
+      insertions: 1
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - booktx/command_catalog.py
+    observed_behavior:
+      Re-adds a missing comma in the SUMMARY_OVERRIDES entry for "translate
+      migrate-store" so the summary reads as two clean sentences. It is a follow-up
+      to the catalog change shipped in de9bab5 and is grouped with the migrate-store
+      entry.
+    public_impact: public
+    decision: grouped
+    evidence_subject: "fix: missing comma"
+    target_entry_id: entry-0004
+  - sha: 38a74d94653647b671210434e8ed98eafe9f324e
+    source_ref: git:38a74d94653647b671210434e8ed98eafe9f324e
+    short_sha: 38a74d9
+    changed_paths:
+      - .taskledger.toml
+      - booktx/agents_md.py
+      - booktx/block_protocol.py
+      - booktx/command_catalog.py
+      - booktx/command_hints.py
+      - booktx/config.py
+      - booktx/glossary_tasking.py
+      - booktx/judge_tasks.py
+      - booktx/models.py
+      - booktx/progress.py
+      - booktx/rendering.py
+      - booktx/submissions.py
+      - booktx/tasks.py
+      - booktx/todo_status.py
+      - booktx/workflows/translate.py
+      - docs/agent-workflow.md
+      - docs/human-workflows.md
+      - docs/troubleshooting.md
+      - skills/booktx/SKILL.md
+      - tests/test_agents_md.py
+      - tests/test_cli_isolation.py
+      - tests/test_cli_translate.py
+      - tests/test_cli_translate_todo.py
+      - tests/test_command_catalog.py
+      - tests/test_config.py
+      - tests/test_import_health.py
+      - tests/test_judge.py
+      - tests/test_tasks_submissions.py
+    stats:
+      files_changed: 0
+      insertions: 1126
+      deletions: 200
+    inspected: true
+    inspected_paths:
+      - booktx/tasks.py
+      - booktx/agents_md.py
+      - booktx/block_protocol.py
+      - booktx/command_hints.py
+      - booktx/command_catalog.py
+      - booktx/glossary_tasking.py
+      - booktx/judge_tasks.py
+      - booktx/workflows/translate.py
+      - booktx/todo_status.py
+      - booktx/submissions.py
+      - booktx/rendering.py
+      - booktx/models.py
+      - booktx/progress.py
+      - booktx/config.py
+      - docs/agent-workflow.md
+      - docs/human-workflows.md
+      - docs/troubleshooting.md
+      - skills/booktx/SKILL.md
+      - tests/test_cli_translate.py
+      - tests/test_cli_translate_todo.py
+    observed_behavior:
+      "Adds a per-task tasks/TASK.agent.md brief and a translate lint-block
+      command for read-only ingest block validation. Centralizes the source-only directive
+      prefixes (# glossary:, # style:, # termbase:) in booktx/block_protocol.py. Extends
+      booktx translate todo-next with --write --resume --format block so a bounded todo
+      can be created and the first block emitted in one call, and updates the agents_md
+      templates and human-workflow docs to point at the new command form. Adds translate_lint_block_command
+      and translate_todo_next_command helpers in booktx/command_hints.py and the rendering
+      hooks used by todo_status."
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: translation run improvements"
+    target_entry_id: entry-0003
+  - sha: dd3a35de5c95ae5388cd6ee29a00f2aafe2f12c6
+    source_ref: git:dd3a35de5c95ae5388cd6ee29a00f2aafe2f12c6
+    short_sha: dd3a35d
+    changed_paths:
+      - .taskledger.toml
+      - README.md
+      - booktx/acceptance.py
+      - booktx/build.py
+      - booktx/command_catalog.py
+      - booktx/commands/translate.py
+      - booktx/config.py
+      - booktx/editor_indexes.py
+      - booktx/glossary_audit.py
+      - booktx/judge_acceptance.py
+      - booktx/judge_sources.py
+      - booktx/qa_scan.py
+      - booktx/review_acceptance.py
+      - booktx/review_status.py
+      - booktx/review_tasks.py
+      - booktx/review_todo.py
+      - booktx/status.py
+      - booktx/store/doctor.py
+      - booktx/store/migration.py
+      - booktx/store/models.py
+      - booktx/store/paths.py
+      - booktx/store/transactions.py
+      - booktx/store/v1_v2.py
+      - booktx/store/v3.py
+      - booktx/tasks.py
+      - booktx/termbase_audit.py
+      - booktx/validate.py
+      - booktx/workflows/review.py
+      - booktx/workflows/translate.py
+      - docs/api.md
+      - docs/architecture.md
+      - docs/concepts.md
+      - docs/maintenance.md
+      - docs/project-layout.md
+      - docs/translation-contract.md
+      - skills/booktx/SKILL.md
+      - tests/store_backend_fixtures.py
+      - tests/test_build.py
+      - tests/test_cli.py
+      - tests/test_cli_translate.py
+      - tests/test_review_todo.py
+      - tests/test_store_backend_parity.py
+      - tests/test_store_backend_v3.py
+      - tests/test_store_migration_v3.py
+      - tests/test_store_models_v3.py
+      - tests/test_store_transactions.py
+      - tests/test_validate.py
+    stats:
+      files_changed: 0
+      insertions: 3864
+      deletions: 301
+    inspected: true
+    inspected_paths:
+      - booktx/store/migration.py
+      - booktx/store/doctor.py
+      - booktx/store/transactions.py
+      - booktx/store/models.py
+      - booktx/store/v3.py
+      - booktx/store/v1_v2.py
+      - booktx/store/paths.py
+      - booktx/commands/translate.py
+      - booktx/workflows/translate.py
+      - booktx/workflows/review.py
+      - booktx/tasks.py
+      - booktx/build.py
+      - booktx/editor_indexes.py
+      - booktx/glossary_audit.py
+      - booktx/judge_acceptance.py
+      - booktx/judge_sources.py
+      - booktx/pass_through.py
+      - booktx/qa_scan.py
+      - booktx/review_acceptance.py
+      - booktx/review_status.py
+      - booktx/review_tasks.py
+      - booktx/review_todo.py
+      - booktx/status.py
+      - booktx/termbase_audit.py
+      - booktx/validate.py
+      - booktx/acceptance.py
+      - booktx/commands/translate.py
+      - booktx/config.py
+      - docs/maintenance.md
+      - docs/translation-contract.md
+      - docs/architecture.md
+      - docs/concepts.md
+      - tests/store_backend_fixtures.py
+      - tests/test_store_backend_parity.py
+    observed_behavior:
+      "Completes the v3 store story. Expands the store doctor with
+      v3-aware integrity checks and the migration module with a real plan/apply flow:
+      inspect, dry-run, write, verify parity, and roll back via a stamped backup directory
+      with sha256 receipts and a JSON report. Adds StoreMigrationPlan, StoreMigrationResult,
+      StoreTransactionJournal, and StoreTransactionWrite models and a commit_v3_transaction
+      journal that acquires a store-root write lock, stages writes, verifies expected
+      state, and cleans up on success. Exposes the new options on translate migrate-store:
+      --to v2|v3, --json, --allow-source-drift, --backup-dir, --keep-legacy-copy, and
+      --stale-lock-policy reject|repair. Replaces remaining direct load_translation_store
+      / write_translation_store call sites with the repository API and adds parity fixtures
+      plus a backend-parity test that exercises v2 and v3 through the same flows."
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: migration and rollback for v3 storage added"
+    target_entry_id: entry-0002
+  - sha: 1ce70f973bf17374cd634b43d7ab5c05ad1e8b20
+    source_ref: git:1ce70f973bf17374cd634b43d7ab5c05ad1e8b20
+    short_sha: 1ce70f9
+    changed_paths:
+      - booktx/io_utils.py
+      - tests/test_import_health.py
+    stats:
+      files_changed: 0
+      insertions: 4
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - booktx/io_utils.py
+      - tests/test_import_health.py
+    observed_behavior:
+      Opens the NamedTemporaryFile inside write_text_atomic with newline=""
+      so Windows does not translate LF to CRLF during atomic writes, and rewrites the
+      import-health subprocess harness to resolve the booktx entrypoint through sysconfig.get_path("scripts")
+      with the .exe suffix on Windows.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: path handling fix"
+    target_entry_id: entry-0005
+  - sha: e5152072c832fbc7deb5542370ea2ca3f255d46e
+    source_ref: git:e5152072c832fbc7deb5542370ea2ca3f255d46e
+    short_sha: e515207
+    changed_paths:
+      - .taskledger.toml
+      - booktx/store/transactions.py
+      - tests/test_store_transactions.py
+    stats:
+      files_changed: 0
+      insertions: 54
+      deletions: 2
+    inspected: true
+    inspected_paths:
+      - booktx/store/transactions.py
+      - tests/test_store_transactions.py
+    observed_behavior:
+      Adds a Windows branch to _process_alive that probes liveness
+      through kernel32 OpenProcess with PROCESS_QUERY_LIMITED_INFORMATION so the v3
+      store can detect stale locks on Windows. Replaces the silent shutil.rmtree(ignore_errors=True)
+      on the lock directory with a guarded repair that surfaces a clear "could not be
+      repaired" error when the directory cannot be removed, and adds a regression test.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: fix transations on windows"
+    target_entry_id: entry-0006
+  - sha: 6d6fd5b4c08ee806e038c8c631908ae9f02bfa09
+    source_ref: git:6d6fd5b4c08ee806e038c8c631908ae9f02bfa09
+    short_sha: 6d6fd5b
+    changed_paths:
+      - tests/test_store_transactions.py
+    stats:
+      files_changed: 0
+      insertions: 1
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - tests/test_store_transactions.py
+    observed_behavior:
+      Swaps one .write_text call to .write_bytes in the optimistic-revision
+      mismatch fixture so the existing-text payload is byte-identical to the JSON the
+      test expects. Grouped with the 1ce70f9 cross-platform write fix.
+    public_impact: public
+    decision: grouped
+    evidence_subject: "fix: write command"
+    target_entry_id: entry-0005

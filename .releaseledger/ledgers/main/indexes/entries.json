@@ -115,6 +115,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0001",
+    "internal": false,
+    "kind": "added",
+    "order": 1,
+    "record_revision": 1,
+    "release_version": "v0.5.0",
+    "scopes": [],
+    "source_refs": ["git:de9bab5a1a049a58767d039a576588624087ed07"],
+    "status": "accepted",
+    "summary": "Added a v3 translation store with a backend-neutral repository, a store doctor, and a crash-safe commit journal"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0002",
     "internal": false,
     "kind": "added",
@@ -222,6 +236,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0002",
+    "internal": false,
+    "kind": "added",
+    "order": 2,
+    "record_revision": 1,
+    "release_version": "v0.5.0",
+    "scopes": [],
+    "source_refs": ["git:dd3a35de5c95ae5388cd6ee29a00f2aafe2f12c6"],
+    "status": "accepted",
+    "summary": "Added a v3 store migration flow with plan, backup, parity, rollback, and a stale-lock policy gate"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0003",
     "internal": false,
     "kind": "added",
@@ -324,6 +352,20 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0003",
+    "internal": false,
+    "kind": "added",
+    "order": 3,
+    "record_revision": 1,
+    "release_version": "v0.5.0",
+    "scopes": [],
+    "source_refs": ["git:38a74d94653647b671210434e8ed98eafe9f324e"],
+    "status": "accepted",
+    "summary": "Added `booktx translate lint-block`, a per-task agent brief, and a shared block-protocol module"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0004",
     "internal": false,
     "kind": "added",
@@ -400,6 +442,20 @@
     "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
     "status": "accepted",
     "summary": "Changed `booktx status` output to include the current lifecycle stage and the next human and agent actions"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0004",
+    "internal": false,
+    "kind": "changed",
+    "order": 4,
+    "record_revision": 1,
+    "release_version": "v0.5.0",
+    "scopes": [],
+    "source_refs": ["git:f8b8081e2dd13fe0a3a3339236cb95ce2872d6ac"],
+    "status": "accepted",
+    "summary": "Changed `booktx translate migrate-store` to accept `--to`, JSON output, custom backup, and a stale-lock policy"
   },
   {
     "audience": null,
@@ -485,6 +541,23 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0005",
+    "internal": false,
+    "kind": "fixed",
+    "order": 5,
+    "record_revision": 1,
+    "release_version": "v0.5.0",
+    "scopes": [],
+    "source_refs": [
+      "git:1ce70f973bf17374cd634b43d7ab5c05ad1e8b20",
+      "git:6d6fd5b4c08ee806e038c8c631908ae9f02bfa09"
+    ],
+    "status": "accepted",
+    "summary": "Fixed `write_text_atomic` to preserve newlines on Windows and updated the subprocess test to use `sysconfig`"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0006",
     "internal": false,
     "kind": "added",
@@ -563,6 +636,20 @@
     "source_refs": ["git:bf723bdc2ed8f64bd81ddaeec3c4fca4cc6d8666"],
     "status": "accepted",
     "summary": "Removed the `translation` group alias and the `actor` and `harness` identity groups"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0006",
+    "internal": false,
+    "kind": "fixed",
+    "order": 6,
+    "record_revision": 1,
+    "release_version": "v0.5.0",
+    "scopes": [],
+    "source_refs": ["git:e5152072c832fbc7deb5542370ea2ca3f255d46e"],
+    "status": "accepted",
+    "summary": "Fixed v3 store lock acquisition to probe liveness on Windows and surface a clear stale-lock repair error"
   },
   {
     "audience": null,
