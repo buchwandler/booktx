@@ -276,7 +276,7 @@ def test_commit_rejects_optimistic_revision_mismatch(tmp_path):
         )
         + "\n"
     )
-    (current_dir / "0001.json").write_text(existing_text, encoding="utf-8")
+    (current_dir / "0001.json").write_bytes(existing_text.encode("utf-8"))
 
     new_text = (
         json.dumps(
