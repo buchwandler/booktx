@@ -7,6 +7,7 @@ from hashlib import sha256
 import pytest
 
 from booktx.errors import BooktxError
+from booktx.store import transactions
 from booktx.store.models import (
     CURRENT_SHARD_SCHEMA,
     REVIEW_CANDIDATE_SHARD_SCHEMA,
@@ -220,6 +221,22 @@ def test_stale_lock_requires_explicit_policy_and_repair_succeeds(tmp_path):
     assert result.format.value == "v3"
     assert not (root / ".write-lock").exists()
     assert (root / "manifest.json").is_file()
+
+
+def test_stale_lock_repair_fails_when_lock_cannot_be_removed(tmp_path, monkeypatch):
+    root = tmp_path / "translation-store"
+    _write_lock(root, pid=999_999_999)
+    monkeypatch.setattr(transactions.shutil, "rmtree", lambda path: None)
+
+    with pytest.raises(BooktxError, match="could not be repaired") as excinfo:
+        commit_v3_transaction(
+            transactions_root=root / "transactions",
+            store_root=root,
+            stale_lock_policy="repair",
+            **_commit_kwargs(),
+        )
+
+    assert excinfo.value.code == "translation_store_locked"
 
 
 def test_commit_rejects_optimistic_hash_mismatch(tmp_path):
