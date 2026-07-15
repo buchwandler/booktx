@@ -36,14 +36,15 @@ uses the marker-bound profile and brokers access to shared source data.
 
 ## Store and provenance
 
-The canonical persisted backend is the shard-based v3 store under
-`translations/<profile>/translation-store/`. It stores a manifest plus
-per-chunk current, translation-candidate, and review-candidate shards.
-`TranslationStoreV2` remains the compatibility materialization model returned by
-the Python loader surface. Effective output still chooses a valid review
-candidate before the current translation version. Task context views and
-revision metadata preserve the source, baseline, and policy evidence needed to
-validate provenance.
+New profiles currently default to the v2 canonical store. The shard-based v3
+store under `translations/<profile>/translation-store/` remains an explicit
+opt-in migration target until its stabilization gate is completed. When v3 is
+active it stores a manifest plus per-chunk current, translation-candidate, and
+review-candidate shards. `TranslationStoreV2` remains the compatibility
+materialization model returned by the Python loader surface. Effective output
+still chooses a valid review candidate before the current translation version.
+Task context views and revision metadata preserve the source, baseline, and
+policy evidence needed to validate provenance.
 
 Generated compatibility exports, indexes, reports, and output are derived from
 the canonical store and can be regenerated. Agents and operators should inspect

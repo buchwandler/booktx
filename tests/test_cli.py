@@ -178,9 +178,9 @@ def test_whoami_json_is_stable_when_optional_state_is_missing(tmp_path: Path):
     assert payload["context"]["exists"] is False
     assert payload["context"]["ready"] is None
     assert payload["context"]["sha256"] is None
-    assert payload["store"]["exists"] is False
-    assert payload["store"]["version"] is None
-    assert payload["store"]["record_count"] is None
+    assert payload["store"]["exists"] is True
+    assert payload["store"]["version"] == 2
+    assert payload["store"]["record_count"] == 0
 
 
 def test_identity_set_updates_defaults_from_project_root(tmp_path: Path, monkeypatch):

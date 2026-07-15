@@ -28,11 +28,13 @@ resolution.
 
 ## State of truth
 
-`translations/<profile>/translation-store/` is the canonical shard-based record
-store. `TranslationStoreV2` is the compatibility materialization model used by
-the loader surface. `translation-version-ledger.json` records version history.
-Generated `translated/`, editor indexes, reports, and output files are derived
-artifacts and can be rebuilt.
+New profiles currently use `TranslationStoreV2` as the canonical record store.
+When a profile opts into v3, `translations/<profile>/translation-store/`
+becomes the canonical shard-based backend. `TranslationStoreV2` remains the
+compatibility materialization model used by the loader surface.
+`translation-version-ledger.json` records version history. Generated
+`translated/`, editor indexes, reports, and output files are derived artifacts
+and can be rebuilt.
 
 `translations/<profile>/context.json` is authoritative context state.
 `context.md` is its rendered view. Effective context views used by tasks are

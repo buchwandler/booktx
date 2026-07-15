@@ -1,9 +1,11 @@
 # Translation contract
 
-Translation state is profile-local. The durable current record store is
-`translations/<profile>/translation-store.json` (`TranslationStoreV2`). The
-version ledger, context, tasks, submissions, reviews, and reports are also
-profile-local.
+Translation state is profile-local. New profiles currently use
+`translations/<profile>/translation-store.json` (`TranslationStoreV2`) as the
+durable current record store. The shard-based
+`translations/<profile>/translation-store/` backend is an explicit opt-in v3
+migration target. The version ledger, context, tasks, submissions, reviews,
+and reports are also profile-local.
 
 ## Task metadata
 
@@ -61,8 +63,9 @@ opaque-content preservation.
 `context.json` is authoritative and `context.md` is rendered. Each task stores
 an immutable effective context view under
 `translations/<profile>/context-history/views/<sha>/`. Translation and review
-revisions retain baseline and context-view provenance. Do not edit the store or
-rendered context manually; use the CLI workflows.
+revisions retain baseline and context-view provenance. Do not edit
+`translation-store.json`, v3 shard files, or rendered context manually; use the
+CLI workflows.
 
 ## Glossary phrase collisions
 

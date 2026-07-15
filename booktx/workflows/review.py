@@ -22,7 +22,6 @@ from booktx.config import (
     Project,
     _err,
     load_translation_review_task,
-    load_translation_store,
     translation_review_ingest_block_path,
     translation_review_source_block_path,
     write_profile_config,
@@ -31,6 +30,7 @@ from booktx.errors import BooktxError
 from booktx.models import QualityReviewConfig, ReviewPassConfig, TranslationStoreV2
 from booktx.record_refs import parse_record_ref
 from booktx.review_status import compute_review_snapshot
+from booktx.store import StoreFormat, open_translation_store
 
 if TYPE_CHECKING:
     from booktx.models import ReviewTodo, TranslationReviewTask
@@ -168,11 +168,13 @@ def build_review_status_snapshot(
     cfg = (
         proj.profile_config.quality_review if proj.profile_config is not None else None
     )
-    store = load_translation_store(proj)
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
     record_order: list[tuple[str, str]] = []
     for chapter_id, rids in bundle.index.record_ids_by_chapter.items():
         record_order.extend((rid, chapter_id) for rid in rids)
-    snapshot = compute_review_snapshot(store, cfg, record_order=record_order)
+    snapshot = compute_review_snapshot(
+        repo.iter_records(), cfg, record_order=record_order
+    )
     # Populate the top-level next command from the first actionable pass.
     if snapshot.first_missing_record is not None:
         first_pass = next(
@@ -252,10 +254,10 @@ def create_next_review_task_workflow(
         raise _err("review_unknown_chapter", f"unknown chapter id: {chapter}")
     if selected_chapter_obj is None:
         raise BooktxError("review_no_chapter", "No eligible records for review.")
-    store = load_translation_store(proj)
+    repo = open_translation_store(proj, default_format=StoreFormat.V2)
     selected = select_review_records(
         bundle,
-        store.records,
+        repo.get_record,
         cfg,
         pass_number=pass_number,
         chapter_id=selected_chapter_obj.chapter_id,
@@ -374,7 +376,11 @@ def activate_review_workflow(proj: Project, *, record_ref: str, review_ref: str)
         stored.active_review = candidate.review_ref
         activated_ref = candidate.review_ref
 
-    repo.edit_v2(_mutate, summary="activate review candidate")
+    repo.edit_records(
+        [record_id],
+        _mutate,
+        summary="activate review candidate",
+    )
     assert activated_ref is not None
     return f"{record_id} -> {activated_ref}"
 
@@ -408,7 +414,11 @@ def deactivate_review_workflow(
         old_ref = stored.active_review
         stored.active_review = None
 
-    repo.edit_v2(_mutate, summary="deactivate review candidate")
+    repo.edit_records(
+        [record_id],
+        _mutate,
+        summary="deactivate review candidate",
+    )
     assert old_ref is not None
     return f"{record_id}: deactivated review {old_ref}", record_id
 
@@ -497,7 +507,11 @@ def revise_review_record_workflow(
         if activate:
             stored.active_review = new_ref
 
-    repo.edit_v2(_mutate, summary="revise review record")
+    repo.edit_records(
+        [record_id],
+        _mutate,
+        summary="revise review record",
+    )
     assert new_ref is not None
     message = f"revised: {record_id} -> {new_ref}" + (
         " (activated)" if activate else ""

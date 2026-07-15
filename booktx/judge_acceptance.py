@@ -899,7 +899,12 @@ def accept_judge_submission(
                 updated_at=timestamp,
             )
 
-    repo.edit_v2(_mutate, summary="accept judge submission")
+    repo.edit_records(
+        [item.id for item in submitted],
+        _mutate,
+        summary="accept judge submission",
+        source_sha256=bundle.snapshot.source.source_sha256,
+    )
     ledger.profile = project.profile or ledger.profile
     ledger.source_sha256 = bundle.snapshot.source.source_sha256
     ledger.source_profiles = list(task.source_profiles)

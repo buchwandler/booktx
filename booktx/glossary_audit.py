@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from booktx.config import Project, load_translation_store
+from booktx.config import Project
 from booktx.context import GlossaryEntry, load_context
 from booktx.glossary_match import (
     TermSpan,
@@ -25,6 +25,7 @@ from booktx.glossary_match import (
     target_terms,
 )
 from booktx.models import TranslationReviewCandidate
+from booktx.store import StoreFormat, open_translation_store
 from booktx.termbase import TermbaseEntry
 from booktx.termbase_match import TermbaseRuleEvaluation, evaluate_entry_policy
 from booktx.translation_store import (
@@ -201,8 +202,7 @@ def audit_glossary_term(
     if entry is None:
         return None
 
-    store = load_translation_store(project)
-    store_records = store.records
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
     source_by_id = bundle.index.source_by_id
 
     result = GlossaryAuditResult(
@@ -232,7 +232,7 @@ def audit_glossary_term(
             if not evaluations:
                 continue
             result.records_with_source_term += 1
-            stored = store_records.get(record_id)
+            stored = repo.get_record(record_id)
             if stored is None:
                 continue
             effective = effective_target_candidate(stored)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -11,13 +11,17 @@ if TYPE_CHECKING:
 from booktx.record_refs import parse_record_ref
 
 __all__ = [
+    "canonical_chunk_id",
     "chunk_id_filename",
+    "chunk_id_from_filename",
     "current_shard_path",
     "manifest_path",
     "review_candidates_shard_path",
     "store_root",
+    "transaction_dir",
     "transactions_dir",
     "translation_candidates_shard_path",
+    "validate_relative_store_path",
 ]
 
 
@@ -37,7 +41,7 @@ def transactions_dir(project: Project) -> Path:
     return store_root(project) / "transactions"
 
 
-def chunk_id_filename(chunk_id: int | str) -> str:
+def canonical_chunk_id(chunk_id: int | str) -> str:
     if isinstance(chunk_id, str):
         text = chunk_id.strip()
         if not text:
@@ -47,7 +51,41 @@ def chunk_id_filename(chunk_id: int | str) -> str:
         parsed = chunk_id
     if parsed <= 0:
         raise ValueError("chunk id must be a positive integer")
-    return f"{parsed:04d}.json"
+    return f"{parsed:04d}"
+
+
+def chunk_id_filename(chunk_id: int | str) -> str:
+    return f"{canonical_chunk_id(chunk_id)}.json"
+
+
+def chunk_id_from_filename(filename: str | Path) -> str:
+    text = filename.name if isinstance(filename, Path) else filename.strip()
+    if not text:
+        raise ValueError("chunk filename must not be empty")
+    if "/" in text:
+        raise ValueError("chunk filename must not contain directory separators")
+    if not text.endswith(".json"):
+        raise ValueError("chunk filename must end with .json")
+    chunk_text = text[:-5]
+    if chunk_text != canonical_chunk_id(chunk_text):
+        raise ValueError("chunk filename must use a canonical four-digit chunk id")
+    return chunk_text
+
+
+def validate_relative_store_path(relative_path: str) -> str:
+    text = relative_path.strip()
+    if not text:
+        raise ValueError("store relative path must not be empty")
+    path = PurePosixPath(text)
+    if path.is_absolute():
+        raise ValueError("store relative path must not be absolute")
+    if any(part in {"", ".", ".."} for part in path.parts):
+        raise ValueError("store relative path must stay inside the store root")
+    return path.as_posix()
+
+
+def transaction_dir(project: Project, transaction_id: str) -> Path:
+    return transactions_dir(project) / transaction_id
 
 
 def _chunk_dir_path(project: Project, dirname: str, chunk_id: int | str) -> Path:
@@ -67,4 +105,4 @@ def review_candidates_shard_path(project: Project, chunk_id: int | str) -> Path:
 
 
 def chunk_id_for_record(record_id: str) -> str:
-    return f"{parse_record_ref(record_id).chunk_id:04d}"
+    return canonical_chunk_id(parse_record_ref(record_id).chunk_id)

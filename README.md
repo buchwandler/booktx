@@ -69,6 +69,10 @@ ledgers, reports, and output belong under the selected profile. The canonical
 store is shard-based under `translation-store/`; do not edit shard files
 directly.
 
+New profiles stay on the v2 canonical store by default. The shard-based v3
+store remains an explicit opt-in migration target until its stabilization gate
+is completed.
+
 ## Quickstart
 
 ```bash

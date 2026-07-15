@@ -298,7 +298,11 @@ def accept_review_submission(
                 stored.active_review = candidate.review_ref
                 activated = True
 
-    repo.edit_v2(_mutate, summary="accept review submission")
+    repo.edit_records(
+        [item.id for item in submitted],
+        _mutate,
+        summary="accept review submission",
+    )
     return ReviewAcceptResult(
         accepted_records=len(submitted),
         activated=activated,

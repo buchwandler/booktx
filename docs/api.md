@@ -8,9 +8,11 @@ separate API contract says otherwise.
 The durable model names currently include `TranslationStoreV2`, translation
 records and review candidates, context models, profile configuration, source
 manifests, EPUB span metadata, and the v3 shard models in
-`booktx.store.models`. The profile-local canonical store is the
-`translations/<profile>/translation-store/` directory; `TranslationStoreV2`
-remains the compatibility materialization model.
+`booktx.store.models`. New profiles currently default to the v2 canonical
+store, while the shard-based v3 backend under
+`translations/<profile>/translation-store/` remains an explicit opt-in
+migration target. `TranslationStoreV2` remains the compatibility
+materialization model.
 
 The reference is intentionally broad so generated documentation can expose
 model fields and service helpers. It should not be read as a promise that every

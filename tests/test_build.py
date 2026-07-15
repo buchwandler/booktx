@@ -106,6 +106,32 @@ def _write_store_identity_translation(proj, chunks) -> None:
                 updated_at="2026-06-22T12:00:00Z",
             )
     write_translation_store(proj, TranslationStore(records=records))
+    write_translation_version_ledger(
+        proj,
+        TranslationVersionLedger(
+            active_version="1.1",
+            tracks={
+                "1": TranslationTrackLedgerEntry(
+                    version=1,
+                    actor="user:test",
+                    harness="pi",
+                    model="human",
+                    created_at="2026-06-22T12:00:00Z",
+                    updated_at="2026-06-22T12:00:00Z",
+                    subversions={
+                        "1": TranslationSubversionLedgerEntry(
+                            version=1,
+                            subversion=1,
+                            version_ref="1.1",
+                            context_sha256="a" * 64,
+                            created_at="2026-06-22T12:00:00Z",
+                            updated_at="2026-06-22T12:00:00Z",
+                        )
+                    },
+                )
+            },
+        ),
+    )
 
 
 def _extract_epub_project(project_root: Path) -> None:

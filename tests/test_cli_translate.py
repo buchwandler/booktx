@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from booktx.cli import app
 from booktx.config import (
+    current_source_sha256,
     find_source_file,
     init_project,
     load_project,
@@ -1088,6 +1089,86 @@ def test_translate_migrate_store_write_fails_on_missing_source(tmp_path: Path):
     assert "cannot migrate store with missing source records" in res.output
 
 
+def test_translate_migrate_store_to_v3_json_reports_and_allows_source_drift(
+    tmp_path: Path,
+):
+    project_dir = _make_project(tmp_path)
+    proj = _proj(project_dir)
+    chunk = json.loads(
+        next((project_dir / ".booktx" / "chunks").glob("*.json")).read_text("utf-8")
+    )
+    record = chunk["records"][0]
+    _write_legacy_store(
+        project_dir,
+        {
+            "version": 2,
+            "source_sha256": "stale-source-sha",
+            "records": {
+                record["id"]: {
+                    "chunk_id": int(record["id"].split("-", 1)[0]),
+                    "part_id": 1,
+                    "source_sha256": current_source_sha256(proj),
+                    "source": record["source"],
+                    "active_version": "1.1",
+                    "versions": [
+                        {
+                            "version": 1,
+                            "subversion": 1,
+                            "version_ref": "1.1",
+                            "target": "Hallo.",
+                            "status": "accepted",
+                            "created_at": "2026-06-22T12:00:00Z",
+                            "updated_at": "2026-06-22T12:00:00Z",
+                        }
+                    ],
+                    "reviews": [],
+                }
+            },
+        },
+    )
+
+    dry_run = runner.invoke(
+        app,
+        [
+            "translate",
+            "migrate-store",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--to",
+            "v3",
+            "--json",
+        ],
+    )
+    assert dry_run.exit_code == 0, dry_run.output
+    dry_payload = json.loads(dry_run.output)
+    assert dry_payload["source_drift_detected"] is True
+    assert any(finding["code"] == "source_drift" for finding in dry_payload["findings"])
+
+    migrate = runner.invoke(
+        app,
+        [
+            "translate",
+            "migrate-store",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--to",
+            "v3",
+            "--write",
+            "--allow-source-drift",
+            "--keep-legacy-copy",
+            "--json",
+        ],
+    )
+    assert migrate.exit_code == 0, migrate.output
+    payload = json.loads(migrate.output)
+    assert payload["changed"] is True
+    assert payload["target_format"] == "v3"
+    assert translation_store_v3_root(_proj(project_dir)).is_dir()
+    assert _store_path(project_dir).is_file()
+
+
 def test_translation_get_record_json_and_human_output(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     task, record, _ = _insert_identity_target(project_dir)
@@ -1382,8 +1463,8 @@ def test_whoami_reports_active_version_and_scoped_identity(tmp_path: Path):
     assert payload["context"]["ready"] is True
     assert payload["context"]["sha256"]
     assert payload["store"]["exists"] is True
-    assert payload["store"]["version"] == 3
-    assert payload["store"]["format"] == "v3"
+    assert payload["store"]["version"] == 2
+    assert payload["store"]["format"] == "v2"
     assert payload["store"]["record_count"] >= 1
 
 

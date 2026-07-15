@@ -7,7 +7,7 @@ status consumers are not affected by the optional quality-review feature.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -28,6 +28,18 @@ __all__ = [
     "build_review_gap_index",
     "compute_review_snapshot",
 ]
+
+
+def _record_items(
+    store: TranslationStoreV2
+    | Mapping[str, StoredTranslationRecordV2]
+    | Iterable[tuple[str, StoredTranslationRecordV2]],
+) -> list[tuple[str, StoredTranslationRecordV2]]:
+    if isinstance(store, TranslationStoreV2):
+        return list(store.records.items())
+    if isinstance(store, Mapping):
+        return list(store.items())
+    return list(store)
 
 
 def _accepted_review_for_pass(
@@ -113,7 +125,9 @@ class ReviewGapIndex:
 
 
 def build_review_gap_index(
-    store: TranslationStoreV2,
+    store: TranslationStoreV2
+    | Mapping[str, StoredTranslationRecordV2]
+    | Iterable[tuple[str, StoredTranslationRecordV2]],
     quality_cfg: QualityReviewConfig,
     *,
     record_order: list[tuple[str, str]] | None = None,
@@ -142,11 +156,12 @@ def build_review_gap_index(
         for chapter, rids in chapter_records.items():
             for rid in rids:
                 rid_to_chapter.setdefault(rid, chapter)
+    record_items = _record_items(store)
     for pass_number in quality_cfg.active_passes:
         pcfg = pass_cfg_by_number.get(pass_number)
         if pcfg is not None and not pcfg.enabled:
             continue
-        for rid, stored in store.records.items():
+        for rid, stored in record_items:
             if not eligible_for_pass(stored, pcfg):
                 continue
             if accepted_review_for_pass(stored, pass_number):
@@ -190,7 +205,9 @@ class ReviewStatusSnapshot(BaseModel):
 
 
 def compute_review_snapshot(
-    store: TranslationStoreV2,
+    store: TranslationStoreV2
+    | Mapping[str, StoredTranslationRecordV2]
+    | Iterable[tuple[str, StoredTranslationRecordV2]],
     quality_cfg: QualityReviewConfig | None,
     *,
     record_order: list[tuple[str, str]] | None = None,
@@ -211,6 +228,8 @@ def compute_review_snapshot(
     snapshot = ReviewStatusSnapshot(
         enabled=True, active_passes=active_passes, passes=[]
     )
+    record_items = _record_items(store)
+    record_map = dict(record_items)
 
     for pass_number in active_passes:
         pcfg = pass_cfg_by_number.get(pass_number)
@@ -227,7 +246,7 @@ def compute_review_snapshot(
             status_obj.status = "disabled"
             snapshot.passes.append(status_obj)
             continue
-        for stored in store.records.values():
+        for _rid, stored in record_items:
             if not eligible_for_pass(stored, pcfg):
                 continue
             status_obj.eligible_records += 1
@@ -250,7 +269,7 @@ def compute_review_snapshot(
             status_obj.missing_review_records > 0 or status_obj.stale_review_records > 0
         ):
             for rid, chapter in record_order:
-                rec = store.records.get(rid)
+                rec = record_map.get(rid)
                 if rec is None:
                     continue
                 if _needs_review_for_pass(rec, pass_number, pcfg):

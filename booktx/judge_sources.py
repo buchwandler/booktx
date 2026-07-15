@@ -49,7 +49,6 @@ from booktx.config import (
     judge_sources_snapshots_dir,
     load_identity,
     load_profile_project,
-    load_translation_store,
     load_translation_version_ledger,
     translation_version_ledger_path,
     validate_profile_name,
@@ -65,6 +64,8 @@ from booktx.models import (
     TranslationStoreV2,
     TranslationVersionLedger,
 )
+from booktx.store import StoreFormat, open_translation_store
+from booktx.store.doctor import inspect_store
 from booktx.translation_store import (
     EffectiveCandidateError,
     effective_candidate_selection,
@@ -84,6 +85,15 @@ __all__ = [
 ]
 
 MANIFEST_VERSION = 1
+
+
+def _materialize_store_from_repo(project: Project) -> TranslationStoreV2:
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    report = inspect_store(project)
+    return TranslationStoreV2(
+        source_sha256=report.stored_source_sha256 or "",
+        records={record_id: stored for record_id, stored in repo.iter_records()},
+    )
 
 
 # --------------------------------------------------------------------------
@@ -218,7 +228,7 @@ def _build_profile_snapshot(
     """
     cfg = source_project.profile_config
     assert cfg is not None  # validated by caller
-    store = load_translation_store(source_project)
+    store = _materialize_store_from_repo(source_project)
 
     store_text = _serialize_model_text(store)
     store_sha = _sha256_text_bytes(store_text)
@@ -856,7 +866,7 @@ def load_live_judge_source_views(
         _validate_source_contract(selection_project, source_project)
         cfg = source_project.profile_config
         assert cfg is not None
-        store = load_translation_store(source_project)
+        store = _materialize_store_from_repo(source_project)
         views[name] = JudgeSourceProfileView(
             profile=name,
             source_language=cfg.source_language,

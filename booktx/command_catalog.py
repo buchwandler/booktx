@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Literal
@@ -52,18 +53,18 @@ class CommandDescriptor:
                 raise TypeError(
                     f"CommandDescriptor.{name} must be str, got {type(value).__name__}"
                 )
-        optional_text_fields = {
+        optional_text_fields: dict[str, str | None] = {
             "replacement": self.replacement,
             "help_panel": self.help_panel,
             "next_human_action": self.next_human_action,
             "next_agent_action": self.next_agent_action,
             "example": self.example,
         }
-        for name, value in optional_text_fields.items():
-            if value is not None and not isinstance(value, str):
+        for name, optional_value in optional_text_fields.items():
+            if optional_value is not None and not isinstance(optional_value, str):
                 raise TypeError(
                     f"CommandDescriptor.{name} must be str | None, got "
-                    f"{type(value).__name__}"
+                    f"{type(optional_value).__name__}"
                 )
 
     def render_help(self) -> str:
@@ -491,7 +492,7 @@ SUMMARY_OVERRIDES: dict[str, str] = {
 }
 
 
-def _validate_summary_overrides(values: dict[str, object]) -> None:
+def _validate_summary_overrides(values: Mapping[str, object]) -> None:
     invalid = {
         path: type(value).__name__
         for path, value in values.items()

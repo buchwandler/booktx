@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from booktx.config import Project, load_translation_store
+from booktx.config import Project
 from booktx.models import TranslationReviewCandidate
+from booktx.store import StoreFormat, open_translation_store
 from booktx.termbase import (
     EffectiveTranslationTermbase,
     TermbaseEntry,
@@ -199,7 +200,7 @@ def audit_termbase(
     """Audit effective targets for records whose source matches the termbase."""
     entries = _relevant_entries(project, effective, entry_ids=entry_ids)
     entry_by_id = {entry.id: entry for entry in entries}
-    store = load_translation_store(project)
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
     result = TermbaseAuditResult()
     clean_records: set[str] = set()
     violation_records: set[str] = set()
@@ -217,7 +218,7 @@ def audit_termbase(
             if not matches:
                 continue
             source_matched_records.add(record_id)
-            stored = store.records.get(record_id)
+            stored = repo.get_record(record_id)
             if stored is None:
                 continue
             effective_candidate = effective_target_candidate(stored)

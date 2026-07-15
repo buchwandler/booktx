@@ -23,7 +23,8 @@ booktx translate migrate-inline-xhtml ./book --profile PROFILE
 ```
 
 Use migration commands only for legacy projects. Current projects use
-`TranslationStoreV2` under `translations/<profile>/`.
+`TranslationStoreV2` by default. The shard-based v3 store is opt-in through
+`booktx translate migrate-store ./book --profile PROFILE --to v3 --write`.
 
 ## Generated exports and storage
 

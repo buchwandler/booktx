@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+import json
+from collections.abc import Callable, Iterable, Iterator
+from hashlib import sha256
+from pathlib import Path
 from typing import TypeVar
 
 from booktx.config import Project, _err
 from booktx.io_utils import utc_timestamp
-from booktx.models import StoredTranslationRecordV2, TranslationStoreV2
+from booktx.models import (
+    StoredTranslationRecordV2,
+    TranslationCandidate,
+    TranslationReviewCandidate,
+    TranslationStoreV2,
+)
 from booktx.progress import load_source_records
 from booktx.record_refs import parse_record_ref
 
@@ -17,8 +25,10 @@ from .models import (
     V3CurrentRecord,
     V3CurrentShard,
     V3Manifest,
+    V3ReviewCandidate,
     V3ReviewRecord,
     V3ReviewShard,
+    V3TranslationCandidate,
     V3TranslationRecord,
     V3TranslationShard,
 )
@@ -39,7 +49,52 @@ T = TypeVar("T")
 
 
 def _model_json_text(model: object) -> str:
-    return model.model_dump_json(indent=2) + "\n"  # type: ignore[attr-defined]
+    return str(model.model_dump_json(indent=2)) + "\n"  # type: ignore[attr-defined]
+
+
+def _v3_translation_candidates(
+    candidates: list[TranslationCandidate],
+) -> list[V3TranslationCandidate]:
+    return [
+        V3TranslationCandidate.model_validate(
+            candidate.model_dump(
+                mode="python",
+                exclude={"source_sha256", "target_sha256"},
+            )
+        )
+        for candidate in candidates
+    ]
+
+
+def _v3_review_candidates(
+    candidates: list[TranslationReviewCandidate],
+) -> list[V3ReviewCandidate]:
+    return [
+        V3ReviewCandidate.model_validate(
+            candidate.model_dump(
+                mode="python",
+                exclude={"source_sha256"},
+            )
+        )
+        for candidate in candidates
+    ]
+
+
+def _file_sha256(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def _json_revision(path: Path) -> int | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text("utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    revision = payload.get("revision")
+    return revision if isinstance(revision, int) else None
 
 
 class V3TranslationStoreRepository:
@@ -153,12 +208,28 @@ class V3TranslationStoreRepository:
                             else None
                         ),
                         versions=(
-                            list(translation_record.versions)
+                            [
+                                TranslationCandidate.model_validate(
+                                    candidate.model_dump(
+                                        mode="python",
+                                        exclude={"source_sha256", "target_sha256"},
+                                    )
+                                )
+                                for candidate in translation_record.versions
+                            ]
                             if translation_record is not None
                             else []
                         ),
                         reviews=(
-                            list(review_record.reviews)
+                            [
+                                TranslationReviewCandidate.model_validate(
+                                    candidate.model_dump(
+                                        mode="python",
+                                        exclude={"source_sha256"},
+                                    )
+                                )
+                                for candidate in review_record.reviews
+                            ]
                             if review_record is not None
                             else []
                         ),
@@ -249,13 +320,13 @@ class V3TranslationStoreRepository:
                     chunk_id=record.chunk_id,
                     part_id=record.part_id,
                     source_sha256=record.source_sha256,
-                    versions=list(record.versions),
+                    versions=_v3_translation_candidates(record.versions),
                 )
                 review_records[record_id] = V3ReviewRecord(
                     chunk_id=record.chunk_id,
                     part_id=record.part_id,
                     source_sha256=record.source_sha256,
-                    reviews=list(record.reviews),
+                    reviews=_v3_review_candidates(record.reviews),
                 )
             current[chunk_id] = V3CurrentShard(
                 chunk_id=chunk_id, records=current_records
@@ -266,6 +337,203 @@ class V3TranslationStoreRepository:
             )
             reviews[chunk_id] = V3ReviewShard(chunk_id=chunk_id, records=review_records)
         return manifest, current, translations, reviews
+
+    def _chunk_records(
+        self, store: TranslationStoreV2, chunk_id: str
+    ) -> dict[str, StoredTranslationRecordV2]:
+        prefix = f"{chunk_id}-"
+        return {
+            record_id: record
+            for record_id, record in sorted(store.records.items())
+            if record_id.startswith(prefix)
+        }
+
+    def _serialize_chunk_records(
+        self, chunk_id: str, records: dict[str, StoredTranslationRecordV2]
+    ) -> tuple[
+        V3CurrentShard | None,
+        V3TranslationShard | None,
+        V3ReviewShard | None,
+    ]:
+        if not records:
+            return None, None, None
+        current_records: dict[str, V3CurrentRecord] = {}
+        translation_records: dict[str, V3TranslationRecord] = {}
+        review_records: dict[str, V3ReviewRecord] = {}
+        for record_id, record in sorted(records.items()):
+            current_records[record_id] = V3CurrentRecord(
+                chunk_id=record.chunk_id,
+                part_id=record.part_id,
+                source_sha256=record.source_sha256,
+                active_version=record.active_version,
+                active_review=record.active_review,
+            )
+            translation_records[record_id] = V3TranslationRecord(
+                chunk_id=record.chunk_id,
+                part_id=record.part_id,
+                source_sha256=record.source_sha256,
+                versions=_v3_translation_candidates(record.versions),
+            )
+            review_records[record_id] = V3ReviewRecord(
+                chunk_id=record.chunk_id,
+                part_id=record.part_id,
+                source_sha256=record.source_sha256,
+                reviews=_v3_review_candidates(record.reviews),
+            )
+        return (
+            V3CurrentShard(chunk_id=chunk_id, records=current_records),
+            V3TranslationShard(chunk_id=chunk_id, records=translation_records),
+            V3ReviewShard(chunk_id=chunk_id, records=review_records),
+        )
+
+    def _commit_partial_store(
+        self,
+        *,
+        existing_manifest: V3Manifest,
+        before_store: TranslationStoreV2,
+        after_store: TranslationStoreV2,
+        chunk_ids: list[str],
+    ) -> StoreCommitResult:
+        root = store_root(self.project)
+        root.mkdir(parents=True, exist_ok=True)
+        relative_to_text: dict[str, str] = {}
+        deletes: list[str] = []
+        changed_chunk_ids: list[str] = []
+        changed_record_ids: list[str] = []
+        deleted_chunk_ids: list[str] = []
+        expected_hashes: dict[str, str | None] = {}
+        expected_revisions: dict[str, int | None] = {}
+        next_chunk_ids = set(existing_manifest.chunk_ids)
+
+        for chunk_id in chunk_ids:
+            before_records = self._chunk_records(before_store, chunk_id)
+            after_records = self._chunk_records(after_store, chunk_id)
+            current_path = current_shard_path(self.project, chunk_id)
+            translation_path = translation_candidates_shard_path(self.project, chunk_id)
+            review_path = review_candidates_shard_path(self.project, chunk_id)
+            shard_paths = (current_path, translation_path, review_path)
+            for shard_path in shard_paths:
+                relative_path = shard_path.relative_to(root).as_posix()
+                expected_hashes[relative_path] = _file_sha256(shard_path)
+                expected_revisions[relative_path] = _json_revision(shard_path)
+
+            new_current, new_translations, new_reviews = self._serialize_chunk_records(
+                chunk_id, after_records
+            )
+            current_text = (
+                _model_json_text(new_current) if new_current is not None else None
+            )
+            translation_text = (
+                _model_json_text(new_translations)
+                if new_translations is not None
+                else None
+            )
+            review_text = (
+                _model_json_text(new_reviews) if new_reviews is not None else None
+            )
+            previous_current = (
+                current_path.read_text("utf-8") if current_path.is_file() else None
+            )
+            previous_translation = (
+                translation_path.read_text("utf-8")
+                if translation_path.is_file()
+                else None
+            )
+            previous_review = (
+                review_path.read_text("utf-8") if review_path.is_file() else None
+            )
+            chunk_changed = False
+
+            if current_text is None:
+                if previous_current is not None:
+                    deletes.append(current_path.relative_to(root).as_posix())
+                    chunk_changed = True
+            elif current_text != previous_current:
+                relative_to_text[current_path.relative_to(root).as_posix()] = (
+                    current_text
+                )
+                chunk_changed = True
+
+            if translation_text is None:
+                if previous_translation is not None:
+                    deletes.append(translation_path.relative_to(root).as_posix())
+                    chunk_changed = True
+            elif translation_text != previous_translation:
+                relative_to_text[translation_path.relative_to(root).as_posix()] = (
+                    translation_text
+                )
+                chunk_changed = True
+
+            if review_text is None:
+                if previous_review is not None:
+                    deletes.append(review_path.relative_to(root).as_posix())
+                    chunk_changed = True
+            elif review_text != previous_review:
+                relative_to_text[review_path.relative_to(root).as_posix()] = review_text
+                chunk_changed = True
+
+            if chunk_changed and after_records:
+                changed_chunk_ids.append(chunk_id)
+            if chunk_changed and not after_records and chunk_id in next_chunk_ids:
+                deleted_chunk_ids.append(chunk_id)
+
+            if after_records:
+                next_chunk_ids.add(chunk_id)
+            else:
+                next_chunk_ids.discard(chunk_id)
+
+            for record_id in sorted(set(before_records) | set(after_records)):
+                if before_records.get(record_id) != after_records.get(record_id):
+                    changed_record_ids.append(record_id)
+
+        manifest_file = manifest_path(self.project)
+        manifest_relative_path = manifest_file.relative_to(root).as_posix()
+        expected_hashes[manifest_relative_path] = _file_sha256(manifest_file)
+        manifest_changed = (
+            existing_manifest.chunk_ids != sorted(next_chunk_ids)
+            or existing_manifest.source_sha256 != after_store.source_sha256
+            or not manifest_file.is_file()
+        )
+        preserved_timestamp = (
+            existing_manifest.updated_at
+            or existing_manifest.created_at
+            or utc_timestamp()
+        )
+        manifest = V3Manifest(
+            source_sha256=after_store.source_sha256,
+            chunk_ids=sorted(next_chunk_ids),
+            created_at=existing_manifest.created_at or utc_timestamp(),
+            updated_at=utc_timestamp() if manifest_changed else preserved_timestamp,
+        )
+        manifest_text = _model_json_text(manifest)
+        previous_manifest_text = _model_json_text(existing_manifest)
+        wrote_manifest = (
+            manifest_text != previous_manifest_text or not manifest_file.is_file()
+        )
+        if wrote_manifest:
+            relative_to_text[manifest_relative_path] = manifest_text
+
+        if not relative_to_text and not deletes:
+            return StoreCommitResult(
+                format=StoreFormat.V3,
+                changed_chunk_ids=sorted(changed_chunk_ids),
+                deleted_chunk_ids=sorted(deleted_chunk_ids),
+                changed_record_ids=changed_record_ids,
+                wrote_manifest=False,
+            )
+
+        return commit_v3_transaction(
+            transactions_root=transactions_dir(self.project),
+            store_root=root,
+            relative_to_text=relative_to_text,
+            deletes=sorted(set(deletes)),
+            changed_chunk_ids=sorted(changed_chunk_ids),
+            deleted_chunk_ids=sorted(deleted_chunk_ids),
+            changed_record_ids=changed_record_ids,
+            wrote_manifest=wrote_manifest,
+            expected_hashes=expected_hashes,
+            expected_revisions=expected_revisions,
+        )
 
     def write_materialized_v2(self, store: TranslationStoreV2) -> StoreCommitResult:
         store = TranslationStoreV2.model_validate(store.model_dump(mode="python"))
@@ -385,7 +653,56 @@ class V3TranslationStoreRepository:
         self.write_materialized_v2(store)
         return result
 
+    def edit_records(
+        self,
+        record_ids: Iterable[str],
+        mutator: Callable[[TranslationStoreV2], T],
+        *,
+        summary: str = "",
+        source_sha256: str | None = None,
+    ) -> T:
+        del summary
+        existing_manifest = self._load_manifest()
+        chunk_ids = sorted({chunk_id_for_record(record_id) for record_id in record_ids})
+        store = TranslationStoreV2(source_sha256=existing_manifest.source_sha256)
+        for chunk_id in chunk_ids:
+            for record_id, record in self._materialize_chunk(chunk_id):
+                store.records[record_id] = record
+        before_store = TranslationStoreV2.model_validate(
+            store.model_dump(mode="python")
+        )
+        result = mutator(store)
+        store.source_sha256 = (
+            source_sha256
+            if source_sha256 is not None
+            else existing_manifest.source_sha256
+        )
+        self._commit_partial_store(
+            existing_manifest=existing_manifest,
+            before_store=before_store,
+            after_store=store,
+            chunk_ids=chunk_ids,
+        )
+        return result
+
     def clear_all(self, *, source_sha256: str = "") -> StoreCommitResult:
-        return self.write_materialized_v2(
-            TranslationStoreV2(source_sha256=source_sha256)
+        existing_manifest = self._load_manifest()
+        return self._commit_partial_store(
+            existing_manifest=existing_manifest,
+            before_store=TranslationStoreV2(
+                source_sha256=existing_manifest.source_sha256
+            ),
+            after_store=TranslationStoreV2(source_sha256=source_sha256),
+            chunk_ids=list(existing_manifest.chunk_ids),
+        )
+
+    def update_source_sha256(self, source_sha256: str) -> StoreCommitResult:
+        existing_manifest = self._load_manifest()
+        return self._commit_partial_store(
+            existing_manifest=existing_manifest,
+            before_store=TranslationStoreV2(
+                source_sha256=existing_manifest.source_sha256
+            ),
+            after_store=TranslationStoreV2(source_sha256=source_sha256),
+            chunk_ids=[],
         )

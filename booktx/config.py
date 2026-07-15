@@ -1069,7 +1069,7 @@ def create_profile(
         source_sha256 = project_source_sha256(profile_project)
     except BooktxError:
         source_sha256 = ""
-    open_translation_store(profile_project, default_format=StoreFormat.V3).clear_all(
+    open_translation_store(profile_project, default_format=StoreFormat.V2).clear_all(
         source_sha256=source_sha256
     )
     return profile_project

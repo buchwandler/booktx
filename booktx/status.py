@@ -40,12 +40,12 @@ from booktx.config import (
     load_manifest,
     load_profile_config,
     load_profile_project,
-    load_translation_store,
     load_translation_version_ledger,
     project_source_sha256,
 )
 from booktx.models import Chunk, StatusTotals, TranslatedRecord
 from booktx.progress import SourceRecordView, load_source_chunks, load_source_records
+from booktx.store import StoreFormat, open_translation_store
 from booktx.validate import (
     Severity,
     load_effective_translated_chunks,
@@ -533,16 +533,17 @@ def build_status_snapshot(
     )
 
     try:
-        store = load_translation_store(proj)
+        repo = open_translation_store(proj, default_format=StoreFormat.V2)
+        store_records = [stored for _record_id, stored in repo.iter_records()]
         ledger = load_translation_version_ledger(proj)
     except Exception:
-        store = None
+        store_records = None
         ledger = None
 
-    if store is not None:
+    if store_records is not None:
         version_counts: dict[str, VersionCoverage] = {}
         track_counts: dict[int, TrackCoverage] = {}
-        for stored in store.records.values():
+        for stored in store_records:
             seen_track_versions: set[int] = set()
             for candidate in stored.versions:
                 coverage = version_counts.setdefault(

@@ -11,7 +11,6 @@ from booktx.config import (
     Project,
     find_source_file,
     load_manifest,
-    load_translation_store,
 )
 from booktx.epub_manifest import (
     assert_source_sha,
@@ -24,6 +23,7 @@ from booktx.models import Chunk, TranslatedChunk
 from booktx.placeholders import restore
 from booktx.progress import count_words
 from booktx.selection_mode import is_revision_selection_profile
+from booktx.store import StoreFormat, open_translation_store
 from booktx.validate import (
     EffectiveTranslations,
     Finding,
@@ -86,11 +86,11 @@ def _required_review_errors(
         return []
     quality_cfg = cfg.quality_review
     try:
-        store = load_translation_store(project)
+        repo = open_translation_store(project, default_format=StoreFormat.V2)
     except Exception:  # noqa: BLE001 - store problems are reported by validation
         return []
     errors: list[Finding] = []
-    for record_id, stored in store.records.items():
+    for record_id, stored in repo.iter_records():
         chunk_id = f"{stored.chunk_id:04d}"
         errors.extend(
             review_coverage_findings(

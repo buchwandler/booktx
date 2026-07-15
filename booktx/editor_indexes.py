@@ -31,7 +31,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from booktx.chapters import ChapterMap, ensure_chapter_map
 from booktx.config import (
     Project,
-    load_translation_store,
     project_source_sha256,
     translation_source_index_path,
     translation_source_target_index_path,
@@ -41,6 +40,7 @@ from booktx.io_utils import write_text_atomic
 from booktx.models import Chunk
 from booktx.progress import load_source_chunks, source_record_sha256
 from booktx.record_refs import parse_record_ref
+from booktx.store import StoreFormat, open_translation_store
 from booktx.translation_store import (
     EffectiveCandidateError,
     EffectiveCandidateSelection,
@@ -382,7 +382,7 @@ def build_editor_indexes(
         for tr in translated_chunk.records:
             build_targets[tr.id] = tr.target
 
-    store = load_translation_store(project)
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
 
     findings: list[Finding] = list(effective.findings)
     target_payloads: dict[str, dict[str, Any]] = {}
@@ -390,6 +390,7 @@ def build_editor_indexes(
     translated_count = 0
 
     for chunk in source_chunks:
+        chunk_store = dict(repo.iter_chunk_records(chunk.chunk_id))
         for record in chunk.records:
             record_id = record.id
             ref = parse_record_ref(record_id)
@@ -400,7 +401,7 @@ def build_editor_indexes(
             source_base = _source_payload(
                 chunk_id, part_id, chapter, source_sha_rec, record.source
             )
-            stored = store.records.get(record_id)
+            stored = chunk_store.get(record_id)
             active_version = _record_ids(source_base, stored, "active_version")
             active_review = _record_ids(source_base, stored, "active_review")
 

@@ -338,11 +338,13 @@ def translate_migrate_store(
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
-    write: bool = typer.Option(False, "--write", help="Rewrite the store as v2."),
+    write: bool = typer.Option(
+        False, "--write", help="Apply the requested store rewrite or migration."
+    ),
     target_format: str | None = typer.Option(
         None,
         "--to",
-        help="Target canonical store format (v2 or v3). Dry-run unless --write is set.",
+        help="Target canonical store format (v2 or v3). Defaults to the legacy v1->v2 rewrite path when omitted.",
     ),
     as_json: bool = typer.Option(
         False,
@@ -368,6 +370,26 @@ def translate_migrate_store(
         "--allow-missing-source",
         help="Write migrated records even when some legacy ids no longer exist in source chunks.",
     ),
+    allow_source_drift: bool = typer.Option(
+        False,
+        "--allow-source-drift",
+        help="Allow canonical store migration to proceed even when the live source hash drifted.",
+    ),
+    backup_dir: Path | None = typer.Option(
+        None,
+        "--backup-dir",
+        help="Optional directory for migration backups and reports.",
+    ),
+    keep_legacy_copy: bool = typer.Option(
+        False,
+        "--keep-legacy-copy",
+        help="Keep the original legacy store alongside the migrated v3 store when migrating to v3.",
+    ),
+    stale_lock_policy: str = typer.Option(
+        "reject",
+        "--stale-lock-policy",
+        help="Migration lock policy: reject, or repair only an explicitly verified stale lock.",
+    ),
 ) -> None:
     """"""
     translate_migrate_store_workflow(
@@ -381,6 +403,10 @@ def translate_migrate_store(
         model,
         context_label,
         allow_missing_source,
+        allow_source_drift,
+        backup_dir,
+        keep_legacy_copy,
+        stale_lock_policy,
     )
 
 

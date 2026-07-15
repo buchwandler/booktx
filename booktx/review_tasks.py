@@ -11,13 +11,13 @@ with the base target so the reviewing agent edits only when quality improves.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from booktx.config import (
     Project,
-    load_translation_store,
     translation_review_ingest_block_path,
     translation_review_source_block_path,
 )
@@ -32,6 +32,7 @@ from booktx.models import (
     TranslationReviewTask,
     TranslationReviewTaskRecord,
 )
+from booktx.store import StoreFormat, open_translation_store
 from booktx.termbase import resolve_effective_termbase
 from booktx.termbase_audit import audit_termbase
 from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
@@ -237,7 +238,8 @@ def _record_matches_selection(
 
 def select_review_records(
     bundle: StatusBundle,
-    store_records: dict[str, StoredTranslationRecordV2],
+    store_record_lookup: Callable[[str], StoredTranslationRecordV2 | None]
+    | dict[str, StoredTranslationRecordV2],
     quality_cfg: QualityReviewConfig,
     *,
     pass_number: int,
@@ -260,6 +262,11 @@ def select_review_records(
     pass, and pass-2 selection still blocks when the required pass-1 review is
     missing.
     """
+    lookup = (
+        store_record_lookup.get
+        if isinstance(store_record_lookup, dict)
+        else store_record_lookup
+    )
     pcfg = next((p for p in quality_cfg.passes if p.pass_number == pass_number), None)
     base_mode = parse_review_base(base, pcfg)
     source_by_id = bundle.index.source_by_id
@@ -272,7 +279,7 @@ def select_review_records(
     total_words = 0
     for cid in chapter_ids:
         for record_id in bundle.index.record_ids_by_chapter.get(cid, []):
-            stored = store_records.get(record_id)
+            stored = lookup(record_id)
             if stored is None:
                 continue
             # Source drift guard: the stored source must match the current source.
@@ -310,7 +317,7 @@ def select_review_records(
 def _context_window(
     record_id: str,
     bundle: StatusBundle,
-    store_records: dict[str, StoredTranslationRecordV2],
+    store_record_lookup: Callable[[str], StoredTranslationRecordV2 | None],
     before_records: int,
     after_records: int,
 ) -> tuple[list[ReviewContextRecord], list[ReviewContextRecord]]:
@@ -331,7 +338,7 @@ def _context_window(
         view = bundle.index.source_by_id.get(rid)
         if view is None:
             return None
-        stored = store_records.get(rid)
+        stored = store_record_lookup(rid)
         effective_ref = None
         effective_target = None
         if stored is not None:
@@ -367,8 +374,7 @@ def create_review_task(
     """Build and persist a review task plus its source/ingest block artifacts."""
     from booktx.config import write_translation_review_task
 
-    store = load_translation_store(project)
-    store_records = store.records
+    repo = open_translation_store(project, default_format=StoreFormat.V2)
     pcfg = next((p for p in quality_cfg.passes if p.pass_number == pass_number), None)
     before_n = pcfg.before_records if pcfg is not None else 2
     after_n = pcfg.after_records if pcfg is not None else 2
@@ -413,7 +419,7 @@ def create_review_task(
         )
     for sel in selected:
         before, after = _context_window(
-            sel.record_id, bundle, store_records, before_n, after_n
+            sel.record_id, bundle, repo.get_record, before_n, after_n
         )
         window_payload = "\n".join(
             r.source

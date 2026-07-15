@@ -33,7 +33,6 @@ from booktx.chunking import RECORD_ID_SCHEME
 from booktx.config import (
     Project,
     load_manifest,
-    load_translation_store,
     load_translation_version_ledger,
     resolve_stored_path,
     translation_store_path,
@@ -71,6 +70,8 @@ from booktx.models import (
 from booktx.placeholders import TOKEN_RE, collect_tokens
 from booktx.progress import source_record_sha256
 from booktx.selection_mode import is_revision_selection_profile
+from booktx.store import StoreFormat, open_translation_store
+from booktx.store.doctor import inspect_store
 from booktx.translation_store import (
     active_candidate,
     effective_target_candidate,
@@ -1104,8 +1105,24 @@ def load_effective_translated_chunks(  # noqa: C901
         except Exception:  # noqa: BLE001
             raw_store_version = None
 
+    doctor_report = inspect_store(project)
+    for store_finding in doctor_report.findings:
+        findings.append(
+            Finding(
+                chunk_id="store",
+                severity=(
+                    Severity.ERROR
+                    if store_finding.severity == "error"
+                    else Severity.WARN
+                ),
+                rule=store_finding.code,
+                message=store_finding.message,
+            )
+        )
+
     try:
-        store = load_translation_store(project)
+        repo = open_translation_store(project, default_format=StoreFormat.V2)
+        store = dict(repo.iter_records())
     except Exception as exc:  # noqa: BLE001 - surface invalid store structure
         findings.append(
             Finding(
@@ -1137,7 +1154,7 @@ def load_effective_translated_chunks(  # noqa: C901
     )
 
     if store is not None:
-        for record_id, stored in store.records.items():
+        for record_id, stored in store.items():
             chunk_id = f"{stored.chunk_id:04d}"
             source_chunk = source_chunks.get(chunk_id)
             if source_chunk is None:

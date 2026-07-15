@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from booktx.config import (
+    BooktxError,
+    current_source_sha256,
     init_project,
     load_project,
     translation_store_path,
@@ -18,6 +23,7 @@ from booktx.models import (
     TranslationStoreV2,
 )
 from booktx.store import StoreFormat, detect_store_format
+from booktx.store.doctor import inspect_store
 from booktx.store.migration import execute_store_migration
 
 
@@ -40,7 +46,7 @@ def _legacy_v2_project(tmp_path: Path):
     write_json_model_atomic(
         translation_store_path(proj),
         TranslationStoreV2(
-            source_sha256="src-sha",
+            source_sha256=current_source_sha256(proj),
             records={
                 "0001-000001": StoredTranslationRecordV2(
                     chunk_id=1,
@@ -87,3 +93,75 @@ def test_migrate_v2_to_v3_and_back(tmp_path: Path):
     assert rolled_back.backup_path is not None and rolled_back.backup_path.is_dir()
     assert detect_store_format(proj) == StoreFormat.V2
     assert translation_store_path(proj).is_file()
+
+
+def test_migration_dry_run_reports_source_drift_without_mutating(tmp_path: Path):
+    proj = _legacy_v2_project(tmp_path)
+    store = TranslationStoreV2.model_validate_json(
+        translation_store_path(proj).read_text("utf-8")
+    )
+    store.source_sha256 = "stale-source-sha"
+    write_json_model_atomic(translation_store_path(proj), store)
+
+    result = execute_store_migration(proj, target_format=StoreFormat.V3, dry_run=True)
+
+    assert result.changed is False
+    assert result.source_drift_detected is True
+    assert any(finding["code"] == "source_drift" for finding in result.findings)
+    assert detect_store_format(proj) == StoreFormat.V2
+
+
+def test_migration_write_blocks_on_source_drift_without_override(tmp_path: Path):
+    proj = _legacy_v2_project(tmp_path)
+    store = TranslationStoreV2.model_validate_json(
+        translation_store_path(proj).read_text("utf-8")
+    )
+    store.source_sha256 = "stale-source-sha"
+    write_json_model_atomic(translation_store_path(proj), store)
+
+    with pytest.raises(BooktxError, match="store migration blocked"):
+        execute_store_migration(proj, target_format=StoreFormat.V3, dry_run=False)
+
+    assert detect_store_format(proj) == StoreFormat.V2
+
+
+def test_migration_write_can_keep_legacy_copy_when_migrating_to_v3(tmp_path: Path):
+    proj = _legacy_v2_project(tmp_path)
+
+    result = execute_store_migration(
+        proj,
+        target_format=StoreFormat.V3,
+        dry_run=False,
+        keep_legacy_copy=True,
+    )
+
+    assert result.changed is True
+    assert detect_store_format(proj) == StoreFormat.V3
+    assert translation_store_path(proj).is_file()
+
+
+def test_store_doctor_reports_pending_transaction_for_v3(tmp_path: Path):
+    proj = _legacy_v2_project(tmp_path)
+    execute_store_migration(proj, target_format=StoreFormat.V3, dry_run=False)
+    transactions_root = translation_store_v3_root(proj) / "transactions"
+    tx_dir = transactions_root / "tx-pending"
+    tx_dir.mkdir(parents=True, exist_ok=True)
+    (tx_dir / "journal.json").write_text(
+        json.dumps(
+            {
+                "transaction_id": "tx-pending",
+                "created_at": "2026-07-15T00:00:00Z",
+                "status": "prepared",
+                "writes": [],
+                "deletes": [],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = inspect_store(proj)
+
+    assert report.format == StoreFormat.V3
+    assert any(finding.code == "pending_transaction" for finding in report.findings)

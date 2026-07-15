@@ -308,7 +308,12 @@ def _write_accepted(
                 ),
             )
 
-    repo.edit_v2(_mutate, summary="accept translation records")
+    repo.edit_records(
+        [item.id for item in submitted],
+        _mutate,
+        summary="accept translation records",
+        source_sha256=bundle.snapshot.source.source_sha256,
+    )
     return updated_at, version_ref
 
 

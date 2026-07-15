@@ -1633,8 +1633,14 @@ def test_target_contains_soft_hyphen_is_warning(tmp_path: Path) -> None:
         epub_output=EpubOutputConfig(language_policy="preserve"),
     )
     # Write a store-backed record whose target contains U+00AD.
-    from booktx.config import write_translation_store
-    from booktx.models import StoredTranslationRecord, TranslationStore
+    from booktx.config import write_translation_store, write_translation_version_ledger
+    from booktx.models import (
+        StoredTranslationRecord,
+        TranslationStore,
+        TranslationSubversionLedgerEntry,
+        TranslationTrackLedgerEntry,
+        TranslationVersionLedger,
+    )
     from booktx.progress import source_record_sha256
 
     # Use the first extracted source record.
@@ -1655,6 +1661,32 @@ def test_target_contains_soft_hyphen_is_warning(tmp_path: Path) -> None:
         }
     )
     write_translation_store(proj, store)
+    write_translation_version_ledger(
+        proj,
+        TranslationVersionLedger(
+            active_version="1.1",
+            tracks={
+                "1": TranslationTrackLedgerEntry(
+                    version=1,
+                    actor="user:test",
+                    harness="pi",
+                    model="human",
+                    created_at="2026-06-22T12:00:00Z",
+                    updated_at="2026-06-22T12:00:00Z",
+                    subversions={
+                        "1": TranslationSubversionLedgerEntry(
+                            version=1,
+                            subversion=1,
+                            version_ref="1.1",
+                            context_sha256="a" * 64,
+                            created_at="2026-06-22T12:00:00Z",
+                            updated_at="2026-06-22T12:00:00Z",
+                        )
+                    },
+                )
+            },
+        ),
+    )
     report = validate_project(proj)
     soft = [f for f in report.findings if f.rule == "target_contains_soft_hyphen"]
     assert soft

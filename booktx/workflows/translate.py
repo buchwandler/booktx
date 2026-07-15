@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import typer
 from pydantic import ValidationError
@@ -945,9 +945,13 @@ def translate_import_legacy_workflow(
                     .replace("+00:00", "Z"),
                 )
                 imported_records += 1
-        store.source_sha256 = project_source_sha256(proj)
 
-    repo.edit_v2(_mutate, summary="import legacy translated chunks")
+    repo.edit_records(
+        [record.id for chunk in source_chunks.values() for record in chunk.records],
+        _mutate,
+        summary="import legacy translated chunks",
+        source_sha256=project_source_sha256(proj),
+    )
     console.print(
         f"imported: {imported_records} record(s) from {imported_chunks} legacy chunk(s)"
     )
@@ -964,6 +968,10 @@ def translate_migrate_store_workflow(
     model: str | None = None,
     context_label: str | None = None,
     allow_missing_source: bool = False,
+    allow_source_drift: bool = False,
+    backup_dir: Path | None = None,
+    keep_legacy_copy: bool = False,
+    stale_lock_policy: str = "reject",
 ) -> None:
     """Inspect or rewrite a legacy translation-store.json into the v2 schema."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
@@ -974,8 +982,20 @@ def translate_migrate_store_workflow(
     )
 
     if target_format is not None:
+        if target_format not in {StoreFormat.V2.value, StoreFormat.V3.value}:
+            _die("--to must be either v2 or v3")
+        if stale_lock_policy not in {"reject", "repair"}:
+            _die("--stale-lock-policy must be either reject or repair")
         target = StoreFormat(target_format)
-        result = execute_store_migration(proj, target_format=target, dry_run=not write)
+        result = execute_store_migration(
+            proj,
+            target_format=target,
+            dry_run=not write,
+            allow_source_drift=allow_source_drift,
+            backup_dir=backup_dir,
+            keep_legacy_copy=keep_legacy_copy,
+            stale_lock_policy=cast(Literal["reject", "repair"], stale_lock_policy),
+        )
         if as_json:
             console.print_json(
                 data={
@@ -994,6 +1014,13 @@ def translate_migrate_store_workflow(
                         else None
                     ),
                     "changed": result.changed,
+                    "source_drift_detected": result.source_drift_detected,
+                    "findings": result.findings,
+                    "schema": "booktx.store-migration-plan.v1",
+                    "migration_id": result.plan.migration_id,
+                    "parity_verified": result.parity_verified,
+                    "backup_sha256": result.backup_sha256,
+                    "report_sha256": result.report_sha256,
                 }
             )
             return
@@ -1006,6 +1033,13 @@ def translate_migrate_store_workflow(
             console.print(f"backup: {_project_relative(result.backup_path, proj.root)}")
         if result.report_path is not None:
             console.print(f"report: {_project_relative(result.report_path, proj.root)}")
+        if result.findings:
+            for finding in result.findings:
+                console.print(
+                    f"{finding['severity']}: {finding['code']}: {finding['message']}",
+                    soft_wrap=True,
+                    markup=False,
+                )
         return
 
     path = translation_store_path(proj)
@@ -1598,7 +1632,11 @@ def translation_activate_workflow(
         activated_ref = candidate.version_ref
 
     try:
-        repo.edit_v2(_mutate, summary="activate translation version")
+        repo.edit_records(
+            [record_id],
+            _mutate,
+            summary="activate translation version",
+        )
     except BooktxError as exc:
         _die(str(exc))
         return
@@ -1651,7 +1689,11 @@ def translation_review_workflow(
         reviewed_ref = candidate.version_ref
 
     try:
-        repo.edit_v2(_mutate, summary="record translation review metadata")
+        repo.edit_records(
+            [record_id],
+            _mutate,
+            summary="record translation review metadata",
+        )
     except BooktxError as exc:
         _die(str(exc))
         return
@@ -1887,7 +1929,11 @@ def translation_revise_record_workflow(
             context_notes_through_chapter_id=write_context.context_notes_through_chapter_id,
         )
 
-    repo.edit_v2(_mutate, summary="revise translation record")
+    repo.edit_records(
+        [record_id],
+        _mutate,
+        summary="revise translation record",
+    )
 
     console.print(
         f"revised: {record_id} -> {version_ref}" + (" (activated)" if activate else "")
@@ -2035,7 +2081,11 @@ def translation_revise_block_workflow(
                 context_notes_through_chapter_id=write_context.context_notes_through_chapter_id,
             )
 
-    repo.edit_v2(_mutate, summary="revise translation block")
+    repo.edit_records(
+        [item.id for item in submitted],
+        _mutate,
+        summary="revise translation block",
+    )
     chapters = sorted(
         {
             bundle.index.record_to_chapter.get(item.id, "")

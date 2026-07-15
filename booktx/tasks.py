@@ -428,13 +428,13 @@ def _render_terminology_section(
         lines.append("")
     if termbase:
         lines.append("### Termbase")
-        for snapshot in termbase:
-            preferred = " / ".join(snapshot.target_preferred) or "(none)"
-            forbidden = " / ".join(snapshot.target_forbidden) or "(none)"
-            note = snapshot.sense or snapshot.rationale
+        for termbase_snapshot in termbase:
+            preferred = " / ".join(termbase_snapshot.target_preferred) or "(none)"
+            forbidden = " / ".join(termbase_snapshot.target_forbidden) or "(none)"
+            note = termbase_snapshot.sense or termbase_snapshot.rationale
             lines.append(
-                f"- {snapshot.entry_id}: {snapshot.source} -> {preferred}; "
-                f"forbidden: {forbidden}; matched: {snapshot.matched_source_cue}; "
+                f"- {termbase_snapshot.entry_id}: {termbase_snapshot.source} -> {preferred}; "
+                f"forbidden: {forbidden}; matched: {termbase_snapshot.matched_source_cue}; "
                 f"note: {note or '(none)'}"
             )
         lines.append("")
@@ -496,8 +496,8 @@ def _render_source_records_section(task: TranslationTask) -> list[str]:
             lines.append("GLOSSARY: (none)")
         if record.applicable_termbase:
             lines.append("TERMBASE:")
-            for snapshot in record.applicable_termbase:
-                lines.append("  " + _render_termbase_snapshot(snapshot)[2:])
+            for termbase_snapshot in record.applicable_termbase:
+                lines.append("  " + _render_termbase_snapshot(termbase_snapshot)[2:])
         else:
             lines.append("TERMBASE: (none)")
         styles = _style_directives_for_record(record)
@@ -732,12 +732,12 @@ def write_task_source_block(
         if idx:
             parts.append("")
         parts.append(f">>> {record.id}")
-        for snapshot in record.applicable_glossary:
-            parts.append(_render_glossary_snapshot(snapshot))
+        for glossary_snapshot in record.applicable_glossary:
+            parts.append(_render_glossary_snapshot(glossary_snapshot))
         for style in _style_directives_for_record(record):
             parts.append(f"# style: {style}")
-        for snapshot in record.applicable_termbase:
-            parts.append(_render_termbase_snapshot(snapshot))
+        for termbase_snapshot in record.applicable_termbase:
+            parts.append(_render_termbase_snapshot(termbase_snapshot))
         parts.append(record.source)
     write_text_atomic(path, "\n".join(parts).rstrip() + "\n")
     return path

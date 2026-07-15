@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import TypeVar
 
 from booktx.config import Project, translation_store_path
@@ -81,6 +81,22 @@ class V1V2TranslationStoreRepository:
         self.write_materialized_v2(store)
         return result
 
+    def edit_records(
+        self,
+        record_ids: Iterable[str],
+        mutator: Callable[[TranslationStoreV2], T],
+        *,
+        summary: str = "",
+        source_sha256: str | None = None,
+    ) -> T:
+        del record_ids, summary
+        store = self.materialize_v2()
+        result = mutator(store)
+        if source_sha256 is not None:
+            store.source_sha256 = source_sha256
+        self.write_materialized_v2(store)
+        return result
+
     def get_record(self, record_id: str) -> StoredTranslationRecordV2 | None:
         return self.materialize_v2().records.get(record_id)
 
@@ -102,3 +118,8 @@ class V1V2TranslationStoreRepository:
         return self.write_materialized_v2(
             TranslationStoreV2(source_sha256=source_sha256)
         )
+
+    def update_source_sha256(self, source_sha256: str) -> StoreCommitResult:
+        store = self.materialize_v2()
+        store.source_sha256 = source_sha256
+        return self.write_materialized_v2(store)

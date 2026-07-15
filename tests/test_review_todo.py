@@ -297,7 +297,6 @@ def test_select_review_todo_chapters_2passes_3chapters_single_computation(tmp_pa
 
     from booktx.config import (
         load_project,
-        load_translation_store,
         write_profile_config,
         write_translation_store,
         write_translation_version_ledger,
@@ -316,6 +315,7 @@ def test_select_review_todo_chapters_2passes_3chapters_single_computation(tmp_pa
     from booktx.review_status import build_review_gap_index
     from booktx.review_todo import select_review_todo_chapters
     from booktx.status import build_status_snapshot
+    from booktx.store import open_translation_store
 
     # Build a project with 3 chapters, 1 record each.
     src = tmp_path / "book.md"
@@ -416,13 +416,13 @@ def test_select_review_todo_chapters_2passes_3chapters_single_computation(tmp_pa
 
     with (
         patch(
-            "booktx.review_todo.load_translation_store",
-            wraps=load_translation_store,
-        ) as load_spy,
-        patch(
             "booktx.review_todo.build_review_gap_index",
             wraps=build_review_gap_index,
         ) as gap_spy,
+        patch(
+            "booktx.review_todo.open_translation_store",
+            wraps=open_translation_store,
+        ) as repo_spy,
     ):
         selected = select_review_todo_chapters(
             proj, bundle, cfg.quality_review, chapters=5
@@ -441,10 +441,10 @@ def test_select_review_todo_chapters_2passes_3chapters_single_computation(tmp_pa
     assert per_chapter_missing > 0
     # total = per_chapter_missing * 3 chapters * 1 (we sum across passes in the index)
 
-    # Single computation: pre-Phase-2 would call load_translation_store and
+    # Single computation: pre-Phase-2 would call whole-store loading and
     # build compute_review_snapshot chapters * passes = 3 * 2 = 6 times.
-    assert load_spy.call_count == 1, (
-        f"load_translation_store called {load_spy.call_count} times "
+    assert repo_spy.call_count == 1, (
+        f"open_translation_store called {repo_spy.call_count} times "
         f"(expected 1; pre-Phase-2 = chapters*passes = 6)"
     )
     assert gap_spy.call_count == 1, (
