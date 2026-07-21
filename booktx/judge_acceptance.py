@@ -98,6 +98,33 @@ def _normalize_newlines(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _grammar_sentence_count(text: str) -> int:
+    return len(re.findall(r"[^.!?]+(?:[.!?]+|$)", text.strip())) if text.strip() else 0
+
+
+def _validate_grammar_scope(
+    item: SubmittedJudgeRecord, base_target: str, target: str
+) -> None:
+    """Reject non-minimal or structurally incompatible grammar edits."""
+    if item.decision_kind != "edited":
+        return
+    if _grammar_sentence_count(base_target) != _grammar_sentence_count(target):
+        raise _err(
+            "judge_grammar_sentence_count", f"record {item.id} changed sentence count"
+        )
+    if re.findall(r"<[^>]+>", base_target) != re.findall(r"<[^>]+>", target):
+        raise _err(
+            "judge_grammar_structure",
+            f"record {item.id} changed inline XHTML structure",
+        )
+    similarity = SequenceMatcher(None, base_target, target).ratio()
+    if similarity < 0.72:
+        raise _err(
+            "judge_grammar_nonminimal",
+            f"record {item.id} grammar edit is too large (similarity {similarity:.2f})",
+        )
+
+
 def parse_judge_json_submission(
     text: str,
 ) -> tuple[str | None, list[SubmittedJudgeRecord]]:
@@ -726,6 +753,12 @@ def _validate_and_resolve_target(
                 record_id=source_record.id,
             )
         )
+    if (
+        task.selection_purpose == "revise"
+        and task.revision_focus == "grammar"
+        and selected_candidate is not None
+    ):
+        _validate_grammar_scope(item, selected_candidate.target, target_text)
     return target_text, findings
 
 

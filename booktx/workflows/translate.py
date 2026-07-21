@@ -95,6 +95,7 @@ from booktx.models import (
     TranslationStoreV2,
 )
 from booktx.path_display import display_path
+from booktx.profile_protocol import require_translation_protocol
 from booktx.progress import (
     SourceRecordView,
     load_source_chunks,
@@ -156,6 +157,7 @@ def translate_next_workflow(
     """Return the next text to translate and persist a task id."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate next")
     if unit not in {"paragraph", "batch", "chunk", "chapter"}:
         _die("--unit must be paragraph, batch, chunk, or chapter")
     if output_format not in {"text", "tsv", "block"}:
@@ -277,6 +279,7 @@ def translate_insert_workflow(
     """Accept translated text through the CLI and write the store atomically."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate insert")
     if input_format not in {"json", "tsv", "block"}:
         _die("--format must be json, tsv, or block")
     _require_chunks(proj)
@@ -557,6 +560,7 @@ def translate_lint_block_workflow(
 
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate lint-block")
     _require_chunks(proj)
     _require_no_source_drift(proj)
     _require_ready_context(proj)
@@ -681,6 +685,7 @@ def translate_todo_next_workflow(
 
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate todo-next")
     if output_format not in {"text", "tsv", "block"}:
         _die("--format must be text, tsv, or block")
     if resume and not write:
@@ -827,6 +832,7 @@ def translate_todo_status_workflow(
     """Show live bounded-run todo status and the next safe command."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate todo-status")
     _require_chunks(proj)
     bundle = _project_status_snapshot(proj)
     try:
@@ -867,6 +873,7 @@ def translate_todo_resume_workflow(
     """Resume a bounded multi-chapter todo and create the next safe task."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate todo-resume")
     if output_format not in {"text", "tsv", "block"}:
         _die("--format must be text, tsv, or block")
     if as_json and output_format != "text":
@@ -897,6 +904,7 @@ def translate_import_legacy_workflow(
 ) -> None:
     """Import valid legacy translated chunk files into the translation store."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    require_translation_protocol(proj, command="translate import-legacy")
     _require_chunks(proj)
     from booktx.store import StoreFormat, open_translation_store
 
@@ -975,6 +983,7 @@ def translate_migrate_store_workflow(
 ) -> None:
     """Inspect or rewrite a legacy translation-store.json into the v2 schema."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    require_translation_protocol(proj, command="translate migrate-store")
     from booktx.store import (
         StoreFormat,
         execute_store_migration,
@@ -1609,6 +1618,7 @@ def translation_activate_workflow(
 ) -> None:
     """Activate one stored candidate version for a single record."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    require_translation_protocol(proj, command="translate activate")
     from booktx.store import StoreFormat, open_translation_store
 
     record_id = parse_record_ref(record_ref).canonical_id
@@ -1653,6 +1663,7 @@ def translation_review_workflow(
 ) -> None:
     """Review one stored candidate and optionally activate it."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    require_translation_protocol(proj, command="translate review")
     from booktx.store import StoreFormat, open_translation_store
 
     record_id = parse_record_ref(record_ref).canonical_id
@@ -1717,6 +1728,7 @@ def translate_set_record_workflow(
     whole chapter section in one shell command when truncation is a concern.
     """
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
+    require_translation_protocol(proj, command="translate set-record")
     _require_chunks(proj)
     _require_ready_context(proj, allow_missing_context=allow_missing_context)
     task = _load_translation_task_or_exit(proj, task_id)
@@ -1827,6 +1839,7 @@ def translation_revise_record_workflow(
 
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate revise-record")
     _require_chunks(proj)
     _require_ready_context(proj)
     record_id = parse_record_ref(record_ref).canonical_id
@@ -1970,6 +1983,7 @@ def translation_revise_block_workflow(
         return
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
+    require_translation_protocol(proj, command="translate revise-block")
     _require_chunks(proj)
     _require_ready_context(proj)
     from booktx.io_utils import utc_timestamp

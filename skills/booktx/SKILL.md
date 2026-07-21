@@ -8,6 +8,16 @@ description: Operate booktx safely through its human-first lifecycle and profile
 Use the live CLI help as the command authority. Use this skill for booktx
 translation projects, not for changing the booktx implementation itself.
 
+## Mandatory startup dispatch
+
+Before any other filesystem inspection or booktx command:
+
+1. Read a local `AGENTS.md` completely when it exists.
+2. Run `booktx mode . --json` and dispatch by its reported protocol.
+3. In a selection/judge profile, run `booktx judge status .` first and never run a `booktx translate` mutation command.
+4. In profile-root mode, use only profile-local relative paths; do not inspect parents/absolute paths or chain commands with `;`, `&&`, `||`, or shell loops.
+5. If the judge snapshot is missing or invalid, stop and report the project-root preparation command.
+
 ## Core contract
 
 `booktx` prepares Markdown and EPUB documents. It extracts records, stores

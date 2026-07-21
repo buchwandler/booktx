@@ -40,6 +40,7 @@ from booktx.config import (
 from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import utc_timestamp
 from booktx.models import TranslatedRecord
+from booktx.profile_protocol import require_translation_protocol
 from booktx.progress import count_words
 from booktx.termbase_tasking import applicable_termbase_sha256_for_record_sources
 from booktx.translation_store import ensure_store_record, upsert_translation_version
@@ -338,6 +339,7 @@ def accept_translation_records(
     returned progress fields reflect a *refreshed* snapshot taken after the
     store write, matching the historical CLI output exactly.
     """
+    require_translation_protocol(proj, command="translation acceptance")
     if not submitted:
         raise _err("empty_submission", "no records to accept")
 

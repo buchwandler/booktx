@@ -52,6 +52,7 @@ from booktx.config import (
     write_profile_root_marker,
 )
 from booktx.errors import BooktxError, _err
+from booktx.judge_sources import validate_judge_sources_snapshot
 from booktx.runtime import RuntimeContext, resolve_runtime
 
 __all__ = [
@@ -227,6 +228,18 @@ def _write_project_root(
             "agents_profile_required",
             "isolated AGENTS.md mode requires a target profile; pass --profile PROFILE",
         )
+    profile_cfg = load_profile_config(project, target_profile)
+    if profile_cfg.kind == "selection":
+        try:
+            validate_judge_sources_snapshot(project)
+        except BooktxError as exc:
+            raise _err(
+                "selection_profile_agents_unprepared",
+                "selection profile AGENTS.md must be prepared through "
+                "`booktx judge prepare-isolation . --profile PROFILE --write`; "
+                f"detail: {exc}",
+            ) from exc
+
     _reject_ancestor_conflict(root, sanitize=False)
 
     # Refresh the profile marker atomically before writing the target.

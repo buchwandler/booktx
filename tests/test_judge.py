@@ -4380,9 +4380,11 @@ def test_revise_grammar_insert_warns_on_large_edit(tmp_path: Path):
     insert = _revise_profile_root_insert(
         project_dir, task_id, f"judge-ingest/{task_id}.decisions.txt"
     )
-    assert insert.exit_code == 0, insert.output
-    assert "qa: " in insert.output
-    assert "grammar-focused revision made a large edit to BASE_TARGET" in insert.output
+    assert insert.exit_code != 0, insert.output
+    assert (
+        "judge_grammar_nonminimal" in insert.output
+        or "grammar edit is too large" in insert.output
+    )
 
 
 def test_revise_validation_and_build_enforce_provenance(tmp_path: Path):

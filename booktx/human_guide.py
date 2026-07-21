@@ -18,6 +18,7 @@ from booktx.context import (
     unapproved_required_questions,
     unresolved_required_questions,
 )
+from booktx.judge_sources import validate_judge_sources_snapshot
 from booktx.workflows.agents import agents_status_workflow
 
 if TYPE_CHECKING:
@@ -231,6 +232,125 @@ def build_guide_result(
                 ),
             ),
             agent_next=None,
+        )
+
+    # Selection profiles have a separate judge lifecycle. Do this dispatch before
+    # source-analysis and source-interview checks, which are translation-only.
+    if (
+        project.profile_config is not None
+        and project.profile_config.kind == "selection"
+    ):
+        unresolved = unresolved_required_questions(ctx)
+        unapproved = unapproved_required_questions(ctx)
+        if unresolved or unapproved:
+            blockers = []
+            if unresolved:
+                blockers.append(
+                    f"{len(unresolved)} required context question(s) remain unanswered."
+                )
+            if unapproved:
+                blockers.append(
+                    f"{len(unapproved)} required context answer(s) still need human approval."
+                )
+            return GuideResult(
+                stage="context_approval",
+                project=str(project.root),
+                profile=profile,
+                human_blockers=tuple(blockers),
+                human_next=GuideAction(
+                    summary="Review and approve the required judge context questionnaire.",
+                    command=_project_command(
+                        runtime,
+                        project_arg,
+                        "context questionnaire",
+                        suffix=" --stdout",
+                    ),
+                ),
+                agent_next=None,
+            )
+        if not ctx.ready:
+            return GuideResult(
+                stage="context_not_ready",
+                project=str(project.root),
+                profile=profile,
+                human_blockers=("The judge context exists but is not marked ready.",),
+                human_next=GuideAction(
+                    summary="Mark the approved judge context ready.",
+                    command=_project_command(
+                        runtime, project_arg, "context mark-ready"
+                    ),
+                ),
+                agent_next=None,
+            )
+        try:
+            validate_judge_sources_snapshot(project)
+        except Exception as exc:
+            message = str(exc)
+            missing = "missing" in message.lower()
+            stage = "judge_snapshot_missing" if missing else "judge_snapshot_invalid"
+            command = (
+                f"booktx judge prepare-isolation {_project_arg(project_arg)} --profile {profile} --context-from {profile} --write"
+                if not runtime.mode.isolated_output
+                else None
+            )
+            return GuideResult(
+                stage=stage,
+                project=str(project.root),
+                profile=profile,
+                human_blockers=(
+                    "The pinned judge source snapshot is missing or invalid.",
+                ),
+                human_next=GuideAction(
+                    summary="Prepare a pinned judge snapshot from the project root.",
+                    command=command,
+                ),
+                agent_next=None,
+            )
+        agents_entries = agents_status_workflow(
+            project.root
+            if not runtime.mode.isolated_output
+            else runtime.mode.profile_root or project.root
+        )
+        entry = next(
+            (
+                item
+                for item in agents_entries
+                if item.scope == "profile" and item.profile == profile
+            ),
+            None,
+        )
+        if entry is None or entry.inspection.state != "managed-valid" or entry.stale:
+            command = (
+                f"booktx agents write {_project_arg(project_arg)} --mode isolated --profile {profile}"
+                if not runtime.mode.isolated_output
+                else None
+            )
+            return GuideResult(
+                stage="judge_agents_missing",
+                project=str(project.root),
+                profile=profile,
+                human_blockers=("The isolated judge AGENTS.md is missing or stale.",),
+                human_next=GuideAction(
+                    summary="Write fresh judge instructions from the project root.",
+                    command=command,
+                ),
+                agent_next=None,
+            )
+        return GuideResult(
+            stage="judging",
+            project=str(project.root),
+            profile=profile,
+            human_blockers=(),
+            human_next=GuideAction(
+                summary="Monitor judge decisions and provenance.",
+                command=_project_command(runtime, project_arg, "judge status"),
+            ),
+            agent_next=GuideAction(
+                summary="Continue the isolated judge workflow.",
+                command="booktx judge status ."
+                if runtime.mode.isolated_output
+                else None,
+            ),
         )
 
     from booktx.source_analysis import read_canonical_report

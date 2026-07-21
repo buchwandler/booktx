@@ -24,11 +24,13 @@ from booktx.cli_support import (
     console,
 )
 from booktx.errors import BooktxError
+from booktx.judge_provenance import audit_revision_provenance
 from booktx.judge_sources import (
     configured_selection_sources,
     sync_judge_source_snapshots,
 )
 from booktx.judge_store import parse_sources_csv
+from booktx.judge_todos import latest_todo, load_todo, new_todo
 from booktx.runtime import RuntimeContext
 from booktx.workflows.judge import (
     _source_access_from_runtime,
@@ -231,6 +233,21 @@ def judge_create_profile(
         console.print(f"purpose: {selection.purpose}")
         if selection.purpose == "revise":
             console.print(f"revision focus: {selection.revision_focus}")
+    console.print("state: CREATED, NOT PREPARED")
+    console.print("do not start the agent harness yet")
+    configured_source = (
+        project.profile_config.selection.sources[0]
+        if project.profile_config is not None
+        and project.profile_config.selection is not None
+        and project.profile_config.selection.sources
+        else "SOURCE_PROFILE"
+    )
+    console.print(
+        "next: booktx judge prepare-isolation . "
+        f"--profile {project.profile} --context-from {configured_source} --write",
+        soft_wrap=True,
+        markup=False,
+    )
 
 
 @judge_app.command(name="prepare-grammar")
@@ -287,6 +304,11 @@ def judge_prepare_grammar(
     console.print(f"created grammar revision profile: {project.profile}")
     console.print(
         f"prepared isolation snapshot: {prepared['snapshot_id']}", soft_wrap=True
+    )
+    console.print(
+        f"next: cd translations/{project.profile} && booktx judge status .",
+        soft_wrap=True,
+        markup=False,
     )
 
 
@@ -1391,3 +1413,197 @@ def judge_finish_chapter_plan(
         return
     for line in payload["plan_lines"]:
         console.print(line, soft_wrap=True, markup=False)
+
+
+@judge_app.command(name="todo-next")
+def judge_todo_next(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    chapters: int = typer.Option(3, "--chapters", min=1),
+    max_records: int | None = typer.Option(None, "--max-records"),
+    max_words: int = typer.Option(900, "--max-words", min=1),
+    profile: str | None = typer.Option(None, "--profile"),
+    write: bool = typer.Option(False, "--write"),
+    resume: bool = typer.Option(False, "--resume"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Create a snapshot-pinned bounded judge scope."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    if not write:
+        _die("judge todo-next requires --write")
+    payload = build_judge_status_workflow(
+        runtime.project,
+        runtime,
+        bundle=_project_status_snapshot(runtime.project),
+        sources_csv=None,
+    )
+    chapter_rows = payload.get("chapters", [])
+    ids = [
+        str(row["chapter_id"])
+        for row in chapter_rows
+        if int(row.get("missing_records", 0)) > 0
+    ][:chapters]
+    if not ids:
+        _die("no missing judge records remain")
+    snapshot = payload.get("snapshot") or {}
+    context = payload.get("context") or {}
+    todo = new_todo(
+        runtime.project,
+        purpose=str(payload.get("selection_purpose", "compare")),
+        revision_focus=str(payload.get("revision_focus", "general")),
+        snapshot_id=snapshot.get("snapshot_id") if isinstance(snapshot, dict) else None,
+        context_sha256=context.get("sha256") if isinstance(context, dict) else None,
+        chapter_ids=ids,
+        max_records=max_records,
+        max_words=max_words,
+    )
+    result = {
+        "todo_id": todo.todo_id,
+        "chapter_ids": list(todo.chapter_ids),
+        "snapshot_id": todo.snapshot_id,
+        "max_records": todo.max_records,
+        "max_words": todo.max_words,
+    }
+    if as_json:
+        console.print_json(json.dumps(result, ensure_ascii=False))
+    else:
+        console.print(f"judge todo: {todo.todo_id}")
+        console.print("chapters: " + ", ".join(ids))
+        console.print(f"next: booktx judge todo-resume . --todo-id {todo.todo_id}")
+    if resume:
+        _resume_judge_todo(runtime, todo)
+
+
+def _resume_judge_todo(runtime: RuntimeContext, todo: Any) -> None:
+    payload = build_judge_status_workflow(
+        runtime.project,
+        runtime,
+        bundle=_project_status_snapshot(runtime.project),
+        sources_csv=None,
+    )
+    rows = payload.get("chapters", [])
+    chapter = next(
+        (
+            item
+            for item in todo.chapter_ids
+            if any(
+                str(row.get("chapter_id")) == item
+                and int(row.get("missing_records", 0)) > 0
+                for row in rows
+            )
+        ),
+        None,
+    )
+    if chapter is None:
+        console.print("judge todo complete")
+        return
+    task = create_next_judge_task_workflow(
+        runtime.project,
+        bundle=_project_status_snapshot(runtime.project),
+        sources_csv=None,
+        chapter=chapter,
+        max_words=todo.max_words,
+        max_records=todo.max_records,
+        max_rendered_lines=None,
+        require_all_sources=False,
+        source_access=_source_access_from_runtime(runtime),
+    )
+    _print_judge_task(task, runtime.project, runtime, "decisions")
+
+
+@judge_app.command(name="todo-status")
+def judge_todo_status(
+    project_dir: Path = typer.Argument(...),
+    todo_id: str | None = typer.Option(None, "--todo-id"),
+    latest: bool = typer.Option(False, "--latest"),
+    profile: str | None = typer.Option(None, "--profile"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    todo = (
+        load_todo(runtime.project, todo_id)
+        if todo_id
+        else (latest_todo(runtime.project) if latest else None)
+    )
+    if todo is None:
+        _die("judge todo not found; pass --todo-id or --latest")
+    payload = build_judge_status_workflow(
+        runtime.project,
+        runtime,
+        bundle=_project_status_snapshot(runtime.project),
+        sources_csv=None,
+    )
+    rows = {
+        str(row["chapter_id"]): int(row.get("missing_records", 0))
+        for row in payload.get("chapters", [])
+    }
+    remaining = [chapter for chapter in todo.chapter_ids if rows.get(chapter, 0) > 0]
+    result = {
+        "todo_id": todo.todo_id,
+        "chapter_ids": list(todo.chapter_ids),
+        "remaining_chapters": remaining,
+        "complete": not remaining,
+        "snapshot_id": todo.snapshot_id,
+    }
+    if as_json:
+        console.print_json(json.dumps(result, ensure_ascii=False))
+    else:
+        console.print(f"judge todo: {todo.todo_id}")
+        console.print("remaining: " + (", ".join(remaining) if remaining else "none"))
+
+
+@judge_app.command(name="todo-resume")
+def judge_todo_resume(
+    project_dir: Path = typer.Argument(...),
+    todo_id: str | None = typer.Option(None, "--todo-id"),
+    latest: bool = typer.Option(False, "--latest"),
+    profile: str | None = typer.Option(None, "--profile"),
+) -> None:
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    todo = (
+        load_todo(runtime.project, todo_id)
+        if todo_id
+        else (latest_todo(runtime.project) if latest else None)
+    )
+    if todo is None:
+        _die("judge todo not found; pass --todo-id or --latest")
+    _resume_judge_todo(runtime, todo)
+
+
+@judge_app.command(name="repair-plan")
+def judge_repair_plan(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(None, "--profile"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Report provenance contamination and recovery actions without mutation."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    cfg = runtime.project.profile_config
+    if cfg is None or cfg.selection is None or cfg.selection.purpose != "revise":
+        _die("judge repair-plan requires a revision selection profile")
+    audit = audit_revision_provenance(runtime.project)
+    issues = [
+        {"record_id": issue.record_id, "code": issue.code, "message": issue.message}
+        for issue in audit.issues
+    ]
+    result = {
+        "schema": "booktx.judge-repair-plan.v1",
+        "read_only": True,
+        "valid_record_ids": sorted(audit.valid_record_ids),
+        "issues": issues,
+        "recommendation": "re-judge affected records or create a fresh profile; no decisions were synthesized",
+    }
+    if as_json:
+        console.print_json(json.dumps(result, ensure_ascii=False))
+    else:
+        console.print(f"read-only repair plan: {len(issues)} issue(s)")
+        for issue in issues:
+            console.print(
+                f"- {issue['record_id']} {issue['code']}: {issue['message']}",
+                soft_wrap=True,
+                markup=False,
+            )
+        console.print(result["recommendation"])

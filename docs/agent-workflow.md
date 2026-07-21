@@ -327,3 +327,17 @@ Do not tell an agent to use `accept-identical` in revise mode. One managed
 isolated profile contract is active at a time, so run isolated grammar
 benchmarks sequentially in one project unless you split them across worktrees
 or separate project copies.
+
+## Grammar judge revision profiles
+
+Selection profiles are judge workflows, never translation workflows. Prepare them before starting the harness:
+
+```bash
+booktx judge prepare-grammar . --source-profile SOURCE --profile JUDGE --model MODEL --write
+cd translations/JUDGE
+booktx mode .
+booktx doctor isolation .
+booktx judge status .
+```
+
+Use `booktx judge todo-next . --chapters N --write --resume` for bounded chapter work. Use only explicit `copy`/`edited` decisions and never run `booktx translate` mutators in a selection profile. If a profile is contaminated by direct translation writes or lacks judge provenance, create a fresh profile; do not synthesize decisions from the contaminated output.

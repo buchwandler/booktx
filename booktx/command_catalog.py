@@ -416,6 +416,9 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "judge next": "Create the next durable judge task.",
     "judge continue": "Continue an open judge task chain.",
     "judge record": "Create a focused judge task for one record.",
+    "judge todo-next": "Create a bounded, snapshot-pinned judge scope.",
+    "judge todo-status": "Show bounded judge scope progress.",
+    "judge todo-resume": "Resume the next task inside a bounded judge scope.",
     "judge show": "Show one durable judge task payload.",
     "judge accept-identical": (
         "Accept identical judge candidates without manual editing."
@@ -545,6 +548,9 @@ def _leaf_audience(group: str, command: str) -> CommandAudience:
         ("judge", "prepare-isolation"): CommandAudience.HUMAN_CORE,
         ("judge", "prepare-grammar"): CommandAudience.HUMAN_CORE,
         ("judge", "status"): CommandAudience.HUMAN_CORE,
+        ("judge", "todo-next"): CommandAudience.AGENT_PROTOCOL,
+        ("judge", "todo-status"): CommandAudience.AGENT_PROTOCOL,
+        ("judge", "todo-resume"): CommandAudience.AGENT_PROTOCOL,
         ("judge", "sync-sources"): CommandAudience.MAINTENANCE,
         ("context", "recommend"): CommandAudience.AGENT_PROTOCOL,
         ("context", "answer"): CommandAudience.MAINTENANCE,
