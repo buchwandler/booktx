@@ -1,0 +1,13 @@
+schema_version = 1
+migration_id = "bc9df59469de4eefa8b936b758f1d3a8"
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+phase = "failed"
+error = "Taskledger storage migration is blocked by 2 active lock(s)."
+
+[items.0]
+component = "mount"
+tool = "taskledger"
+mount = "data"
+source = "/data/data/com.termux/files/home/src/ledger/task/booktx"
+destination = "/data/data/com.termux/files/home/src/ledger/taskledger/816e173a-3ffa-4a95-80bd-6da6f6e3a54e/data"
+strategy = "copy"

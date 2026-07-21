@@ -1,0 +1,12 @@
+schema_version = 3
+
+[project]
+uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+name = "booktx"
+
+[ledgers.taskledger.mounts.data]
+storage = "external"
+root = "../ledger"
+
+[ledgers.taskledger.mounts.indexes]
+storage = "cache"
