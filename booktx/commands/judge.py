@@ -24,6 +24,13 @@ from booktx.cli_support import (
     console,
 )
 from booktx.errors import BooktxError
+from booktx.grammar_audit import audit_payload
+from booktx.judge_policy import (
+    DEFAULT_JUDGE_BATCH_RECORDS,
+    DEFAULT_JUDGE_BATCH_RENDERED_LINES,
+    DEFAULT_JUDGE_BATCH_SENTENCES,
+    DEFAULT_JUDGE_BATCH_WORDS,
+)
 from booktx.judge_provenance import audit_revision_provenance
 from booktx.judge_sources import (
     configured_selection_sources,
@@ -45,6 +52,7 @@ from booktx.workflows.judge import (
     judge_task_block_paths,
     judge_task_decisions_path,
     judge_task_json_path,
+    lint_judge_submission_workflow,
     load_judge_task,
     prefill_judge_policy_fixes_workflow,
     prepare_judge_isolation_workflow,
@@ -97,8 +105,8 @@ def _resolve_judge_format(
     project_root_default: str = "block",
 ) -> str:
     if value is not None:
-        if value not in {"block", "decisions", "json"}:
-            _die("--format must be block, decisions, or json")
+        if value not in {"block", "decisions", "grammar-decisions-v2", "json"}:
+            _die("--format must be block, decisions, grammar-decisions-v2, or json")
         return value
     return "decisions" if runtime.mode.kind == "profile-root" else project_root_default
 
@@ -204,7 +212,7 @@ def judge_create_profile(
     revision_focus: str = typer.Option(
         "general",
         "--revision-focus",
-        help="Revision focus for --purpose revise: general or grammar.",
+        help="Revision focus for --purpose revise: general, grammar, or proofread.",
     ),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, require_profile=False)
@@ -1225,7 +1233,7 @@ def judge_insert(
         None, "--profile", help="Selection profile name."
     ),
     input_format: str | None = typer.Option(
-        None, "--format", help="block|decisions|json."
+        None, "--format", help="block|decisions|grammar-decisions-v2|json."
     ),
 ) -> None:
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
@@ -1261,6 +1269,13 @@ def judge_insert(
                 soft_wrap=True,
                 markup=False,
             )
+    for finding in payload.get("audit_findings", []):
+        console.print(
+            f"audit {finding['severity']}: {finding['record_id']}: {finding['message']}",
+            soft_wrap=True,
+            markup=False,
+        )
+
     chapter_id = payload.get("chapter_id") or ""
     status_payload = build_judge_status_workflow(
         proj,
@@ -1268,6 +1283,31 @@ def judge_insert(
         bundle=_project_status_snapshot(proj),
         sources_csv=None,
     )
+    if (
+        status_payload.get("selection_purpose") == "revise"
+        and status_payload.get("revision_focus") == "grammar"
+        and status_payload.get("decisions_copy", 0)
+        + status_payload.get("decisions_edited", 0)
+        >= 10
+        and float(status_payload.get("decision_edit_rate", 0.0)) < 0.01
+    ):
+        console.print(
+            "quality note: unusually low grammar edit rate; run audit-copies before completion",
+            soft_wrap=True,
+            markup=False,
+        )
+    chapter_row = next(
+        (
+            row
+            for row in status_payload.get("chapters", [])
+            if row.get("chapter_id") == chapter_id
+        ),
+        None,
+    )
+    if chapter_row is not None and int(chapter_row.get("missing_records", 0)) == 0:
+        console.print(
+            "chapter completion gate: provenance and grammar audit checks passed"
+        )
     if chapter_id:
         for line in _accept_identical_next_message(
             status_payload=status_payload,
@@ -1283,6 +1323,85 @@ def judge_insert(
         )
 
 
+@judge_app.command(name="audit-copies")
+def judge_audit_copies(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    judge_task_id: str = typer.Option(..., "--task-id", "--judge-task-id"),
+    chapter: str | None = typer.Option(None, "--chapter"),
+    profile: str | None = typer.Option(None, "--profile"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Run advisory deterministic checks over grammar judge base targets."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    task = load_judge_task(runtime.project, judge_task_id)
+    if task is None:
+        _die(f"judge task not found: {judge_task_id}")
+    if task.revision_focus != "grammar":
+        _die("judge audit-copies requires a grammar revision task")
+    if chapter and task.chapter_id != chapter:
+        _die("judge task does not belong to the requested chapter")
+    payload = audit_payload(task)
+    if as_json:
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    console.print(
+        f"copy audit: {payload['error_count']} error(s), "
+        f"{payload['warning_count']} warning(s)",
+        soft_wrap=True,
+        markup=False,
+    )
+    for finding in payload["findings"]:
+        console.print(
+            f"{finding['severity']}: {finding['record_id']}: "
+            f"{finding['rule']}: {finding['message']}",
+            soft_wrap=True,
+            markup=False,
+        )
+
+
+@judge_app.command(name="lint-decisions")
+def judge_lint_decisions(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    judge_task_id: str = typer.Option(..., "--judge-task-id", help="Judge task id."),
+    file: Path = typer.Option(..., "--file", help="Judge submission file."),
+    profile: str | None = typer.Option(None, "--profile"),
+    input_format: str = typer.Option("decisions", "--format"),
+) -> None:
+    """Lint a judge decisions file without mutating canonical state."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    _require_selection_runtime(runtime)
+    proj = runtime.project
+    _require_chunks(proj)
+    _require_no_source_drift(proj)
+    _require_ready_context(proj)
+    file_path = resolve_judge_submission_path(runtime, file)
+    resolved_format = _resolve_judge_format(runtime, input_format)
+    try:
+        payload = lint_judge_submission_workflow(
+            proj,
+            bundle=_project_status_snapshot(proj),
+            judge_task_id=judge_task_id,
+            file=file_path,
+            input_format=resolved_format,
+            runtime=runtime,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(
+        f"lint passed: {payload['linted_records']} record(s) ",
+        soft_wrap=True,
+        markup=False,
+    )
+    for finding in payload.get("record_findings", []):
+        console.print(
+            f"{finding['severity']}: {finding['record_id']}: {finding['message']}",
+            soft_wrap=True,
+            markup=False,
+        )
+
+
 @judge_app.command(name="reset-ingest")
 def judge_reset_ingest(
     project_dir: Path = typer.Argument(..., help="Project directory."),
@@ -1291,7 +1410,7 @@ def judge_reset_ingest(
         None, "--profile", help="Selection profile name."
     ),
     output_format: str | None = typer.Option(
-        None, "--format", help="block|decisions|json."
+        None, "--format", help="block|decisions|grammar-decisions-v2|json."
     ),
     write: bool = typer.Option(
         False, "--write", help="Rewrite the editable ingest file for the task."
@@ -1419,21 +1538,39 @@ def judge_finish_chapter_plan(
 def judge_todo_next(
     project_dir: Path = typer.Argument(..., help="Project directory."),
     chapters: int = typer.Option(3, "--chapters", min=1),
-    max_records: int | None = typer.Option(None, "--max-records"),
-    max_sentences: int | None = typer.Option(
-        None, "--max-sentences", help="Maximum sentence decisions per chapter."
+    from_chapter: str | None = typer.Option(None, "--from-chapter"),
+    through_chapter: str | None = typer.Option(None, "--through-chapter"),
+    chapter_range: str | None = typer.Option(None, "--chapter-range"),
+    batch_records: int | None = typer.Option(
+        DEFAULT_JUDGE_BATCH_RECORDS,
+        "--batch-records",
+        "--max-records",
+        min=1,
     ),
-    max_words: int = typer.Option(900, "--max-words", min=1),
+    batch_sentences: int | None = typer.Option(
+        DEFAULT_JUDGE_BATCH_SENTENCES,
+        "--batch-sentences",
+        "--max-sentences",
+        min=1,
+    ),
+    batch_words: int = typer.Option(
+        DEFAULT_JUDGE_BATCH_WORDS, "--batch-words", "--max-words", min=1
+    ),
+    batch_rendered_lines: int | None = typer.Option(
+        DEFAULT_JUDGE_BATCH_RENDERED_LINES, "--batch-rendered-lines", min=1
+    ),
     profile: str | None = typer.Option(None, "--profile"),
     write: bool = typer.Option(False, "--write"),
     resume: bool = typer.Option(False, "--resume"),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Create a snapshot-pinned bounded judge scope."""
+    """Create one immutable, explicitly scoped judge todo."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     _require_selection_runtime(runtime)
     if not write:
         _die("judge todo-next requires --write")
+    if chapter_range and (from_chapter or through_chapter):
+        _die("use --chapter-range or --from-chapter/--through-chapter, not both")
     payload = build_judge_status_workflow(
         runtime.project,
         runtime,
@@ -1441,13 +1578,32 @@ def judge_todo_next(
         sources_csv=None,
     )
     chapter_rows = payload.get("chapters", [])
-    ids = [
-        str(row["chapter_id"])
-        for row in chapter_rows
-        if int(row.get("missing_records", 0)) > 0
-    ][:chapters]
+    ordered_ids = [str(row["chapter_id"]) for row in chapter_rows]
+    if chapter_range:
+        parts = chapter_range.split(":")
+        if len(parts) != 2 or not all(parts):
+            _die("--chapter-range must be FROM:THROUGH")
+        from_chapter, through_chapter = parts
+    if from_chapter or through_chapter:
+        start = from_chapter or ordered_ids[0] if ordered_ids else None
+        end = through_chapter or ordered_ids[-1] if ordered_ids else None
+        if start not in ordered_ids or end not in ordered_ids:
+            _die("chapter range is not contained in the source chapter order")
+        start_index = ordered_ids.index(start)
+        end_index = ordered_ids.index(end)
+        if start_index > end_index:
+            _die("--from-chapter must not come after --through-chapter")
+        # Explicit ranges are immutable user scope, including chapters already
+        # complete when the todo is created.
+        ids = ordered_ids[start_index : end_index + 1]
+    else:
+        ids = [
+            str(row["chapter_id"])
+            for row in chapter_rows
+            if int(row.get("missing_records", 0)) > 0
+        ][:chapters]
     if not ids:
-        _die("no missing judge records remain")
+        _die("no missing judge records remain in the requested scope")
     snapshot = payload.get("snapshot") or {}
     context = payload.get("context") or {}
     todo = new_todo(
@@ -1457,14 +1613,25 @@ def judge_todo_next(
         snapshot_id=snapshot.get("snapshot_id") if isinstance(snapshot, dict) else None,
         context_sha256=context.get("sha256") if isinstance(context, dict) else None,
         chapter_ids=ids,
-        max_records=max_records,
-        max_sentences=max_sentences,
-        max_words=max_words,
+        max_records=batch_records,
+        max_sentences=batch_sentences,
+        max_words=batch_words,
+        max_rendered_lines=batch_rendered_lines,
+        from_chapter=from_chapter or ids[0],
+        through_chapter=through_chapter or ids[-1],
     )
     result = {
         "todo_id": todo.todo_id,
+        "schema_version": todo.schema_version,
         "chapter_ids": list(todo.chapter_ids),
+        "from_chapter": todo.from_chapter,
+        "through_chapter": todo.through_chapter,
         "snapshot_id": todo.snapshot_id,
+        "batch_records": todo.batch_records,
+        "batch_sentences": todo.batch_sentences,
+        "batch_words": todo.batch_words,
+        "batch_rendered_lines": todo.batch_rendered_lines,
+        # Compatibility keys remain in CLI output for existing consumers.
         "max_records": todo.max_records,
         "max_sentences": todo.max_sentences,
         "max_words": todo.max_words,
@@ -1486,6 +1653,29 @@ def _resume_judge_todo(runtime: RuntimeContext, todo: Any) -> None:
         bundle=_project_status_snapshot(runtime.project),
         sources_csv=None,
     )
+    if todo.profile and todo.profile != (runtime.project.profile or ""):
+        _die("judge todo profile does not match the active profile")
+    if str(payload.get("selection_purpose", "compare")) != todo.purpose:
+        _die("judge todo purpose does not match the active profile")
+    if str(payload.get("revision_focus", "general")) != todo.revision_focus:
+        _die("judge todo revision focus does not match the active profile")
+    context = payload.get("context") or {}
+    if (
+        todo.context_sha256
+        and context.get("sha256")
+        and todo.context_sha256 != context["sha256"]
+    ):
+        _die("judge todo context snapshot is stale")
+    snapshot = payload.get("snapshot") or {}
+    if (
+        todo.snapshot_id
+        and snapshot.get("snapshot_id")
+        and todo.snapshot_id != snapshot["snapshot_id"]
+    ):
+        _die("judge todo source snapshot is stale")
+    blocked_by = list(payload.get("blocked_by", []))
+    if blocked_by:
+        _die("judge todo is blocked: " + ", ".join(str(item) for item in blocked_by))
     rows = payload.get("chapters", [])
     chapter = next(
         (
@@ -1509,7 +1699,9 @@ def _resume_judge_todo(runtime: RuntimeContext, todo: Any) -> None:
         chapter=chapter,
         max_words=todo.max_words,
         max_records=todo.max_records,
-        max_rendered_lines=None,
+        todo_id=todo.todo_id,
+        max_rendered_lines=todo.batch_rendered_lines,
+        max_sentences=todo.batch_sentences,
         require_all_sources=False,
         source_access=_source_access_from_runtime(runtime),
     )
@@ -1524,6 +1716,7 @@ def judge_todo_status(
     profile: str | None = typer.Option(None, "--profile"),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
+    """Report authoritative progress for one immutable judge todo."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     _require_selection_runtime(runtime)
     todo = (
@@ -1539,23 +1732,64 @@ def judge_todo_status(
         bundle=_project_status_snapshot(runtime.project),
         sources_csv=None,
     )
-    rows = {
-        str(row["chapter_id"]): int(row.get("missing_records", 0))
-        for row in payload.get("chapters", [])
-    }
-    remaining = [chapter for chapter in todo.chapter_ids if rows.get(chapter, 0) > 0]
+    chapter_rows = {str(row["chapter_id"]): row for row in payload.get("chapters", [])}
+    remaining = [
+        chapter
+        for chapter in todo.chapter_ids
+        if int(chapter_rows.get(chapter, {}).get("missing_records", 0)) > 0
+    ]
+    completed = [chapter for chapter in todo.chapter_ids if chapter not in remaining]
+    records_total = sum(
+        int(chapter_rows.get(chapter, {}).get("total_records", 0))
+        for chapter in todo.chapter_ids
+    )
+    records_selected = sum(
+        int(chapter_rows.get(chapter, {}).get("selected_records", 0))
+        for chapter in todo.chapter_ids
+    )
+    records_remaining = records_total - records_selected
+    current_chapter = remaining[0] if remaining else None
+    context = payload.get("context") or {}
+    snapshot = payload.get("snapshot")
+    snapshot_valid = snapshot is None or snapshot.get("state") == "valid"
+    context_valid = bool(context.get("ready"))
+    blocked_by = list(payload.get("blocked_by", []))
+    if not snapshot_valid and "snapshot_invalid" not in blocked_by:
+        blocked_by.append("snapshot_invalid")
+    next_safe_command = ""
+    if remaining and not blocked_by:
+        next_safe_command = "booktx judge todo-resume . --todo-id " + todo.todo_id
     result = {
         "todo_id": todo.todo_id,
-        "chapter_ids": list(todo.chapter_ids),
-        "remaining_chapters": remaining,
+        "schema_version": todo.schema_version,
         "complete": not remaining,
+        "chapter_ids": list(todo.chapter_ids),
+        "current_chapter": current_chapter,
+        "completed_chapters": completed,
+        "remaining_chapters": remaining,
+        "records_total": records_total,
+        "records_selected": records_selected,
+        "records_remaining": records_remaining,
+        "snapshot_valid": snapshot_valid,
+        "context_valid": context_valid,
+        "blocked_by": blocked_by,
+        "next_safe_command": next_safe_command,
+        "batch_records": todo.batch_records,
+        "batch_sentences": todo.batch_sentences,
+        "batch_words": todo.batch_words,
+        "batch_rendered_lines": todo.batch_rendered_lines,
         "snapshot_id": todo.snapshot_id,
     }
     if as_json:
         console.print_json(json.dumps(result, ensure_ascii=False))
     else:
         console.print(f"judge todo: {todo.todo_id}")
-        console.print("remaining: " + (", ".join(remaining) if remaining else "none"))
+        console.print(
+            f"progress: {records_selected}/{records_total} records; "
+            f"remaining chapters: {', '.join(remaining) if remaining else 'none'}"
+        )
+        if next_safe_command:
+            console.print(f"next: {next_safe_command}")
 
 
 @judge_app.command(name="todo-resume")

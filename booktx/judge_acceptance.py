@@ -71,6 +71,7 @@ __all__ = [
     "parse_judge_block_submission",
     "parse_judge_decisions_submission",
     "parse_judge_json_submission",
+    "lint_judge_submission",
     "accept_judge_submission",
 ]
 
@@ -216,9 +217,81 @@ def parse_judge_block_submission(
     return task_id, records
 
 
+_COMPACT_DECISION_RE = re.compile(
+    r"^([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)(?:\s*\|\s*(.*))?$"
+)
+
+
+def _parse_compact_grammar_decisions(
+    text: str,
+) -> tuple[str | None, list[SubmittedJudgeRecord]]:
+    task_id: str | None = None
+    records: list[SubmittedJudgeRecord] = []
+    current: SubmittedJudgeRecord | None = None
+    target_lines: list[str] = []
+    in_target = False
+
+    def flush() -> None:
+        nonlocal current, target_lines, in_target
+        if current is not None:
+            records.append(
+                SubmittedJudgeRecord(
+                    id=current.id,
+                    selected=current.selected,
+                    decision_kind=current.decision_kind,
+                    target="\n".join(target_lines).strip("\n"),
+                    reason=current.reason,
+                )
+            )
+        current = None
+        target_lines = []
+        in_target = False
+
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if stripped.startswith("judge_task_id:"):
+            task_id = stripped.split(":", 1)[1].strip() or None
+            continue
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped == "TARGET:" or stripped.startswith("TARGET:"):
+            in_target = True
+            inline = stripped.split(":", 1)[1].lstrip()
+            if inline:
+                target_lines.append(inline)
+            continue
+        if stripped == "END_TARGET":
+            in_target = False
+            continue
+        if in_target:
+            target_lines.append(raw)
+            continue
+        match = _COMPACT_DECISION_RE.match(stripped)
+        if match:
+            flush()
+            record_id, kind, selected, reason = match.groups()
+            current = SubmittedJudgeRecord(
+                id=record_id.strip(),
+                selected=selected.strip(),
+                decision_kind=kind.strip(),
+                target="",
+                reason=(reason or "").strip(),
+            )
+    flush()
+    if not records:
+        raise _err(
+            "judge_submission_decisions",
+            "compact grammar decisions submission did not contain any records; "
+            "use RECORD_ID | copy|edited | A|B|C|edited",
+        )
+    return task_id, records
+
+
 def parse_judge_decisions_submission(
     text: str,
 ) -> tuple[str | None, list[SubmittedJudgeRecord]]:
+    if "format: grammar-decisions-v2" in text:
+        return _parse_compact_grammar_decisions(text)
     task_id: str | None = None
     records: list[SubmittedJudgeRecord] = []
     current_id: str | None = None
@@ -254,8 +327,14 @@ def parse_judge_decisions_submission(
             if raw.startswith("judge_task_id:"):
                 task_id = raw.split(":", 1)[1].strip() or None
             continue
-        if raw.strip() == "TARGET:":
+        if raw.strip() == "END_TARGET":
+            in_target = False
+            continue
+        if raw.strip().startswith("TARGET:"):
             in_target = True
+            inline = raw.split(":", 1)[1].lstrip()
+            if inline:
+                target_lines.append(inline)
             continue
         if in_target:
             target_lines.append(raw)
@@ -760,6 +839,67 @@ def _validate_and_resolve_target(
     ):
         _validate_grammar_scope(item, selected_candidate.target, target_text)
     return target_text, findings
+
+
+def lint_judge_submission(
+    project: Project,
+    task: JudgeTask,
+    submitted: list[SubmittedJudgeRecord],
+    *,
+    bundle: StatusBundle,
+    enforce_snapshot: bool = False,
+    input_format: str = "decisions",
+) -> JudgeInsertResult:
+    """Run insert-equivalent validation without mutating store or ledger."""
+    if not submitted:
+        raise _err("empty_submission", "no judge decisions to lint")
+    _validate_task_profile(project, task)
+    _validate_task_evidence(project, task)
+    _bind_task_source_access(project, task, enforce_snapshot=enforce_snapshot)
+    if selection_purpose(project) == "revise" and task.selection_purpose != "revise":
+        raise _err(
+            "judge_revision_task_purpose",
+            "revision profiles require a revision judge task",
+        )
+    if selection_purpose(project) == "revise":
+        missing = sorted(
+            {record.id for record in task.records} - {item.id for item in submitted}
+        )
+        if missing:
+            raise _err(
+                "judge_revision_incomplete_task",
+                "revision judge tasks require a decision for every record; missing: "
+                + ", ".join(missing[:10]),
+            )
+    task_records = {record.id: record for record in task.records}
+    validation_context = load_validation_context(
+        project, context_view_path=task.context_view_path
+    )
+    if validation_context is None:
+        raise _err("judge_context_missing", "judge task validation context is missing")
+    findings: list[Finding] = []
+    seen_ids: set[str] = set()
+    for item in submitted:
+        _target, item_findings = _validate_and_resolve_target(
+            item=item,
+            project=project,
+            task=task,
+            task_records=task_records,
+            seen_ids=seen_ids,
+            source_by_id=bundle.index.source_by_id,
+            source_chunks=bundle.index.source_chunks,
+            validation_context=validation_context,
+            input_format=input_format,
+        )
+        findings.extend(item_findings)
+    errors = _error_findings(findings)
+    if errors:
+        raise SubmissionValidationError(errors)
+    return JudgeInsertResult(
+        accepted_records=len(submitted),
+        version_refs=[],
+        record_findings=findings,
+    )
 
 
 def accept_judge_submission(

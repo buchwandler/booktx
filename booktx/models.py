@@ -1146,7 +1146,7 @@ class SelectionConfig(BaseModel):
     allow_edited_targets: bool = True
     require_all_sources: bool = False
     purpose: Literal["compare", "revise"] = "compare"
-    revision_focus: Literal["general", "grammar"] = "general"
+    revision_focus: Literal["general", "grammar", "proofread"] = "general"
 
     @model_validator(mode="after")
     def _validate_revision_sources(self) -> SelectionConfig:
@@ -1258,6 +1258,7 @@ class JudgeTask(BaseModel):
 
     version: Literal[1] = 1
     judge_task_id: str
+    todo_id: str | None = None
     profile: str
     source_profiles: list[str] = Field(default_factory=list)
     source_language: str
@@ -1278,7 +1279,7 @@ class JudgeTask(BaseModel):
     source_snapshot_path: str | None = None
     source_candidates_sha256: str | None = None
     selection_purpose: Literal["compare", "revise"] = "compare"
-    revision_focus: Literal["general", "grammar"] = "general"
+    revision_focus: Literal["general", "grammar", "proofread"] = "general"
     records: list[JudgeTaskRecord] = Field(default_factory=list)
 
 

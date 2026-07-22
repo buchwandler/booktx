@@ -341,3 +341,17 @@ booktx judge status .
 ```
 
 Use `booktx judge todo-next . --chapters N --write --resume` for bounded chapter work. Use only explicit `copy`/`edited` decisions and never run `booktx translate` mutators in a selection profile. If a profile is contaminated by direct translation writes or lacks judge provenance, create a fresh profile; do not synthesize decisions from the contaminated output.
+
+A judge task is one bounded batch; a judge todo is the immutable user-requested
+scope. One-command-at-a-time is a safety rule, not a one-batch-per-turn limit.
+For chapter ranges, prefer explicit `--from-chapter` and `--through-chapter`
+options plus `--batch-records`, `--batch-sentences`, `--batch-words`, and
+`--batch-rendered-lines` limits. Compatibility `--max-*` options remain accepted
+during migration.
+
+The required agent loop is sequential but unbounded by batch count: run
+`booktx judge todo-status . --latest --json`, stop only if the todo is complete
+or a documented blocker exists, otherwise run `booktx judge todo-resume . --latest`, read/edit/lint/insert one task, and repeat status in the same turn.
+A successful insert is not a stop condition. Before reporting progress, use the
+persisted status counts; never estimate from attempted tasks. If an unavoidable
+harness limit interrupts the loop, report the exact status and resume command.

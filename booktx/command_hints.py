@@ -14,6 +14,13 @@ if TYPE_CHECKING:
     from booktx.config import Project
     from booktx.runtime import RuntimeMode
 
+from booktx.judge_policy import (
+    DEFAULT_JUDGE_BATCH_RECORDS,
+    DEFAULT_JUDGE_BATCH_RENDERED_LINES,
+    DEFAULT_JUDGE_BATCH_SENTENCES,
+    DEFAULT_JUDGE_BATCH_WORDS,
+)
+
 __all__ = [
     "profile_option_fragment",
     "translate_next_command",
@@ -22,6 +29,9 @@ __all__ = [
     "translate_todo_next_command",
     "translate_todo_status_command",
     "translate_todo_resume_command",
+    "judge_todo_next_command",
+    "judge_todo_status_command",
+    "judge_todo_resume_command",
     "context_chapter_note_command",
     "validate_command",
     "check_command",
@@ -32,8 +42,7 @@ __all__ = [
     "review_todo_resume_command",
 ]
 
-# Preferred default batch words for agent-friendly bounded runs.
-# Kept as a constant so both the hint builders and the todo renderer share it.
+# Preferred default batch words for translation runs.
 DEFAULT_BATCH_WORDS: int = 800
 
 
@@ -176,6 +185,83 @@ def translate_todo_resume_command(
     selector = f" --todo-id {todo_id}" if todo_id else " --latest" if latest else ""
     return (
         f"booktx translate todo-resume ."
+        f"{profile_option_fragment(project, mode)}{selector} --format {output_format}"
+    )
+
+
+def judge_todo_next_command(
+    project: Project,
+    *,
+    mode: RuntimeMode | None = None,
+    chapters: int | None = None,
+    from_chapter: str | None = None,
+    through_chapter: str | None = None,
+    batch_records: int = DEFAULT_JUDGE_BATCH_RECORDS,
+    batch_sentences: int = DEFAULT_JUDGE_BATCH_SENTENCES,
+    batch_words: int = DEFAULT_JUDGE_BATCH_WORDS,
+    batch_rendered_lines: int = DEFAULT_JUDGE_BATCH_RENDERED_LINES,
+    latest: bool = False,
+    write: bool = True,
+    resume: bool = True,
+    output_format: str = "decisions",
+) -> str:
+    """Build a bounded ``booktx judge todo-next`` command hint."""
+    parts = [
+        f"booktx judge todo-next .{profile_option_fragment(project, mode)}",
+    ]
+    if chapters is not None:
+        parts.append(f"--chapters {chapters}")
+    if from_chapter:
+        parts.append(f"--from-chapter {from_chapter}")
+    if through_chapter:
+        parts.append(f"--through-chapter {through_chapter}")
+    parts.extend(
+        [
+            f"--batch-records {batch_records}",
+            f"--batch-sentences {batch_sentences}",
+            f"--batch-words {batch_words}",
+            f"--batch-rendered-lines {batch_rendered_lines}",
+        ]
+    )
+    if latest:
+        parts.append("--latest")
+    if write:
+        parts.append("--write")
+    if resume:
+        parts.append("--resume")
+    parts.append(f"--format {output_format}")
+    return " ".join(parts)
+
+
+def judge_todo_status_command(
+    project: Project,
+    *,
+    mode: RuntimeMode | None = None,
+    todo_id: str | None = None,
+    latest: bool = False,
+    json: bool = False,
+) -> str:
+    """Build an authoritative ``booktx judge todo-status`` hint."""
+    selector = f" --todo-id {todo_id}" if todo_id else " --latest" if latest else ""
+    suffix = " --json" if json else ""
+    return (
+        f"booktx judge todo-status ."
+        f"{profile_option_fragment(project, mode)}{selector}{suffix}"
+    )
+
+
+def judge_todo_resume_command(
+    project: Project,
+    *,
+    mode: RuntimeMode | None = None,
+    todo_id: str | None = None,
+    latest: bool = False,
+    output_format: str = "decisions",
+) -> str:
+    """Build a ``booktx judge todo-resume`` command hint."""
+    selector = f" --todo-id {todo_id}" if todo_id else " --latest" if latest else ""
+    return (
+        f"booktx judge todo-resume ."
         f"{profile_option_fragment(project, mode)}{selector} --format {output_format}"
     )
 

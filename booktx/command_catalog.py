@@ -427,6 +427,10 @@ SUMMARY_OVERRIDES: dict[str, str] = {
         "Accept identical judge candidates across a chapter range."
     ),
     "judge insert": "Accept a submitted judge decision block.",
+    "judge lint-decisions": "Lint judge decisions without mutating canonical state.",
+    "judge audit-copies": (
+        "Audit grammar judge copy targets for deterministic warnings."
+    ),
     "judge reset-ingest": "Reset judge ingest files for one task.",
     "judge prefill-policy-fixes": (
         "Prefill judge policy corrections from current context."

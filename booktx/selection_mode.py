@@ -43,7 +43,7 @@ __all__ = [
 
 
 SelectionPurpose = Literal["compare", "revise"]
-RevisionFocus = Literal["general", "grammar"]
+RevisionFocus = Literal["general", "grammar", "proofread"]
 
 
 def parse_sources_csv(raw: str | None) -> list[str]:

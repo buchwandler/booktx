@@ -19,6 +19,7 @@ from booktx.config import (
 from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.glossary_tasking import applicable_glossary_snapshots
 from booktx.io_utils import write_text_atomic
+from booktx.judge_policy import count_candidates_sentences
 from booktx.judge_sources import (
     judge_sources_manifest_sha256,
     judge_task_candidates_sha256,
@@ -52,6 +53,8 @@ __all__ = [
     "render_judge_decision_block",
     "render_judge_task_block",
     "render_judge_ingest_json",
+    "render_judge_grammar_task",
+    "render_judge_grammar_decisions",
 ]
 
 
@@ -334,6 +337,58 @@ def render_judge_decision_block(task: JudgeTask) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_judge_grammar_task(task: JudgeTask) -> str:
+    """Render a compact target-first grammar task (v2)."""
+    lines = [
+        "# booktx grammar task",
+        "format: grammar-task-v2",
+        f"judge_task_id: {task.judge_task_id}",
+        f"chapter: {task.chapter_id}",
+        f"records: {len(task.records)}",
+        "",
+        "# BASE_TARGET is authoritative; SOURCE_GUARD is semantic context only.",
+        "# Check agreement, inflection, syntax, orthography, punctuation, "
+        "# and dangling constructions.",
+        "",
+    ]
+    for record in task.records:
+        target = record.candidates[0].target if record.candidates else ""
+        lines.extend(
+            [
+                f"@@ {record.id}",
+                "BASE_TARGET:",
+                target,
+                "SOURCE_GUARD:",
+                record.source,
+                "END_RECORD",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_judge_grammar_decisions(task: JudgeTask) -> str:
+    """Render compact one-line copy decisions with multiline edit targets."""
+    lines = [
+        "# booktx grammar revision decisions",
+        "format: grammar-decisions-v2",
+        f"judge_task_id: {task.judge_task_id}",
+        "# Syntax: RECORD_ID | copy|edited | A|B|C|edited [| reason]",
+        "# Copy leaves TARGET empty; edited requires a complete TARGET.",
+        "",
+    ]
+    for record in task.records:
+        lines.extend(
+            [
+                f"{record.id} | copy | A",
+                "TARGET:",
+                "END_TARGET",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_judge_ingest_json(task: JudgeTask) -> str:
     payload = {
         "judge_task_id": task.judge_task_id,
@@ -354,6 +409,8 @@ def render_judge_ingest_json(task: JudgeTask) -> str:
 def render_judge_ingest(task: JudgeTask, output_format: str) -> str:
     if output_format == "block":
         return render_judge_task_block(task)
+    if output_format in {"grammar-task-v2", "grammar-decisions-v2"}:
+        return render_judge_grammar_decisions(task)
     if output_format == "decisions":
         return render_judge_decision_block(task)
     if output_format == "json":
@@ -378,12 +435,14 @@ def _build_judge_task_model(
     source_snapshot_path: str | None,
     applicable_termbase_sha256: str | None,
     records: list[JudgeTaskRecord],
+    todo_id: str | None = None,
 ) -> JudgeTask:
     chapter = bundle.index.chapters_by_id[task_chapter_id]
     return JudgeTask(
         judge_task_id=make_judge_task_id(
             task_chapter_id, records[0].id, [record.id for record in records]
         ),
+        todo_id=todo_id,
         profile=project.profile or "",
         source_profiles=list(source_profiles),
         source_language=project.config.source_language,
@@ -423,8 +482,10 @@ def create_judge_task(
     record_id: str | None,
     max_words: int,
     max_records: int | None = None,
+    max_sentences: int | None = None,
     max_rendered_lines: int | None = None,
     require_all_sources: bool,
+    todo_id: str | None = None,
     source_access: Literal["live", "snapshot"] = "live",
 ) -> JudgeTask:
     require_selection_profile(project)
@@ -475,6 +536,7 @@ def create_judge_task(
 
     records: list[JudgeTaskRecord] = []
     total_words = 0
+    total_sentences = 0
     for record_ref in selected_ids:
         source_view = bundle.index.source_by_id[record_ref]
         source_chunk = bundle.index.source_chunks[source_view.chunk_id]
@@ -497,9 +559,13 @@ def create_judge_task(
         if not candidates:
             continue
         next_words = total_words + count_words(source_record.source)
+        next_sentences = total_sentences + count_candidates_sentences(candidates)
         if records and next_words > max_words:
             break
+        if max_sentences is not None and records and next_sentences > max_sentences:
+            break
         total_words = next_words
+        total_sentences = next_sentences
         records.append(
             JudgeTaskRecord(
                 id=record_ref,
@@ -534,6 +600,7 @@ def create_judge_task(
                 source_snapshot_path=source_snapshot_path,
                 applicable_termbase_sha256=applicable_termbase_sha256,
                 records=trimmed,
+                todo_id=todo_id,
             )
             if _line_count(render_judge_task_block(preview)) <= max_rendered_lines:
                 break
@@ -552,19 +619,26 @@ def create_judge_task(
         source_snapshot_path=source_snapshot_path,
         applicable_termbase_sha256=applicable_termbase_sha256,
         records=records,
+        todo_id=todo_id,
     )
     write_judge_task(project, task)
+    if _is_grammar_revision_task(task):
+        source_render = render_judge_grammar_task(task)
+        decision_render = render_judge_grammar_decisions(task)
+    else:
+        source_render = render_judge_task_block(task)
+        decision_render = render_judge_decision_block(task)
     write_text_atomic(
         judge_task_source_block_path(project, task.judge_task_id),
-        render_judge_task_block(task),
+        source_render,
     )
     write_text_atomic(
         judge_ingest_block_path(project, task.judge_task_id),
-        render_judge_task_block(task),
+        source_render,
     )
     write_text_atomic(
         judge_ingest_decisions_path(project, task.judge_task_id),
-        render_judge_decision_block(task),
+        decision_render,
     )
     write_text_atomic(
         judge_ingest_json_path(project, task.judge_task_id),

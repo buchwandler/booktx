@@ -169,6 +169,7 @@ UNDOCUMENTED_PATH_ALLOWLIST = {
     "judge show",
     "judge sweep-identical",
     "judge sync-sources",
+    "judge repair-plan",
     "review activate",
     "review deactivate",
     "review insert",

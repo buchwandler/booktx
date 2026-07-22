@@ -82,6 +82,13 @@ booktx judge create-profile ./book JUDGE --target de --sources PROFILE --model M
 booktx judge prepare-isolation ./book --profile JUDGE --write
 booktx judge prepare-grammar ./book --source-profile PROFILE --profile JUDGE --model MODEL --write
 booktx judge status ./book --profile JUDGE
+booktx judge todo-next ./book --profile JUDGE --from-chapter 0001 --through-chapter 0010 \
+  --batch-records 40 --batch-sentences 60 --batch-words 1800 --write --resume
+booktx judge todo-status ./book --profile JUDGE --latest --json
+booktx judge todo-resume ./book --profile JUDGE --latest --format decisions
+booktx judge lint-decisions ./book --profile JUDGE --judge-task-id TASK \
+  --file judge-ingest/TASK.decisions.txt --format decisions
+booktx judge audit-copies ./book --profile JUDGE --task-id TASK --chapter 0001
 ```
 
 `series prepare` stops for the human context review. `review` configures and
@@ -196,6 +203,12 @@ booktx judge create-profile
 booktx judge prepare-grammar
 booktx judge prepare-isolation
 booktx judge status
+booktx judge todo-next
+booktx judge todo-status
+booktx judge todo-resume
+booktx judge insert
+booktx judge lint-decisions
+booktx judge audit-copies
 booktx profile
 booktx profile compare
 booktx profile create

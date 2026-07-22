@@ -147,6 +147,23 @@ def test_agents_md_isolated_revision_body():
     assert "Forbidden commands" not in cmp_text
 
 
+def test_agents_md_grammar_judge_todo_is_scope_oriented():
+    kwargs = dict(ISO_SELECTION_KWARGS)
+    kwargs["selection_purpose"] = "revise"
+    kwargs["revision_focus"] = "grammar"
+    text = render_agents_md(**kwargs)
+    assert "booktx judge todo-next . --chapters N" in text
+    assert "booktx judge todo-status . --latest --json" in text
+    assert "booktx judge todo-resume . --latest --format decisions" in text
+    assert "A judge task is one bounded batch" in text
+    assert "one-batch-per-turn rule" in text
+    assert "successful insert is never a stop condition" in text
+    assert "Stop only when the todo is complete" in text
+    assert "authoritative counts" in text
+    assert "Grammar checklist for every BASE_TARGET" in text
+    assert "booktx judge lint-decisions ." in text
+
+
 def test_agents_md_general_revision_body_retains_broader_revision_contract():
     kwargs = dict(ISO_SELECTION_KWARGS)
     kwargs["selection_purpose"] = "revise"

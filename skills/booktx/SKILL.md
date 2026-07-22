@@ -239,8 +239,29 @@ booktx judge prepare-grammar ./book --source-profile PROFILE_A \
   --profile JUDGE_GRAMMAR --model MODEL --write
 ```
 
-Use `booktx judge status`, `next`, `insert`, and `record` only within the
-prepared judge workflow. Never mix candidate files from sibling profiles.
+Use `booktx judge todo-next`, `todo-status`, and `todo-resume` for every
+multi-batch judge request. A judge task is one bounded batch; the judge todo is
+the user's requested chapter scope. One-command-at-a-time is a safety rule,
+not a one-batch-per-turn limit.
+
+For a new scope, create the todo with an explicit chapter range and bounded
+batch policy. After every insert, query authoritative todo status and resume the
+same todo until it is complete in the same assistant turn:
+
+```text
+1. judge todo-status --latest --json
+2. if incomplete, judge todo-resume --latest
+3. read, edit, lint, and insert exactly one generated task
+4. repeat from step 1; a successful insert is not a stop condition
+```
+
+Stop only for todo completion, invalid context/snapshot/source state, a
+documented blocker, an explicit user stop, or an unavoidable harness limit. On
+a harness limit, report the exact persisted counts and resume command; do not
+claim completion from attempted batches. Use only explicit `copy`/`edited`
+decisions and never run `booktx translate` mutators in a selection profile. If a
+profile is contaminated by direct translation writes or lacks judge provenance,
+create a fresh profile; do not synthesize decisions from the contaminated output.
 
 ## Markdown and EPUB rules
 

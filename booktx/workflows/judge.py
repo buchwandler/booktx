@@ -27,10 +27,12 @@ from booktx.context import (
 )
 from booktx.context_sync import apply_context_sync, plan_context_sync
 from booktx.errors import BooktxError
+from booktx.grammar_audit import audit_submitted_decisions
 from booktx.io_utils import write_text_atomic
 from booktx.judge_acceptance import (
     SubmittedJudgeRecord,
     accept_judge_submission,
+    lint_judge_submission,
     parse_judge_block_submission,
     parse_judge_decisions_submission,
     parse_judge_json_submission,
@@ -307,13 +309,13 @@ def _parse_selection_purpose(value: str) -> Literal["compare", "revise"]:
     return normalized  # type: ignore[return-value]
 
 
-def _parse_revision_focus(value: str) -> Literal["general", "grammar"]:
-    """Parse and validate a ``--revision-focus`` value before any mutation."""
+def _parse_revision_focus(value: str) -> Literal["general", "grammar", "proofread"]:
+    """Parse and validate a revision focus before any mutation."""
     normalized = (value or "").strip().lower()
-    if normalized not in ("general", "grammar"):
+    if normalized not in ("general", "grammar", "proofread"):
         raise _err(
             "judge_revision_focus",
-            "invalid revision focus; expected 'general' or 'grammar'",
+            "invalid revision focus; expected 'general', 'grammar', or 'proofread'",
         )
     return normalized  # type: ignore[return-value]
 
@@ -646,6 +648,8 @@ def create_next_judge_task_workflow(
     max_records: int | None,
     max_rendered_lines: int | None,
     require_all_sources: bool,
+    max_sentences: int | None = None,
+    todo_id: str | None = None,
     source_access: Literal["live", "snapshot"] = "live",
 ) -> JudgeTask:
     if source_access == "snapshot":
@@ -669,6 +673,8 @@ def create_next_judge_task_workflow(
             max_words=max_words,
             max_records=max_records,
             max_rendered_lines=max_rendered_lines,
+            max_sentences=max_sentences,
+            todo_id=todo_id,
             require_all_sources=effective_require_all_sources,
             source_access=source_access,
         )
@@ -732,11 +738,14 @@ def judge_task_block_paths(proj: Project, task: JudgeTask) -> tuple[str, str]:
 def judge_task_edit_path(proj: Project, task: JudgeTask, output_format: str) -> str:
     if output_format == "block":
         return judge_task_block_paths(proj, task)[1]
-    if output_format == "decisions":
+    if output_format in {"decisions", "grammar-decisions-v2"}:
         return judge_task_decisions_path(proj, task)
     if output_format == "json":
         return judge_task_json_path(proj, task)
-    raise _err("judge_format", "--format must be block, decisions, or json")
+    raise _err(
+        "judge_format",
+        "--format must be block, decisions, grammar-decisions-v2, or json",
+    )
 
 
 def judge_task_decisions_path(proj: Project, task: JudgeTask) -> str:
@@ -747,6 +756,90 @@ def judge_task_json_path(proj: Project, task: JudgeTask) -> str:
     from booktx.config import judge_ingest_json_path
 
     return str(judge_ingest_json_path(proj, task.judge_task_id))
+
+
+def lint_judge_submission_workflow(
+    proj: Project,
+    *,
+    bundle: StatusBundle,
+    judge_task_id: str,
+    file: Path,
+    input_format: str,
+    runtime: RuntimeContext | None = None,
+) -> dict[str, Any]:
+    task = load_judge_task(proj, judge_task_id)
+    if task is None:
+        raise _err("judge_task_not_found", f"judge task not found: {judge_task_id}")
+    text = file.read_text("utf-8")
+    if input_format == "json":
+        payload_task_id, submitted = parse_judge_json_submission(text)
+    elif input_format in {"decisions", "grammar-decisions-v2"}:
+        payload_task_id, submitted = parse_judge_decisions_submission(text)
+    elif input_format == "block":
+        payload_task_id, submitted = parse_judge_block_submission(text)
+    else:
+        raise _err(
+            "judge_format",
+            "--format must be block, decisions, grammar-decisions-v2, or json",
+        )
+    if payload_task_id and payload_task_id != judge_task_id:
+        raise _err(
+            "judge_task_id_mismatch",
+            f"submission judge_task_id {payload_task_id} does not match {judge_task_id}",
+        )
+    audit_findings = (
+        audit_submitted_decisions(task, submitted)
+        if task.revision_focus == "grammar"
+        else []
+    )
+    audit_errors = [
+        finding for finding in audit_findings if finding.severity == "error"
+    ]
+    if audit_errors:
+        raise BooktxError(
+            "judge_grammar_audit",
+            "grammar copy audit found unresolved errors: "
+            + "; ".join(
+                f"{finding.record_id}: {finding.message}" for finding in audit_errors
+            ),
+        )
+    try:
+        result = lint_judge_submission(
+            proj,
+            task,
+            submitted,
+            bundle=bundle,
+            enforce_snapshot=runtime is not None
+            and runtime.mode.kind == "profile-root",
+            input_format=input_format,
+        )
+    except SubmissionValidationError as exc:
+        raise BooktxError(
+            "judge_submission_validation",
+            "judge lint failed: " + "; ".join(f.message for f in exc.findings),
+        ) from exc
+    return {
+        "judge_task_id": judge_task_id,
+        "linted_records": result.accepted_records,
+        "record_findings": [
+            {
+                "severity": f.severity,
+                "rule": f.rule,
+                "message": f.message,
+                "record_id": f.record_id,
+            }
+            for f in result.record_findings
+        ],
+        "audit_findings": [
+            {
+                "severity": finding.severity,
+                "rule": finding.rule,
+                "message": finding.message,
+                "record_id": finding.record_id,
+            }
+            for finding in audit_findings
+        ],
+    }
 
 
 def accept_judge_submission_workflow(
@@ -764,17 +857,36 @@ def accept_judge_submission_workflow(
     text = file.read_text("utf-8")
     if input_format == "json":
         payload_task_id, submitted = parse_judge_json_submission(text)
-    elif input_format == "decisions":
+    elif input_format in {"decisions", "grammar-decisions-v2"}:
         payload_task_id, submitted = parse_judge_decisions_submission(text)
     elif input_format == "block":
         payload_task_id, submitted = parse_judge_block_submission(text)
     else:
-        raise _err("judge_format", "--format must be block, decisions, or json")
+        raise _err(
+            "judge_format",
+            "--format must be block, decisions, grammar-decisions-v2, or json",
+        )
     if payload_task_id and payload_task_id != judge_task_id:
         raise _err(
             "judge_task_id_mismatch",
             f"submission judge_task_id {payload_task_id} does not match "
             f"{judge_task_id}",
+        )
+    audit_findings = (
+        audit_submitted_decisions(task, submitted)
+        if task.revision_focus == "grammar"
+        else []
+    )
+    audit_errors = [
+        finding for finding in audit_findings if finding.severity == "error"
+    ]
+    if audit_errors:
+        raise BooktxError(
+            "judge_grammar_audit",
+            "grammar copy audit found unresolved errors: "
+            + "; ".join(
+                f"{finding.record_id}: {finding.message}" for finding in audit_errors
+            ),
         )
     enforce_snapshot = runtime is not None and runtime.mode.kind == "profile-root"
     try:
@@ -803,6 +915,15 @@ def accept_judge_submission_workflow(
                 "record_id": f.record_id,
             }
             for f in result.record_findings
+        ],
+        "audit_findings": [
+            {
+                "severity": finding.severity,
+                "rule": finding.rule,
+                "message": finding.message,
+                "record_id": finding.record_id,
+            }
+            for finding in audit_findings
         ],
         "chapter_id": task.chapter_id,
         "judge_task_id": task.judge_task_id,
