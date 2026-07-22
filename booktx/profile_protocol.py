@@ -9,7 +9,9 @@ from booktx.errors import _err
 if TYPE_CHECKING:
     from booktx.config import Project
 
-ProfileProtocol = Literal["translation", "pass-through", "judge-compare", "judge-revise"]
+ProfileProtocol = Literal[
+    "translation", "pass-through", "judge-compare", "judge-revise"
+]
 
 
 def profile_protocol(project: Project) -> ProfileProtocol:

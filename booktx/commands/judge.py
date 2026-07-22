@@ -1420,6 +1420,9 @@ def judge_todo_next(
     project_dir: Path = typer.Argument(..., help="Project directory."),
     chapters: int = typer.Option(3, "--chapters", min=1),
     max_records: int | None = typer.Option(None, "--max-records"),
+    max_sentences: int | None = typer.Option(
+        None, "--max-sentences", help="Maximum sentence decisions per chapter."
+    ),
     max_words: int = typer.Option(900, "--max-words", min=1),
     profile: str | None = typer.Option(None, "--profile"),
     write: bool = typer.Option(False, "--write"),
@@ -1455,6 +1458,7 @@ def judge_todo_next(
         context_sha256=context.get("sha256") if isinstance(context, dict) else None,
         chapter_ids=ids,
         max_records=max_records,
+        max_sentences=max_sentences,
         max_words=max_words,
     )
     result = {
@@ -1462,6 +1466,7 @@ def judge_todo_next(
         "chapter_ids": list(todo.chapter_ids),
         "snapshot_id": todo.snapshot_id,
         "max_records": todo.max_records,
+        "max_sentences": todo.max_sentences,
         "max_words": todo.max_words,
     }
     if as_json:
