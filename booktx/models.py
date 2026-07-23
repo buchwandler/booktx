@@ -54,10 +54,14 @@ __all__ = [
     "ApplicableTermbaseEntrySnapshot",
     "ApplicableTermbaseFindingSnapshot",
     "TranslationTaskRecord",
+    "TranslationTaskContextRecord",
     "TranslationTask",
     "StatusTotals",
     "TranslationTodoChapter",
     "TranslationTodo",
+    "TranslationTodoLifecycle",
+    "AgentNextAction",
+    "SubmissionQualityConfig",
     "NamesFile",
     "SourceAnalysisPatternsConfig",
     "SourceAnalysisGenericLemmasConfig",
@@ -681,6 +685,9 @@ class ApplicableGlossaryEntrySnapshot(BaseModel):
     matched_source_cue: str
     target: str | None = None
     target_variants: list[str] = Field(default_factory=list)
+    usage_notes: dict[str, str] = Field(default_factory=dict)
+    concept_kind: str = "term"
+    require_concept: bool = False
     require_target: bool = False
     forbidden_targets: list[str] = Field(default_factory=list)
     enforce: Literal["off", "warn", "error"] = "warn"
@@ -706,6 +713,18 @@ class TranslationTaskRecord(BaseModel):
     )
     span_index: int | None = None
     block_id: str | None = None
+
+
+class TranslationTaskContextRecord(BaseModel):
+    """Read-only immediate neighbor included with a translation task."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    chunk_id: str
+    source: str
+    effective_target: str | None = None
+    role: Literal["before", "after"]
 
 
 class TranslationTask(BaseModel):
@@ -783,6 +802,8 @@ class TranslationTask(BaseModel):
     requested_max_words: int | None = None
     todo_id: str | None = None
     records: list[TranslationTaskRecord] = Field(default_factory=list)
+    before_records: list[TranslationTaskContextRecord] = Field(default_factory=list)
+    after_records: list[TranslationTaskContextRecord] = Field(default_factory=list)
 
 
 class ReviewContextRecord(BaseModel):
@@ -952,8 +973,48 @@ class TranslationTodo(BaseModel):
         description="sha256 of binding glossary fields when the todo was created",
     )
     source_sha256: str | None = None
+    scope_fingerprint: str | None = Field(
+        default=None,
+        description="Stable fingerprint of the requested todo scope and inputs.",
+    )
     start_totals: StatusTotals
     chapters: list[TranslationTodoChapter] = Field(default_factory=list)
+
+
+class TranslationTodoLifecycle(BaseModel):
+    """Mutable lifecycle state kept beside an immutable translation todo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    todo_id: str
+    state: Literal["open", "completed", "abandoned", "superseded"] = "open"
+    updated_at: str
+    reason: str | None = None
+    superseded_by: str | None = None
+    actor: str | None = None
+
+
+class AgentNextAction(BaseModel):
+    """Authoritative state transition emitted by agent-protocol mutations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["continue", "complete", "blocked"]
+    must_continue: bool
+    next_safe_command: str | None = None
+    blocker_code: str | None = None
+    persisted_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class SubmissionQualityConfig(BaseModel):
+    """Policy for optional deterministic linguistic submission audits."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    linguistic_audit: Literal["off", "warn", "error"] = "warn"
+    target_language_rules: bool = True
+    suspicious_length_ratio: Literal["off", "warn", "error"] = "warn"
 
 
 class NamesFile(BaseModel):
@@ -1466,6 +1527,7 @@ class ProfileConfig(BaseModel):
     # table is present; existing config.toml files round-trip without one.
     selection: SelectionConfig | None = None
     quality_review: QualityReviewConfig | None = None
+    submission_quality: SubmissionQualityConfig | None = None
     indexes: IndexesConfig | None = None
     epub_output: EpubOutputConfig | None = None
 

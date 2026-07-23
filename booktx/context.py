@@ -98,6 +98,9 @@ class GlossaryEntry(BaseModel):
     source_variants: list[str] = Field(default_factory=list)
     target: str | None = None
     target_variants: list[str] = Field(default_factory=list)
+    usage_notes: dict[str, str] = Field(default_factory=dict)
+    concept_kind: str = "term"
+    require_concept: bool = False
     require_target: bool = False
     forbidden_targets: list[str] = Field(default_factory=list)
     category: str = "term"  # term, place, people, kinden, title, object, concept

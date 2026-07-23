@@ -24,7 +24,9 @@ from booktx.cli import app
 from booktx.config import (
     load_project,
     load_translation_store,
+    load_translation_task,
     translation_store_path,
+    translation_todo_lifecycle_path,
     write_translation_store,
 )
 from booktx.context import (
@@ -545,6 +547,48 @@ def test_todo_next_resume_prints_first_task_for_created_todo(tmp_path: Path):
     assert "5. Submit only after lint passes:" in res.output
 
 
+def test_translation_task_neighbors_are_read_only_and_excluded_from_membership(
+    tmp_path: Path,
+):
+    project_dir = _make_three_chapter_project(tmp_path)
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--chapter",
+            "0002",
+            "--unit",
+            "paragraph",
+            "--max-words",
+            "2",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    payload = json.loads(next_res.output)
+    task = load_translation_task(_proj(project_dir), payload["task_id"])
+    assert task is not None
+    assert len(task.before_records) == 2
+    assert len(task.after_records) == 1
+    context_ids = {item.id for item in task.before_records + task.after_records}
+    assigned_ids = {item.id for item in task.records}
+    assert context_ids.isdisjoint(assigned_ids)
+
+    brief = (project_dir / payload["agent_brief_path"]).read_text("utf-8")
+    source_block = (project_dir / payload["source_block_path"]).read_text("utf-8")
+    assert "CONTEXT BEFORE (read only)" in brief
+    assert "CONTEXT AFTER (read only)" in brief
+    assert (
+        "CONTEXT (read only; these records are not submission members)" in source_block
+    )
+    assert all(f">>> {record.id}" not in source_block for record in task.before_records)
+    assert all(f">>> {record.id}" not in source_block for record in task.after_records)
+
+
 def test_lint_block_reports_missing_task_records(tmp_path: Path):
     project_dir = _make_three_chapter_project(tmp_path)
     next_res = runner.invoke(
@@ -646,6 +690,60 @@ def test_lint_block_reports_quote_validation_without_insert(tmp_path: Path):
     assert lint_res.exit_code == 1
     assert "outer_quotation_marks_preserved" in lint_res.output
     assert "lint: failed" in lint_res.output
+
+
+def test_lint_block_writes_validation_receipt(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    next_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--chapter",
+            "0001",
+            "--unit",
+            "chapter",
+            "--max-words",
+            "900",
+            "--json",
+        ],
+    )
+    assert next_res.exit_code == 0, next_res.output
+    task = json.loads(next_res.output)
+    block_path = project_dir / task["block_ingest_path"]
+    block_path.write_text(
+        "\n".join(
+            line
+            for record in task["records"]
+            for line in (f">>> {record['id']}", f"Translated {record['id']}")
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    lint_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "lint-block",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task["task_id"],
+            "--file",
+            task["block_ingest_path"],
+            "--format",
+            "block",
+            "--json",
+        ],
+    )
+    assert lint_res.exit_code == 0, lint_res.output
+    payload = json.loads(lint_res.output)
+    assert payload["ok"] is True
+    assert Path(project_dir / payload["receipt_path"]).is_file()
 
 
 def test_todo_next_no_pending_chapters_exits_nonzero(tmp_path: Path):
@@ -1063,12 +1161,124 @@ def test_todo_resume_refuses_completed_todo(tmp_path: Path):
     assert "No further task will be issued." in res.output
 
 
-def test_todo_status_latest_refuses_overlapping_incomplete_todos(tmp_path: Path):
+def test_todo_next_rejects_overlapping_incomplete_todos(tmp_path: Path):
     project_dir = _make_three_chapter_project(tmp_path)
     _create_todo(project_dir, chapters=3)
-    _create_todo(project_dir, chapters=2)
 
     res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--chapters",
+            "2",
+            "--write",
+            "--json",
+        ],
+    )
+
+    assert res.exit_code == 1
+    assert "open todo overlap" in res.output
+    assert "--supersede-overlapping" in res.output
+
+
+def test_todo_next_reuses_exact_open_todo(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    first = _create_todo(project_dir, chapters=2, batch_words=800)
+    second = _create_todo(project_dir, chapters=2, batch_words=800)
+
+    assert second["todo_id"] == first["todo_id"]
+    listed = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-list",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--state",
+            "open",
+            "--json",
+        ],
+    )
+    assert listed.exit_code == 0, listed.output
+    assert [row["todo_id"] for row in json.loads(listed.output)["todos"]] == [
+        first["todo_id"]
+    ]
+
+
+def test_todo_next_supersedes_overlapping_todos(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    first = _create_todo(project_dir, chapters=3)
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--chapters",
+            "2",
+            "--write",
+            "--json",
+            "--supersede-overlapping",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    replacement = json.loads(res.output)
+    assert replacement["todo_id"] != first["todo_id"]
+
+    listed = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-list",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--json",
+        ],
+    )
+    assert listed.exit_code == 0, listed.output
+    rows = json.loads(listed.output)["todos"]
+    assert {row["state"] for row in rows} == {"superseded", "open"}
+    assert [row["todo_id"] for row in rows if row["state"] == "open"] == [
+        replacement["todo_id"]
+    ]
+    old_sidecar = translation_todo_lifecycle_path(_proj(project_dir), first["todo_id"])
+    assert json.loads(old_sidecar.read_text(encoding="utf-8"))["state"] == "superseded"
+
+
+def test_todo_abandon_is_idempotent_and_preserves_scope(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=1)
+    scope_path = project_dir / todo["json_path"]
+    original_scope = scope_path.read_text(encoding="utf-8")
+
+    for _ in range(2):
+        res = runner.invoke(
+            app,
+            [
+                "translate",
+                "todo-abandon",
+                str(project_dir),
+                "--profile",
+                "de_default",
+                "--todo-id",
+                todo["todo_id"],
+                "--reason",
+                "User requested restart",
+                "--write",
+            ],
+        )
+        assert res.exit_code == 0, res.output
+    assert scope_path.read_text(encoding="utf-8") == original_scope
+
+    status = runner.invoke(
         app,
         [
             "translate",
@@ -1077,11 +1287,240 @@ def test_todo_status_latest_refuses_overlapping_incomplete_todos(tmp_path: Path)
             "--profile",
             "de_default",
             "--latest",
+            "--include-global-validation",
         ],
     )
+    assert status.exit_code == 1
+    assert "no incomplete translation todo" in status.output
 
-    assert res.exit_code == 1
-    assert "overlaps planned chapters" in res.output
+
+def test_legacy_todo_without_lifecycle_sidecar_is_open(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=1)
+    sidecar = translation_todo_lifecycle_path(_proj(project_dir), todo["todo_id"])
+    sidecar.unlink()
+
+    listed = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-list",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--state",
+            "open",
+            "--json",
+        ],
+    )
+    assert listed.exit_code == 0, listed.output
+    assert json.loads(listed.output)["todos"][0]["state"] == "open"
+
+
+def test_insert_json_marks_incomplete_todo_must_continue(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=1, batch_words=1)
+    task_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--todo-id",
+            todo["todo_id"],
+            "--format",
+            "text",
+            "--json",
+        ],
+    )
+    assert task_res.exit_code == 0, task_res.output
+    task = json.loads(task_res.output)
+    ingest_path = project_dir / task["ingest_path"]
+    ingest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "profile": "de_default",
+                "task_id": task["task_id"],
+                "translation_version": task["translation_version"],
+                "records": [{"id": task["records"][0]["id"], "target": "Übersetzt"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    insert_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task["task_id"],
+            "--json-file",
+            str(ingest_path),
+            "--json",
+        ],
+    )
+    assert insert_res.exit_code == 0, insert_res.output
+    payload = json.loads(insert_res.output)
+    assert payload["todo"]["must_continue"] is True
+    assert payload["todo"]["next_safe_command"].startswith(
+        "booktx translate todo-resume ."
+    )
+    assert payload["next_action"]["state"] == "continue"
+
+
+def test_insert_json_marks_complete_todo_without_continuation(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=1, batch_words=800)
+    task_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--todo-id",
+            todo["todo_id"],
+            "--format",
+            "text",
+            "--json",
+        ],
+    )
+    assert task_res.exit_code == 0, task_res.output
+    task = json.loads(task_res.output)
+    ingest_path = project_dir / task["ingest_path"]
+    ingest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "profile": "de_default",
+                "task_id": task["task_id"],
+                "translation_version": task["translation_version"],
+                "records": [
+                    {"id": record["id"], "target": "Übersetzt"}
+                    for record in task["records"]
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    insert_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "insert",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task["task_id"],
+            "--json-file",
+            str(ingest_path),
+            "--json",
+        ],
+    )
+    assert insert_res.exit_code == 0, insert_res.output
+    payload = json.loads(insert_res.output)
+    assert payload["todo"]["must_continue"] is False
+    assert payload["todo"]["next_safe_command"] is None
+    assert payload["next_action"]["state"] == "complete"
+
+
+def test_todo_submit_resumes_next_task_only_after_successful_gates(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=1, batch_words=1)
+    task_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--todo-id",
+            todo["todo_id"],
+            "--format",
+            "text",
+            "--json",
+        ],
+    )
+    assert task_res.exit_code == 0, task_res.output
+    task = json.loads(task_res.output)
+    block_path = project_dir / task["block_ingest_path"]
+    block_path.write_text(
+        f">>> {task['records'][0]['id']}\nTranslated\n", encoding="utf-8"
+    )
+    submit_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-submit",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task["task_id"],
+            "--file",
+            str(block_path),
+            "--resume-next",
+            "--json",
+        ],
+    )
+    assert submit_res.exit_code == 0, submit_res.output
+    payload = json.loads(submit_res.output)
+    assert payload["todo"]["must_continue"] is True
+    assert payload["next_task_id"]
+
+
+def test_todo_submit_does_not_advance_after_failed_lint(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    todo = _create_todo(project_dir, chapters=1, batch_words=1)
+    task_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--todo-id",
+            todo["todo_id"],
+            "--format",
+            "text",
+            "--json",
+        ],
+    )
+    assert task_res.exit_code == 0, task_res.output
+    task = json.loads(task_res.output)
+    block_path = project_dir / task["block_ingest_path"]
+    block_path.write_text(">>> 0001-999999\nBad\n", encoding="utf-8")
+    submit_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-submit",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task["task_id"],
+            "--file",
+            str(block_path),
+            "--resume-next",
+            "--json",
+        ],
+    )
+    assert submit_res.exit_code == 1
+    assert (
+        "unknown source record" in submit_res.output or "missing" in submit_res.output
+    )
+    assert "next_task_id" not in submit_res.output
 
 
 def test_todo_resume_blocks_source_drift(tmp_path: Path):
@@ -1324,6 +1763,7 @@ def test_todo_status_scoped_does_not_block_on_out_of_scope_error(tmp_path: Path)
             "de_default",
             "--latest",
             "--json",
+            "--include-global-validation",
         ],
     )
 
@@ -1337,6 +1777,35 @@ def test_todo_status_scoped_does_not_block_on_out_of_scope_error(tmp_path: Path)
     # Global note should warn about out-of-scope issues.
     assert payload["global_note"] is not None
     assert "outside this todo" in payload["global_note"]
+
+
+def test_todo_status_default_uses_only_scoped_validation(tmp_path: Path, monkeypatch):
+    project_dir = _make_three_chapter_project(tmp_path)
+    _create_todo(project_dir, chapters=2, batch_words=800)
+    import booktx.workflows.translate as translate_workflow
+
+    calls: list[str | None] = []
+    original = translate_workflow.validate_project
+
+    def spy(project, **kwargs):
+        calls.append(kwargs.get("chapter_id"))
+        return original(project, **kwargs)
+
+    monkeypatch.setattr(translate_workflow, "validate_project", spy)
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-status",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--latest",
+            "--json",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert calls and all(chapter_id is not None for chapter_id in calls)
 
 
 def test_todo_status_scoped_blocks_on_in_scope_error(tmp_path: Path):
@@ -1431,6 +1900,7 @@ def test_todo_status_human_output_shows_scope_and_note(tmp_path: Path):
             "--profile",
             "de_default",
             "--latest",
+            "--include-global-validation",
         ],
     )
 

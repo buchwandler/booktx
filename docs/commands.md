@@ -36,6 +36,8 @@ booktx context approve ./book --profile PROFILE Q001 --text "..." --approved-by 
 booktx context mark-ready ./book --profile PROFILE
 booktx glossary status ./book --profile PROFILE
 booktx glossary mandate ./book "Empire" --profile PROFILE --target "Imperium" --forbid "Reich"
+booktx glossary add-variant ./book "Beetle-kinden" --profile PROFILE --target "Käferartige" --usage vocative
+booktx glossary set-usage ./book "Dragonfly-kinden" --profile PROFILE --person-singular "Angehörige der Libellenart"
 booktx identity set ./book --profile PROFILE --actor user:NAME --harness codex --model MODEL
 ```
 
@@ -185,12 +187,14 @@ booktx epub inspect
 booktx extract
 booktx glossary
 booktx glossary add
+booktx glossary add-variant
 booktx glossary audit
 booktx glossary export
 booktx glossary import
 booktx glossary mandate
 booktx glossary remove
 booktx glossary reset
+booktx glossary set-usage
 booktx glossary status
 booktx guide
 booktx identity

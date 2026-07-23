@@ -20,6 +20,7 @@ from booktx.config import (
 )
 from booktx.models import TranslationTodo
 from booktx.status import StatusBundle
+from booktx.todo_lifecycle import load_todo_lifecycle
 from booktx.validate import ValidationReport
 from booktx.versioning import canonical_json_sha256
 
@@ -159,6 +160,8 @@ def list_translation_todos(project: Project) -> list[TranslationTodo]:
         return []
     todos: list[TranslationTodo] = []
     for path in sorted(todo_dir.glob("*.json")):
+        if path.name.endswith(".state.json"):
+            continue
         try:
             todos.append(TranslationTodo.model_validate_json(path.read_text("utf-8")))
         except PydanticUserError as exc:
@@ -402,6 +405,8 @@ def latest_incomplete_todo(
     incomplete: list[TranslationTodo] = []
     chapter_sets: dict[str, set[str]] = {}
     for todo in todos:
+        if load_todo_lifecycle(project, todo).state != "open":
+            continue
         status = build_todo_status(project, todo, bundle, fail_on_warnings=False)
         if not status.goal_complete:
             incomplete.append(todo)
@@ -448,6 +453,8 @@ def find_incomplete_todo_for_chapter(
     todos = list_translation_todos(project)
     candidates: list[TranslationTodo] = []
     for todo in todos:
+        if load_todo_lifecycle(project, todo).state != "open":
+            continue
         planned_ids = {ch.chapter_id for ch in todo.chapters}
         if chapter_id not in planned_ids:
             continue

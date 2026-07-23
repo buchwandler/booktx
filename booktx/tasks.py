@@ -56,6 +56,7 @@ from booktx.models import (
     ApplicableGlossaryEntrySnapshot,
     ApplicableTermbaseEntrySnapshot,
     TranslationTask,
+    TranslationTaskContextRecord,
     TranslationTaskRecord,
 )
 from booktx.path_display import display_path
@@ -251,16 +252,24 @@ def _render_glossary_snapshot(snapshot: ApplicableGlossaryEntrySnapshot) -> str:
     policy: list[str] = []
     if snapshot.require_target:
         policy.append("required")
+    if snapshot.require_concept:
+        policy.append("concept required")
     if snapshot.forbidden_targets:
         policy.append("forbidden")
     policy_text = ", ".join(policy) or "binding"
     match_policy = "case-sensitive" if snapshot.case_sensitive else "case-insensitive"
     note = f"; note: {snapshot.notes}" if snapshot.notes else ""
+    usage = (
+        "; usage: "
+        + ", ".join(f"{key}={value}" for key, value in snapshot.usage_notes.items())
+        if snapshot.usage_notes
+        else ""
+    )
     return (
         f"# glossary: {snapshot.source} -> {approved}; "
         f"{policy_text}; forbidden: {forbidden}; "
         f"matched source cue: {snapshot.matched_source_cue}; "
-        f"target match is literal, boundary-aware, {match_policy}{note}"
+        f"target match is literal, boundary-aware, {match_policy}{note}{usage}"
     )
 
 
@@ -300,6 +309,9 @@ def _task_relevant_glossary(
                 snapshot.matched_source_cue,
                 snapshot.target,
                 tuple(snapshot.target_variants),
+                tuple(sorted(snapshot.usage_notes.items())),
+                snapshot.concept_kind,
+                snapshot.require_concept,
                 snapshot.require_target,
                 tuple(snapshot.forbidden_targets),
                 snapshot.enforce,
@@ -347,6 +359,21 @@ def _render_action_contract_section(
     if task.context_view_path:
         lines.append(
             f"- Full immutable context snapshot: {_context_markdown_path(task)}"
+        )
+    if task.todo_id:
+        lines.extend(
+            [
+                "",
+                "## Todo continuation contract",
+                "",
+                f"- This task is one batch inside todo `{task.todo_id}`.",
+                "- A successful insert is not completion.",
+                "- After insert, run the printed scoped check and query exact todo status.",
+                "- If `must_continue=true`, resume the same todo in this assistant turn.",
+                "- Do not ask the user to say `continue` while the todo remains incomplete.",
+                "- Stop only for todo completion, a booktx blocker, an explicit user stop, "
+                "or a documented harness limit.",
+            ]
         )
     return lines
 
@@ -451,6 +478,20 @@ def _render_continuity_section(
     task: TranslationTask,
 ) -> list[str]:
     lines: list[str] = ["## Continuity", ""]
+    if task.before_records or task.after_records:
+        lines.append("- Immediate neighbors are read-only context; do not submit them.")
+        if task.before_records:
+            lines.append("### CONTEXT BEFORE (read only)")
+            for neighbor in task.before_records:
+                lines.append(f"- {neighbor.id}: {neighbor.source}")
+                if neighbor.effective_target:
+                    lines.append(f"  active target: {neighbor.effective_target}")
+        if task.after_records:
+            lines.append("### CONTEXT AFTER (read only)")
+            for neighbor in task.after_records:
+                lines.append(f"- {neighbor.id}: {neighbor.source}")
+                if neighbor.effective_target:
+                    lines.append(f"  active target: {neighbor.effective_target}")
     if context is not None and context.chapter_contexts:
         previous = context.chapter_contexts[-1]
         lines.append(
@@ -728,6 +769,22 @@ def write_task_source_block(
             )
         parts.append("")
 
+    if task.before_records or task.after_records:
+        parts.append("# CONTEXT (read only; these records are not submission members)")
+        for label, neighbors in (
+            ("BEFORE", task.before_records),
+            ("AFTER", task.after_records),
+        ):
+            if not neighbors:
+                continue
+            parts.append(f"# CONTEXT {label} (read only)")
+            for neighbor in neighbors:
+                parts.append(f"# <<< {neighbor.id}")
+                parts.append(f"# SOURCE: {neighbor.source}")
+                if neighbor.effective_target:
+                    parts.append(f"# ACTIVE TARGET: {neighbor.effective_target}")
+        parts.append("")
+
     for idx, record in enumerate(task.records):
         if idx:
             parts.append("")
@@ -861,6 +918,28 @@ def create_translation_task(
         collect_applicable_termbase_for_record_sources(project, record_sources)
     )
     mandatory_glossary_fingerprint = live_mandatory_glossary_sha256(project)
+    ordered_ids = [
+        item
+        for chapter_ids in bundle.index.record_ids_by_chapter.values()
+        for item in chapter_ids
+    ]
+    selected_positions = [ordered_ids.index(record_id) for record_id in record_ids]
+    start_position = min(selected_positions)
+    end_position = max(selected_positions)
+
+    def _neighbor(record_id: str, role: str) -> TranslationTaskContextRecord:
+        source_view = source_by_id[record_id]
+        active = bundle.index.translated_by_id.get(record_id)
+        return TranslationTaskContextRecord(
+            id=record_id,
+            chunk_id=source_view.chunk_id,
+            source=source_view.source,
+            effective_target=active.target if active is not None else None,
+            role=role,  # type: ignore[arg-type]
+        )
+
+    before_ids = ordered_ids[max(0, start_position - 2) : start_position]
+    after_ids = ordered_ids[end_position + 1 : end_position + 2]
     task = TranslationTask(
         task_id=make_task_id(chapter.chapter_id, record_ids[0], record_ids),
         unit=unit,  # type: ignore[arg-type]
@@ -896,6 +975,8 @@ def create_translation_task(
         record_count=len(record_ids),
         requested_max_words=requested_max_words,
         todo_id=todo_id,
+        before_records=[_neighbor(record_id, "before") for record_id in before_ids],
+        after_records=[_neighbor(record_id, "after") for record_id in after_ids],
         records=[
             TranslationTaskRecord(
                 id=record_id,

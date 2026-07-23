@@ -146,6 +146,11 @@ Stop when the todo goal is complete, when `todo-status` says it is complete, or
 when a stop condition occurs. Report partial progress if conversation or tool
 budget runs low. `--max-run-words` is advisory only.
 
+An incomplete successful insert is not a stop condition. Query the exact todo
+status, inspect its `must_continue` and `next_safe_command` state, and resume
+the same todo in the same assistant turn. Do not ask the user to say
+`continue` unless an explicit stop condition or harness limit has occurred.
+
 ## Guardrails
 
 - Never mix files between profiles.

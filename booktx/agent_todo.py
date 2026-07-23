@@ -24,6 +24,7 @@ from booktx.models import (
     TranslationTodoChapter,
 )
 from booktx.path_display import display_path
+from booktx.todo_lifecycle import todo_scope_fingerprint, write_todo_lifecycle
 
 if TYPE_CHECKING:
     from booktx.config import Project
@@ -188,7 +189,7 @@ def build_translation_todo(
             or ""
         )
 
-    return TranslationTodo(
+    todo = TranslationTodo(
         todo_id=todo_id,
         profile=project.profile or "",
         target_language=project.config.target_language,
@@ -209,6 +210,7 @@ def build_translation_todo(
         start_totals=bundle.snapshot.totals,
         chapters=todo_chapters,
     )
+    return todo.model_copy(update={"scope_fingerprint": todo_scope_fingerprint(todo)})
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +300,7 @@ def render_translation_todo_markdown(
     )
     lines.append("   ```")
     lines.append("")
-    lines.append("2. If the todo goal is complete, stop and report progress.")
+    lines.append("2. If the todo goal is complete, stop and report persisted progress.")
     lines.append("")
     lines.append("3. Request the next bounded batch:")
     lines.append("")
@@ -331,7 +333,11 @@ def render_translation_todo_markdown(
     lines.append(f"   {_validate_command(project, mode=mode, fail_on_warnings=True)}")
     lines.append("   ```")
     lines.append("")
-    lines.append("8. Continue the loop unless a stop condition applies.")
+    lines.append(
+        "8. Continue the same todo in this assistant turn unless a stop condition "
+        "applies. "
+        "A successful insert is not a stop condition."
+    )
     lines.append("")
 
     # Planned chapters table
@@ -385,5 +391,6 @@ def write_translation_todo(
     write_text_atomic(
         md_path, render_translation_todo_markdown(todo, project, mode=mode)
     )
+    write_todo_lifecycle(project, todo, state="open")
 
     return json_path, md_path

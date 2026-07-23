@@ -16,7 +16,9 @@ print call into a result object would add abstraction without behavior change).
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -79,12 +81,17 @@ from booktx.config import (
     translation_ingest_path,
     translation_store_path,
     translation_task_source_block_path,
+    translation_todo_json_path,
+    translation_todo_lifecycle_path,
+    translation_todo_markdown_path,
     write_identity,
 )
 from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.editor_indexes import EditorIndexError, export_editor_indexes
 from booktx.errors import BooktxError, _err
+from booktx.linguistic_audit import audit_records
 from booktx.models import (
+    AgentNextAction,
     StoredTranslationRecordV2,
     TranslatedChunk,
     TranslatedRecord,
@@ -106,6 +113,12 @@ from booktx.record_refs import parse_record_ref, resolve_record_range
 from booktx.status import build_status_snapshot
 from booktx.submissions import resolve_submission
 from booktx.text_normalization import normalize_submitted_target
+from booktx.todo_lifecycle import (
+    abandon_todo,
+    load_todo_lifecycle,
+    supersede_todos_atomically,
+    todo_scope_fingerprint,
+)
 from booktx.todo_resume import (
     resolve_translation_todo,
     resume_translation_todo,
@@ -113,6 +126,7 @@ from booktx.todo_resume import (
 from booktx.todo_status import (
     build_todo_status,
     current_todo_chapter_id,
+    list_translation_todos,
     load_translation_todo,
 )
 from booktx.translation_store import (
@@ -132,6 +146,10 @@ from booktx.validate import (
     validate_chunk_pair,
     validate_project,
     validate_record_pair,
+)
+from booktx.validation_receipts import (
+    load_matching_validation_receipt,
+    write_validation_receipt,
 )
 from booktx.versioning import resolve_current_version
 
@@ -275,6 +293,7 @@ def translate_insert_workflow(
     input_format: str = "json",
     allow_missing_context: bool = False,
     export_index: bool = False,
+    as_json: bool = False,
 ) -> None:
     """Accept translated text through the CLI and write the store atomically."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
@@ -313,19 +332,24 @@ def translate_insert_workflow(
     # Pre-write EPUB inline-XHTML check (Q2=a).
     # Stage submitted records and run the preflight BEFORE writing the store.
     submitted_ids = {r.id for r in submitted_records}
-    try:
-        _staged_preflight_check(proj, submitted_records, submitted_ids)
-    except ValidationError as exc:
-        console.print(
-            "[red]error:[/red] internal preflight staging failed while "
-            "validating submitted EPUB inline XHTML"
-        )
-        console.print(
-            "hint: retry after updating booktx; the staged EPUB model could "
-            "not be built. Run with debug output if available for traceback details."
-        )
-        console.print(f"detail: {exc}")
-        raise typer.Exit(code=1) from None
+    matching_receipt = None
+    receipt_input = input_file if input_file is not None else json_file
+    if task is not None and receipt_input is not None:
+        matching_receipt = load_matching_validation_receipt(proj, task, receipt_input)
+    if matching_receipt is None:
+        try:
+            _staged_preflight_check(proj, submitted_records, submitted_ids)
+        except ValidationError as exc:
+            console.print(
+                "[red]error:[/red] internal preflight staging failed while "
+                "validating submitted EPUB inline XHTML"
+            )
+            console.print(
+                "hint: retry after updating booktx; the staged EPUB model could "
+                "not be built. Run with debug output if available for traceback details."
+            )
+            console.print(f"detail: {exc}")
+            raise typer.Exit(code=1) from None
     try:
         result = accept_translation_records(
             proj,
@@ -358,35 +382,39 @@ def translate_insert_workflow(
             _die(f"{exc}\nnext:\n  {next_command}")
         _handle_booktx_error(exc)
         return
-    console.print(
-        f"accepted: {result.accepted_records} record(s), "
-        f"{result.target_words} target word(s)"
-    )
-    if result.version_ref:
-        console.print(f"version: {result.version_ref}")
+    if not as_json:
+        console.print(
+            f"accepted: {result.accepted_records} record(s), "
+            f"{result.target_words} target word(s)"
+        )
+        if result.version_ref:
+            console.print(f"version: {result.version_ref}")
     _maybe_auto_export_indexes(proj, export_index=export_index, trigger="translation")
     if result.chapter_id:
-        console.print(f"chapter: {result.chapter_id} {result.chapter_title}".rstrip())
-        console.print(
-            f"progress: {result.records_translated} / "
-            f"{result.records_total} records translated, "
-            f"{result.records_remaining} remaining"
-        )
-        if result.records_remaining == 0:
+        if not as_json:
             console.print(
-                f"chapter complete: {result.chapter_id} {result.chapter_title}".rstrip()
+                f"chapter: {result.chapter_id} {result.chapter_title}".rstrip()
             )
-            console.print("recommended context update template:")
             console.print(
-                context_chapter_note_command(
-                    proj,
-                    mode=runtime.mode,
-                    chapter_id=result.chapter_id,
-                    title=result.chapter_title or "<TITLE>",
-                ),
-                soft_wrap=True,
-                markup=False,
+                f"progress: {result.records_translated} / "
+                f"{result.records_total} records translated, "
+                f"{result.records_remaining} remaining"
             )
+            if result.records_remaining == 0:
+                console.print(
+                    f"chapter complete: {result.chapter_id} {result.chapter_title}".rstrip()
+                )
+                console.print("recommended context update template:")
+                console.print(
+                    context_chapter_note_command(
+                        proj,
+                        mode=runtime.mode,
+                        chapter_id=result.chapter_id,
+                        title=result.chapter_title or "<TITLE>",
+                    ),
+                    soft_wrap=True,
+                    markup=False,
+                )
 
     # Rebuild status after insert to get fresh totals.
     fresh = _project_status_snapshot(proj)
@@ -405,10 +433,78 @@ def translate_insert_workflow(
                 fresh,
                 fail_on_warnings=False,
             )
+            if as_json:
+                if todo_status.goal_complete:
+                    action = AgentNextAction(
+                        state="complete",
+                        must_continue=False,
+                        persisted_counts={
+                            "records_remaining": 0,
+                            "chapters_complete": todo_status.complete_count,
+                            "chapters_requested": todo.chapters_requested,
+                        },
+                    )
+                elif todo_status.state == "blocked":
+                    action = AgentNextAction(
+                        state="blocked",
+                        must_continue=False,
+                        next_safe_command=todo_status.next_safe_command,
+                        blocker_code="todo_validation_blocked",
+                        persisted_counts={
+                            "records_remaining": sum(
+                                chapter.records_remaining_now
+                                for chapter in todo_status.chapters
+                            ),
+                            "chapters_complete": todo_status.complete_count,
+                            "chapters_requested": todo.chapters_requested,
+                        },
+                    )
+                else:
+                    action = AgentNextAction(
+                        state="continue",
+                        must_continue=True,
+                        next_safe_command=todo_status.next_safe_command,
+                        persisted_counts={
+                            "records_remaining": sum(
+                                chapter.records_remaining_now
+                                for chapter in todo_status.chapters
+                            ),
+                            "chapters_complete": todo_status.complete_count,
+                            "chapters_requested": todo.chapters_requested,
+                        },
+                    )
+                console.print_json(
+                    json.dumps(
+                        {
+                            "accepted_records": result.accepted_records,
+                            "chapter_id": result.chapter_id,
+                            "chapter_complete": result.records_remaining == 0,
+                            "todo": {
+                                "todo_id": todo.todo_id,
+                                "state": action.state,
+                                "records_remaining": action.persisted_counts.get(
+                                    "records_remaining", 0
+                                ),
+                                "chapters_complete": action.persisted_counts.get(
+                                    "chapters_complete", 0
+                                ),
+                                "chapters_requested": todo.chapters_requested,
+                                "must_continue": action.must_continue,
+                                "next_safe_command": action.next_safe_command,
+                            },
+                            "next_action": action.model_dump(mode="json"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                return
             if todo_status.goal_complete:
                 console.print(f"todo complete: {todo.todo_id}")
                 console.print("next: stop - todo goal complete")
             elif todo_status.next_safe_command is not None:
+                console.print(
+                    "TODO INCOMPLETE: continue the same todo now; do not report completion."
+                )
                 console.print(
                     "next: " + todo_status.next_safe_command,
                     soft_wrap=True,
@@ -468,6 +564,180 @@ def translate_insert_workflow(
         )
 
 
+def translate_todo_submit_workflow(
+    project_dir: Path,
+    profile: str | None = None,
+    task_id: str | None = None,
+    input_file: Path | None = None,
+    input_format: str = "block",
+    resume_next: bool = False,
+    as_json: bool = False,
+) -> None:
+    """Lint, accept, validate, and optionally resume one todo task atomically."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    require_translation_protocol(proj, command="translate todo-submit")
+    if input_format != "block":
+        _die("todo-submit currently supports --format block only")
+    if input_file is None:
+        _die("--file is required")
+    _require_chunks(proj)
+    _require_no_source_drift(proj)
+    _require_ready_context(proj)
+    task = _load_translation_task_or_exit(proj, task_id or "")
+    if not task.todo_id:
+        _die("todo-submit requires a task created from a translation todo")
+    try:
+        parsed = resolve_submission(
+            record_id=None,
+            target=None,
+            input_format=input_format,
+            stdin=False,
+            json_file=None,
+            input_file=input_file,
+            ingest_hint=_submission_ingest_hint(proj, task.task_id, mode=runtime.mode),
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    submitted_records = [
+        SubmittedRecord(
+            id=parse_record_ref(record.id).canonical_id, target=record.target
+        )
+        for record in parsed.records
+    ]
+    expected_ids = [record.id for record in task.records]
+    submitted_ids = {record.id for record in submitted_records}
+    missing_record_ids = [
+        record_id for record_id in expected_ids if record_id not in submitted_ids
+    ]
+    extra_record_ids = [
+        record_id for record_id in submitted_ids if record_id not in set(expected_ids)
+    ]
+    bundle = _project_status_snapshot(proj)
+    try:
+        findings = validate_submitted_records(
+            proj, bundle, submitted_records, task=task
+        )
+        errors = [finding for finding in findings if finding.severity == Severity.ERROR]
+        warnings = [
+            finding for finding in findings if finding.severity == Severity.WARN
+        ]
+        if missing_record_ids or extra_record_ids or errors or warnings:
+            _render_submission_failures(findings)
+            if missing_record_ids:
+                console.print("missing task records: " + ", ".join(missing_record_ids))
+            if extra_record_ids:
+                console.print("extra task records: " + ", ".join(extra_record_ids))
+            raise typer.Exit(code=1)
+        submitted_id_set = {record.id for record in submitted_records}
+        if load_matching_validation_receipt(proj, task, input_file) is None:
+            _staged_preflight_check(proj, submitted_records, submitted_id_set)
+        write_validation_receipt(proj, task, input_file, passed=True)
+        result = accept_translation_records(
+            proj,
+            submitted_records,
+            bundle=bundle,
+            task=task,
+            submission_translation_version=parsed.translation_version,
+            submission_profile=parsed.profile,
+            enforce_task_version=True,
+        )
+    except SubmissionValidationError as exc:
+        _render_submission_failures(exc.findings)
+        raise typer.Exit(code=1) from None
+    except ValidationError as exc:
+        _die(f"todo-submit preflight failed: {exc}")
+        return
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+
+    fresh = _project_status_snapshot(proj)
+    todo = load_translation_todo(proj, task.todo_id)
+    if todo is None:
+        _die(f"todo {task.todo_id} disappeared after submission")
+    todo_status = build_todo_status(
+        proj,
+        todo,
+        fresh,
+        validation_report=None,
+        fail_on_warnings=False,
+        scope_chapter_id=current_todo_chapter_id(todo, fresh),
+    )
+    if todo_status.goal_complete:
+        action = AgentNextAction(
+            state="complete",
+            must_continue=False,
+            persisted_counts={
+                "records_remaining": 0,
+                "chapters_complete": todo_status.complete_count,
+                "chapters_requested": todo.chapters_requested,
+            },
+        )
+    else:
+        action = AgentNextAction(
+            state="continue",
+            must_continue=True,
+            next_safe_command=todo_status.next_safe_command,
+            persisted_counts={
+                "records_remaining": sum(
+                    chapter.records_remaining_now for chapter in todo_status.chapters
+                ),
+                "chapters_complete": todo_status.complete_count,
+                "chapters_requested": todo.chapters_requested,
+            },
+        )
+    next_task = None
+    if resume_next and action.must_continue:
+        next_task = resume_translation_todo(
+            proj, fresh, mode=runtime.mode, todo_id=todo.todo_id
+        )
+    if as_json:
+        console.print_json(
+            json.dumps(
+                {
+                    "accepted_records": result.accepted_records,
+                    "todo": {
+                        "todo_id": todo.todo_id,
+                        "state": action.state,
+                        "must_continue": action.must_continue,
+                        "next_safe_command": action.next_safe_command,
+                        **action.persisted_counts,
+                    },
+                    "next_action": action.model_dump(mode="json"),
+                    "next_task_id": next_task.task_id if next_task else None,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+    console.print(
+        f"accepted: {result.accepted_records} record(s), "
+        f"{result.target_words} target word(s)"
+    )
+    if action.must_continue:
+        console.print(
+            "TODO INCOMPLETE: continue the same todo now; do not report completion."
+        )
+        if action.next_safe_command:
+            console.print(
+                "next: " + action.next_safe_command, soft_wrap=True, markup=False
+            )
+        if next_task is not None:
+            _print_translate_task(
+                next_task,
+                proj,
+                mode=runtime.mode,
+                as_json=False,
+                output_format="block",
+                show_sources=False,
+                show_template=False,
+            )
+    else:
+        console.print(f"todo complete: {todo.todo_id}")
+
+
 def _preflight_findings_for_lint(
     proj: Project,
     submitted_records: list[SubmittedRecord],
@@ -508,12 +778,20 @@ def _render_lint_block_human(
     missing_record_ids: list[str],
     extra_record_ids: list[str],
     findings: list[Finding],
+    linguistic_findings: list[object] | None = None,
+    quality: str = "protocol",
 ) -> None:
     errors = [finding for finding in findings if finding.severity == Severity.ERROR]
     warnings = [finding for finding in findings if finding.severity == Severity.WARN]
     ok = not missing_record_ids and not extra_record_ids and not errors and not warnings
 
     console.print(f"task: {task_id}")
+    console.print(f"protocol validation: {'ok' if ok else 'failed'}")
+    if quality == "protocol":
+        console.print("linguistic audit: not run")
+    else:
+        console.print(f"linguistic audit: {len(linguistic_findings or [])} warning(s)")
+    console.print("semantic/literary quality: not checked")
     console.print(f"submitted records: {submitted_count} / {expected_count}")
     console.print(
         "missing task records: "
@@ -551,10 +829,13 @@ def translate_lint_block_workflow(
     input_file: Path | None = None,
     input_format: str = "block",
     as_json: bool = False,
+    quality: str = "basic",
 ) -> None:
     """Lint a block submission against task coverage and validation rules."""
     if input_format != "block":
         _die("translate lint-block currently supports --format block only")
+    if quality not in {"protocol", "basic", "strict"}:
+        _die("--quality must be protocol, basic, or strict")
     if (input_file is None) == (not stdin):
         _die("provide exactly one of --file or --stdin")
 
@@ -567,6 +848,7 @@ def translate_lint_block_workflow(
 
     task = _load_translation_task_or_exit(proj, task_id)
     summary = _project_status_snapshot(proj)
+    receipt_input_path: Path | None = None
 
     try:
         if stdin:
@@ -583,6 +865,7 @@ def translate_lint_block_workflow(
                     if input_file.is_absolute()
                     else runtime.mode.project_root / input_file
                 )
+            receipt_input_path = file_path
             from booktx.submissions import read_submission_file
 
             text = read_submission_file(
@@ -633,7 +916,33 @@ def translate_lint_block_workflow(
 
     errors = [finding for finding in findings if finding.severity == Severity.ERROR]
     warnings = [finding for finding in findings if finding.severity == Severity.WARN]
-    ok = not missing_record_ids and not extra_record_ids and not errors and not warnings
+    protocol_ok = (
+        not missing_record_ids and not extra_record_ids and not errors and not warnings
+    )
+    linguistic_findings: list[object] = []
+    if quality != "protocol":
+        configured = getattr(proj.profile_config, "submission_quality", None)
+        if configured is None or configured.linguistic_audit != "off":
+            strict = quality == "strict" or (
+                configured is not None and configured.linguistic_audit == "error"
+            )
+            submitted_by_id = {record.id: record.target for record in submitted_records}
+            linguistic_findings = audit_records(
+                [
+                    (record.id, record.source, submitted_by_id[record.id])
+                    for record in task.records
+                    if record.id in submitted_by_id
+                ],
+                locale=(task.target_locale or task.target_language),
+                strict=strict,
+            )
+    linguistic_blocking = quality == "strict" and bool(linguistic_findings)
+    ok = protocol_ok and not linguistic_blocking
+    receipt_path: Path | None = None
+    if ok and receipt_input_path is not None:
+        receipt_path = write_validation_receipt(
+            proj, task, receipt_input_path, passed=True
+        )
 
     if as_json:
         payload = {
@@ -646,7 +955,14 @@ def translate_lint_block_workflow(
             "errors": len(errors),
             "warnings": len(warnings),
             "findings": [finding.as_dict() for finding in findings],
+            "quality": quality,
+            "protocol_ok": protocol_ok,
+            "linguistic_findings": [
+                finding.as_dict() for finding in linguistic_findings
+            ],
         }
+        if receipt_path is not None:
+            payload["receipt_path"] = display_path(receipt_path, runtime.mode)
         console.print_json(json.dumps(payload, ensure_ascii=False))
     else:
         _render_lint_block_human(
@@ -656,6 +972,8 @@ def translate_lint_block_workflow(
             missing_record_ids=missing_record_ids,
             extra_record_ids=extra_record_ids,
             findings=findings,
+            linguistic_findings=linguistic_findings,
+            quality=quality,
         )
 
     if not ok:
@@ -674,6 +992,7 @@ def translate_todo_next_workflow(
     resume: bool = False,
     output_format: str = "block",
     as_json: bool = False,
+    supersede_overlapping: bool = False,
 ) -> None:
     """Create a durable run-control todo for a bounded multi-chapter translation run.
 
@@ -715,8 +1034,79 @@ def translate_todo_next_workflow(
 
     json_path: Path | None = None
     md_path: Path | None = None
+    conflicts = []
+    reused = False
     if write:
-        json_path, md_path = write_translation_todo(proj, todo, mode=runtime.mode)
+        candidate_fingerprint = todo.scope_fingerprint or todo_scope_fingerprint(todo)
+        for existing in list_translation_todos(proj):
+            lifecycle = load_todo_lifecycle(proj, existing)
+            if lifecycle.state != "open":
+                continue
+            existing_status = build_todo_status(
+                proj, existing, bundle, fail_on_warnings=False
+            )
+            if existing_status.goal_complete:
+                continue
+            planned_ids = {chapter.chapter_id for chapter in existing.chapters}
+            candidate_ids = {chapter.chapter_id for chapter in todo.chapters}
+            if not planned_ids.intersection(candidate_ids):
+                continue
+            if (
+                existing.scope_fingerprint or todo_scope_fingerprint(existing)
+            ) == candidate_fingerprint:
+                conflicts.append(existing)
+            else:
+                conflicts.append(existing)
+
+        exact = [
+            existing
+            for existing in conflicts
+            if (existing.scope_fingerprint or todo_scope_fingerprint(existing))
+            == (todo.scope_fingerprint or candidate_fingerprint)
+        ]
+        incompatible = [existing for existing in conflicts if existing not in exact]
+        if exact and incompatible and not supersede_overlapping:
+            ids = ", ".join(sorted(item.todo_id for item in conflicts))
+            _die(
+                "open todo overlap detected for planned chapters "
+                f"{', '.join(chapter.chapter_id for chapter in todo.chapters)}: {ids}. "
+                "Reuse the exact scope only after resolving incompatible overlaps, "
+                "or pass --supersede-overlapping to explicitly restart."
+            )
+        if exact:
+            todo = max(exact, key=lambda item: (item.created_at, item.todo_id))
+            reused = True
+            json_path = translation_todo_json_path(proj, todo.todo_id)
+            md_path = translation_todo_markdown_path(proj, todo.todo_id)
+        elif conflicts and not supersede_overlapping:
+            ids = ", ".join(sorted(item.todo_id for item in conflicts))
+            _die(
+                "open todo overlap detected for planned chapters "
+                f"{', '.join(chapter.chapter_id for chapter in todo.chapters)}: {ids}. "
+                "Reuse the exact scope or pass --supersede-overlapping to explicitly restart."
+            )
+    if write:
+        if not reused:
+            try:
+                json_path, md_path = write_translation_todo(
+                    proj, todo, mode=runtime.mode
+                )
+                if conflicts:
+                    supersede_todos_atomically(
+                        proj,
+                        incompatible or conflicts,
+                        superseded_by=todo.todo_id,
+                        reason="Explicit --supersede-overlapping restart.",
+                    )
+            except Exception:
+                if json_path is not None:
+                    json_path.unlink(missing_ok=True)
+                if md_path is not None:
+                    md_path.unlink(missing_ok=True)
+                translation_todo_lifecycle_path(proj, todo.todo_id).unlink(
+                    missing_ok=True
+                )
+                raise
         # Verify the written file is loadable before printing success.
         loaded = load_translation_todo(proj, todo.todo_id)
         if loaded is None:
@@ -822,25 +1212,106 @@ def translate_todo_next_workflow(
     )
 
 
+def translate_todo_list_workflow(
+    project_dir: Path,
+    profile: str | None = None,
+    state: str = "all",
+    as_json: bool = False,
+) -> None:
+    """List lifecycle-aware translation todos without mutating scope files."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    require_translation_protocol(proj, command="translate todo-list")
+    if state not in {"all", "open", "completed", "abandoned", "superseded"}:
+        _die("--state must be all, open, completed, abandoned, or superseded")
+    todos = list_translation_todos(proj)
+    bundle = _project_status_snapshot(proj) if todos else None
+    rows: list[dict[str, object]] = []
+    for todo in todos:
+        lifecycle = load_todo_lifecycle(proj, todo)
+        effective_state = lifecycle.state
+        if effective_state == "open" and bundle is not None:
+            status = build_todo_status(proj, todo, bundle, fail_on_warnings=False)
+            if status.goal_complete:
+                effective_state = "completed"
+        if state != "all" and state != effective_state:
+            continue
+        rows.append(
+            {
+                "todo_id": todo.todo_id,
+                "profile": todo.profile,
+                "state": effective_state,
+                "created_at": todo.created_at,
+                "chapters": [chapter.chapter_id for chapter in todo.chapters],
+                "reason": lifecycle.reason,
+                "superseded_by": lifecycle.superseded_by,
+            }
+        )
+    if as_json:
+        console.print_json(
+            json.dumps({"version": 1, "todos": rows}, ensure_ascii=False)
+        )
+        return
+    if not rows:
+        console.print("no translation todos")
+        return
+    for row in rows:
+        console.print(
+            f"{row['state']}: {row['todo_id']} chapters={','.join(row['chapters'])}"
+        )
+
+
+def translate_todo_abandon_workflow(
+    project_dir: Path,
+    profile: str | None = None,
+    todo_id: str | None = None,
+    reason: str = "Abandoned by operator.",
+    write: bool = False,
+) -> None:
+    """Abandon a todo with an explicit audited write."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    require_translation_protocol(proj, command="translate todo-abandon")
+    if not write:
+        _die("--write is required to abandon a todo")
+    if not todo_id:
+        _die("--todo-id is required")
+    todo = load_translation_todo(proj, todo_id)
+    if todo is None:
+        _die(f"unknown todo id: {todo_id}")
+    try:
+        abandon_todo(proj, todo, reason=reason)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(f"abandoned: {todo.todo_id}")
+
+
 def translate_todo_status_workflow(
     project_dir: Path,
     profile: str | None = None,
     todo_id: str | None = None,
     latest: bool = False,
     as_json: bool = False,
+    include_global_validation: bool = False,
 ) -> None:
     """Show live bounded-run todo status and the next safe command."""
+    timing_started = time.perf_counter()
+    timing: dict[str, int] = {}
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
     require_translation_protocol(proj, command="translate todo-status")
     _require_chunks(proj)
     bundle = _project_status_snapshot(proj)
+    timing["status_snapshot"] = int((time.perf_counter() - timing_started) * 1000)
     try:
         todo = resolve_translation_todo(proj, bundle, todo_id=todo_id, latest=latest)
         scope_chapter = current_todo_chapter_id(todo, bundle)
-        scoped_report = validate_project(proj, chapter_id=scope_chapter)
-        # Second full pass for the non-blocking global note (ac-0003).
-        global_report = validate_project(proj) if scope_chapter is not None else None
+        scoped_report = validate_project(
+            proj, chapter_id=scope_chapter, status_bundle=bundle
+        )
+        global_report = validate_project(proj) if include_global_validation else None
+        timing["validation"] = int((time.perf_counter() - timing_started) * 1000)
         status = build_todo_status(
             proj,
             todo,
@@ -856,8 +1327,17 @@ def translate_todo_status_workflow(
         return
     if as_json:
         console.print_json(json.dumps(status.as_dict(), ensure_ascii=False))
-        return
-    _print_todo_status_human(status)
+    else:
+        _print_todo_status_human(status)
+    if os.environ.get("BOOKTX_TIMING") == "1":
+        timing["total"] = int((time.perf_counter() - timing_started) * 1000)
+        print(
+            json.dumps(
+                {"command": "translate todo-status", "timings_ms": timing},
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
 
 
 def translate_todo_resume_workflow(

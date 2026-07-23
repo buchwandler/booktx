@@ -1008,12 +1008,14 @@ def test_command_tree_group_snapshots():
         },
         "glossary": {
             "add",
+            "add-variant",
             "audit",
             "export",
             "import",
             "mandate",
             "remove",
             "reset",
+            "set-usage",
             "status",
         },
         "translate": {
@@ -1036,8 +1038,11 @@ def test_command_tree_group_snapshots():
             "search",
             "set-record",
             "task-status",
+            "todo-abandon",
+            "todo-list",
             "todo-next",
             "todo-resume",
+            "todo-submit",
             "todo-status",
         },
     }

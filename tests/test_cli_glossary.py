@@ -24,6 +24,37 @@ def _make_project(tmp_path: Path) -> Path:
     return project_dir
 
 
+def _make_context_project(tmp_path: Path) -> Path:
+    project_dir = _make_project(tmp_path)
+    init = runner.invoke(
+        app,
+        [
+            "context",
+            "init",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--non-interactive",
+        ],
+    )
+    assert init.exit_code == 0, init.output
+    ready = runner.invoke(
+        app,
+        [
+            "context",
+            "mark-ready",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--force",
+            "--reason",
+            "test setup",
+        ],
+    )
+    assert ready.exit_code == 0, ready.output
+    return project_dir
+
+
 def test_glossary_add_flat_entry_exports_same_shard_as_termbase(tmp_path: Path):
     project_dir = _make_project(tmp_path)
     add = runner.invoke(
@@ -134,3 +165,69 @@ def test_glossary_file_input_and_termbase_validate_entry(tmp_path: Path):
     payload = json.loads(export_res.output)
     assert payload["language_key"] == "de"
     assert payload["entries"][0]["kind"] == "contextual_term"
+
+
+def test_glossary_usage_commands_persist_approved_contextual_variants(
+    tmp_path: Path,
+):
+    project_dir = _make_context_project(tmp_path)
+    mandate = runner.invoke(
+        app,
+        [
+            "context",
+            "mandate-term",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "Beetle-kinden",
+            "--target",
+            "Käferart",
+            "--enforce",
+            "error",
+        ],
+    )
+    assert mandate.exit_code == 0, mandate.output
+
+    add_variant = runner.invoke(
+        app,
+        [
+            "glossary",
+            "add-variant",
+            str(project_dir),
+            "Beetle-kinden",
+            "--profile",
+            "de_default",
+            "--target",
+            "Käferartige",
+            "--usage",
+            "vocative",
+        ],
+    )
+    assert add_variant.exit_code == 0, add_variant.output
+
+    set_usage = runner.invoke(
+        app,
+        [
+            "glossary",
+            "set-usage",
+            str(project_dir),
+            "Beetle-kinden",
+            "--profile",
+            "de_default",
+            "--person-singular",
+            "Angehörige der Käferart",
+        ],
+    )
+    assert set_usage.exit_code == 0, set_usage.output
+
+    from booktx.config import load_project
+    from booktx.context import load_context
+
+    context = load_context(load_project(project_dir, profile="de_default"))
+    entry = next(item for item in context.glossary if item.source == "Beetle-kinden")
+    assert entry.target == "Käferart"
+    assert entry.target_variants == ["Käferartige", "Angehörige der Käferart"]
+    assert entry.usage_notes == {
+        "vocative": "Käferartige",
+        "person_singular": "Angehörige der Käferart",
+    }

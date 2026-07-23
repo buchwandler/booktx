@@ -147,6 +147,9 @@ __all__ = [
     "translation_todo_dir",
     "translation_todo_json_path",
     "translation_todo_markdown_path",
+    "translation_todo_lifecycle_path",
+    "translation_validation_receipt_dir",
+    "translation_validation_receipt_path",
     "review_todo_dir",
     "review_todo_json_path",
     "review_todo_markdown_path",
@@ -1467,6 +1470,23 @@ def translation_todo_json_path(project: Project, todo_id: str) -> Path:
 def translation_todo_markdown_path(project: Project, todo_id: str) -> Path:
     safe_todo_id = safe_artifact_id(todo_id, kind="todo")
     return translation_todo_dir(project) / f"{safe_todo_id}.md"
+
+
+def translation_todo_lifecycle_path(project: Project, todo_id: str) -> Path:
+    """Return the mutable lifecycle sidecar for a translation todo."""
+    safe_todo_id = safe_artifact_id(todo_id, kind="todo")
+    return translation_todo_dir(project) / f"{safe_todo_id}.state.json"
+
+
+def translation_validation_receipt_dir(project: Project) -> Path:
+    """Profile-local directory for short-lived staged validation receipts."""
+    _require_profile_paths(project, "translation validation receipt access")
+    return profile_dir(project.root, project.profile or "") / "validation-receipts"
+
+
+def translation_validation_receipt_path(project: Project, receipt_key: str) -> Path:
+    safe_key = safe_artifact_id(receipt_key, kind="validation-receipt")
+    return translation_validation_receipt_dir(project) / f"{safe_key}.json"
 
 
 def _review_todo_dir(root: Path, profile: str) -> Path:

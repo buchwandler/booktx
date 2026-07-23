@@ -10,6 +10,7 @@ import typer
 from booktx.cli_support import _handle_booktx_error, console
 from booktx.errors import BooktxError
 from booktx.workflows.glossary import (
+    glossary_add_variant_workflow,
     glossary_add_workflow,
     glossary_audit_workflow,
     glossary_export_workflow,
@@ -17,6 +18,7 @@ from booktx.workflows.glossary import (
     glossary_mandate_workflow,
     glossary_remove_workflow,
     glossary_reset_workflow,
+    glossary_set_usage_workflow,
     glossary_status_workflow,
 )
 
@@ -126,6 +128,83 @@ def glossary_add_cmd(
         f"({payload['scope']} {payload['language_key']})"
     )
     console.print(payload["path"], soft_wrap=True, markup=False)
+
+
+@glossary_app.command(name="add-variant")
+def glossary_add_variant_cmd(
+    project_dir: Path | None = typer.Argument(
+        None, help="Project directory or profile root."
+    ),
+    source: str = typer.Argument(..., help="Existing source glossary term."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    target: str = typer.Option(
+        ..., "--target", help="Approved contextual target form."
+    ),
+    usage: str = typer.Option(
+        ..., "--usage", help="Usage label, e.g. vocative or collective."
+    ),
+) -> None:
+    try:
+        message = glossary_add_variant_workflow(
+            project_dir, profile=profile, source=source, target=target, usage=usage
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(message)
+
+
+@glossary_app.command(name="set-usage")
+def glossary_set_usage_cmd(
+    project_dir: Path | None = typer.Argument(
+        None, help="Project directory or profile root."
+    ),
+    source: str = typer.Argument(..., help="Existing source glossary term."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    target: str | None = typer.Option(
+        None, "--target", help="Approved contextual target form."
+    ),
+    usage: str | None = typer.Option(
+        None, "--usage", help="Usage label, e.g. person-singular."
+    ),
+    vocative: str | None = typer.Option(
+        None, "--vocative", help="Approved vocative realization."
+    ),
+    person_singular: str | None = typer.Option(
+        None, "--person-singular", help="Approved person-singular realization."
+    ),
+    collective: str | None = typer.Option(
+        None, "--collective", help="Approved collective realization."
+    ),
+) -> None:
+    semantic = [
+        ("vocative", vocative),
+        ("person_singular", person_singular),
+        ("collective", collective),
+    ]
+    semantic = [(label, value) for label, value in semantic if value]
+    if semantic and (target is not None or usage is not None):
+        raise typer.BadParameter(
+            "use --target/--usage or one semantic usage option, not both"
+        )
+    if len(semantic) > 1:
+        raise typer.BadParameter("choose only one semantic usage option")
+    if semantic:
+        usage, target = semantic[0]
+    if target is None or usage is None:
+        raise typer.BadParameter("--target and --usage are required")
+    try:
+        message = glossary_set_usage_workflow(
+            project_dir, profile=profile, source=source, target=target, usage=usage
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(message)
 
 
 @glossary_app.command(name="export")

@@ -23,7 +23,7 @@ Design notes:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -262,6 +262,8 @@ class StatusBundle:
     index: StatusRuntimeIndex
 
     epub_audit: EpubAuditSummary | None = None
+    source_chunks: dict[str, Any] | None = None
+    effective: Any | None = None
 
 
 def _chapter_map_for_workflow(proj: Project) -> ChapterMap:
@@ -605,7 +607,13 @@ def build_status_snapshot(
     )
 
     epub_audit = epub_chapter_audit_summary(proj, chapter_map)
-    return StatusBundle(snapshot=snapshot, index=index, epub_audit=epub_audit)
+    return StatusBundle(
+        snapshot=snapshot,
+        index=index,
+        epub_audit=epub_audit,
+        source_chunks=source_chunks,
+        effective=effective,
+    )
 
 
 def build_profiles_overview(project: Project) -> ProfilesOverview:

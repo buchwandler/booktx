@@ -712,7 +712,9 @@ def _check_required_glossary_targets(
         return []
     findings: list[Finding] = []
     for _idx, entry in enumerate(context.glossary):
-        if entry.enforce == "off" or not entry.require_target:
+        if entry.enforce == "off" or not (
+            entry.require_target or entry.require_concept
+        ):
             continue
         evaluations = evaluations_by_entry.get(_idx, [])
         missing = [
@@ -1686,7 +1688,7 @@ def _soft_hyphen_findings(project: Project, effective) -> list[Finding]:  # type
     return findings
 
 
-def validate_project(
+def validate_project(  # noqa: C901
     project: Project,
     *,
     include_inactive_versions: bool = False,
@@ -1695,6 +1697,7 @@ def validate_project(
     record_ids: set[str] | None = None,
     task_id: str | None = None,
     require_complete: bool = False,
+    status_bundle: Any | None = None,
 ) -> ValidationReport:
     """Validate every translated chunk in ``project``.
 
@@ -1710,12 +1713,16 @@ def validate_project(
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
 
-    source_chunks: dict[str, Chunk] = {}
-    for path in sorted(project.chunks(), key=lambda path: path.stem):
-        chunk, findings = _load_source_chunk_with_findings(path)
-        report.findings.extend(findings)
-        if chunk is not None:
-            source_chunks[path.stem] = chunk
+    cached_source_chunks = getattr(status_bundle, "source_chunks", None)
+    if cached_source_chunks is not None:
+        source_chunks = cached_source_chunks
+    else:
+        source_chunks = {}
+        for path in sorted(project.chunks(), key=lambda path: path.stem):
+            chunk, findings = _load_source_chunk_with_findings(path)
+            report.findings.extend(findings)
+            if chunk is not None:
+                source_chunks[path.stem] = chunk
     try:
         manifest = load_manifest(project)
     except Exception as exc:  # noqa: BLE001
@@ -1795,13 +1802,17 @@ def validate_project(
             )
         )
 
-    effective = load_effective_translated_chunks(
-        project,
-        source_chunks=source_chunks,
-        context=context,
-        include_inactive_versions=include_inactive_versions,
-        all_versions_strict=all_versions_strict,
-    )
+    cached_effective = getattr(status_bundle, "effective", None)
+    if cached_effective is not None:
+        effective = cached_effective
+    else:
+        effective = load_effective_translated_chunks(
+            project,
+            source_chunks=source_chunks,
+            context=context,
+            include_inactive_versions=include_inactive_versions,
+            all_versions_strict=all_versions_strict,
+        )
     report.findings.extend(effective.findings)
 
     # Resolve task_id scope into chapter/record filters so a bounded task run

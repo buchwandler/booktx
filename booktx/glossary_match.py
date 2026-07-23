@@ -146,7 +146,9 @@ def entry_is_binding(entry: GlossaryEntry) -> bool:
     """
     if entry.enforce == "off":
         return False
-    return bool(entry.require_target or entry.forbidden_targets)
+    return bool(
+        entry.require_target or entry.require_concept or entry.forbidden_targets
+    )
 
 
 def mandatory_glossary_sha256(glossary: list[GlossaryEntry]) -> str:
@@ -170,6 +172,9 @@ def mandatory_glossary_sha256(glossary: list[GlossaryEntry]) -> str:
                 "source_variants": _dedupe_terms(entry.source_variants),
                 "target": (entry.target or "").strip(),
                 "target_variants": _dedupe_terms(entry.target_variants),
+                "usage_notes": dict(sorted(entry.usage_notes.items())),
+                "concept_kind": entry.concept_kind,
+                "require_concept": bool(entry.require_concept),
                 "require_target": bool(entry.require_target),
                 "forbidden_targets": _dedupe_terms(entry.forbidden_targets),
                 "case_sensitive": bool(entry.case_sensitive),

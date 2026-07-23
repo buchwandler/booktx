@@ -69,7 +69,7 @@ def resume_translation_todo(
     # Scope validation to the todo's current chapter so unrelated-chapter
     # preflight errors do not block a bounded run.
     scope_chapter = current_todo_chapter_id(todo, bundle)
-    report = validate_project(project, chapter_id=scope_chapter)
+    report = validate_project(project, chapter_id=scope_chapter, status_bundle=bundle)
     status = build_todo_status(
         project,
         todo,

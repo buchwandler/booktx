@@ -172,6 +172,14 @@ booktx translate insert . \
   --task-id TASK --file ingest/TASK.block.txt --format block
 ```
 
+For a translation todo, a task is one bounded batch inside the user's todo.
+After every successful insert, run the printed scoped check and query the exact
+todo status. If the result says `must_continue=true`, resume the same todo in
+this assistant turn. A successful insert is not a stop condition, and the
+agent must not ask the user to say `continue`. Stop only when the todo is
+complete, booktx reports a blocker, the user explicitly stops the run, or a
+documented harness limit is reached.
+
 The task records the profile, target language and locale, translation version,
 source hash, profile hashes, and an immutable effective context view under
 `context-history/views/<sha>/`.

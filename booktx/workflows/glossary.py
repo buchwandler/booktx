@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from booktx.config import Project
     from booktx.context import TranslationContext
 from booktx.cli_support import _load_project_or_exit, _project_status_snapshot
-from booktx.context import load_context
+from booktx.context import load_context, write_context, write_context_markdown
 from booktx.errors import _err
 from booktx.workflows.context import (
     audit_term_workflow,
@@ -35,6 +35,8 @@ __all__ = [
     "glossary_remove_workflow",
     "glossary_reset_workflow",
     "glossary_status_workflow",
+    "glossary_add_variant_workflow",
+    "glossary_set_usage_workflow",
 ]
 
 
@@ -245,6 +247,63 @@ def glossary_mandate_workflow(
         notes=notes,
         enforce=enforce,
         case_sensitive=case_sensitive,
+    )
+
+
+def _update_usage_entry(
+    project_dir: Path | None,
+    *,
+    profile: str | None,
+    source: str,
+    target: str,
+    usage: str,
+    add_variant: bool,
+) -> str:
+    project, context = _load_context_project(project_dir, profile)
+    entry = next((item for item in context.glossary if item.source == source), None)
+    if entry is None:
+        raise _err("term_missing", f"no glossary entry for source: {source}")
+    if add_variant and target not in entry.target_variants and target != entry.target:
+        entry.target_variants.append(target)
+    entry.usage_notes[usage] = target
+    write_context(project, context)
+    write_context_markdown(project, context)
+    return f"updated glossary usage: {source} ({usage})"
+
+
+def glossary_add_variant_workflow(
+    project_dir: Path | None,
+    *,
+    profile: str | None,
+    source: str,
+    target: str,
+    usage: str,
+) -> str:
+    return _update_usage_entry(
+        project_dir,
+        profile=profile,
+        source=source,
+        target=target,
+        usage=usage,
+        add_variant=True,
+    )
+
+
+def glossary_set_usage_workflow(
+    project_dir: Path | None,
+    *,
+    profile: str | None,
+    source: str,
+    target: str,
+    usage: str,
+) -> str:
+    return _update_usage_entry(
+        project_dir,
+        profile=profile,
+        source=source,
+        target=target,
+        usage=usage,
+        add_variant=True,
     )
 
 

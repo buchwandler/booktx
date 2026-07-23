@@ -25,9 +25,12 @@ from booktx.workflows.translate import (
     translate_next_workflow,
     translate_set_record_workflow,
     translate_task_status_workflow,
+    translate_todo_abandon_workflow,
+    translate_todo_list_workflow,
     translate_todo_next_workflow,
     translate_todo_resume_workflow,
     translate_todo_status_workflow,
+    translate_todo_submit_workflow,
     translation_activate_workflow,
     translation_compare_workflow,
     translation_get_record_workflow,
@@ -146,6 +149,7 @@ def translate_insert(
     export_index: bool = typer.Option(
         False, "--export-index", help="Export editor QA indexes after acceptance."
     ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
 ) -> None:
     """"""
     translate_insert_workflow(
@@ -160,6 +164,7 @@ def translate_insert(
         input_format,
         allow_missing_context,
         export_index,
+        as_json,
     )
 
 
@@ -182,6 +187,11 @@ def translate_lint_block(
         help="Input format. Only block is currently supported.",
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+    quality: str = typer.Option(
+        "basic",
+        "--quality",
+        help="Quality level: protocol, basic, or strict.",
+    ),
 ) -> None:
     """"""
     translate_lint_block_workflow(
@@ -191,6 +201,35 @@ def translate_lint_block(
         stdin,
         input_file,
         input_format,
+        as_json,
+        quality,
+    )
+
+
+@translate_app.command(name="todo-submit")
+def translate_todo_submit(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    task_id: str = typer.Option(..., "--task-id", help="Todo task id."),
+    input_file: Path = typer.Option(..., "--file", help="Completed block file."),
+    input_format: str = typer.Option("block", "--format", help="Submission format."),
+    resume_next: bool = typer.Option(
+        False,
+        "--resume-next",
+        help="Issue the next task when the todo remains incomplete.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """Submit one todo task through lint, insert, and continuation gates."""
+    translate_todo_submit_workflow(
+        project_dir,
+        profile,
+        task_id,
+        input_file,
+        input_format,
+        resume_next,
         as_json,
     )
 
@@ -239,6 +278,11 @@ def translate_todo_next(
         help="Human output format for --resume: text, tsv, or block.",
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+    supersede_overlapping: bool = typer.Option(
+        False,
+        "--supersede-overlapping",
+        help="Explicitly supersede open overlapping todos when writing.",
+    ),
 ) -> None:
     """"""
     translate_todo_next_workflow(
@@ -253,6 +297,7 @@ def translate_todo_next(
         resume,
         output_format,
         as_json,
+        supersede_overlapping,
     )
 
 
@@ -267,6 +312,11 @@ def translate_todo_status(
         False, "--latest", help="Select the latest incomplete todo."
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit stable JSON output."),
+    include_global_validation: bool = typer.Option(
+        False,
+        "--include-global-validation",
+        help="Run an opt-in unscoped validation pass for a non-blocking note.",
+    ),
 ) -> None:
     """"""
     translate_todo_status_workflow(
@@ -275,7 +325,35 @@ def translate_todo_status(
         todo_id,
         latest,
         as_json,
+        include_global_validation,
     )
+
+
+@translate_app.command(name="todo-list")
+def translate_todo_list(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    state: str = typer.Option("all", "--state", help="Filter by lifecycle state."),
+    as_json: bool = typer.Option(False, "--json", help="Emit stable JSON output."),
+) -> None:
+    """List lifecycle-aware translation todos."""
+    translate_todo_list_workflow(project_dir, profile, state, as_json)
+
+
+@translate_app.command(name="todo-abandon")
+def translate_todo_abandon(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    todo_id: str | None = typer.Option(None, "--todo-id", help="Todo id to abandon."),
+    reason: str = typer.Option(..., "--reason", help="Audited reason for abandonment."),
+    write: bool = typer.Option(False, "--write", help="Persist the lifecycle change."),
+) -> None:
+    """Abandon a translation todo without deleting its scope files."""
+    translate_todo_abandon_workflow(project_dir, profile, todo_id, reason, write)
 
 
 @translate_app.command(name="todo-resume")

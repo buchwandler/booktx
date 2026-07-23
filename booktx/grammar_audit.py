@@ -21,7 +21,7 @@ class GrammarAuditFinding:
 _JOINED_SEPARABLE_RE = re.compile(
     r"\b(?:zurück|vor|mit|auf|ein|aus|an|ab|weg)bin\b",
     re.IGNORECASE,
- )
+)
 _APPOSITION_CASE_RE = re.compile(
     r"\bin\s+[^.!,;]+\bStoff\s+gekleidet,\s+strapazierfähiges\s+Zeug\b",
     re.IGNORECASE,
@@ -76,7 +76,7 @@ def audit_judge_task(task: JudgeTask) -> list[GrammarAuditFinding]:
 
 def audit_submitted_decisions(
     task: JudgeTask, submitted: list[object]
- ) -> list[GrammarAuditFinding]:
+) -> list[GrammarAuditFinding]:
     """Audit the actual targets represented by copy/edited decisions."""
     by_id = {getattr(item, "id", ""): item for item in submitted}
     findings: list[GrammarAuditFinding] = []

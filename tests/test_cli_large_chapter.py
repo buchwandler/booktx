@@ -302,7 +302,11 @@ def test_retries_reuse_existing_single_chapter_todo(tmp_path: Path):
     # No duplicate todo files should exist.
     todo_dir = project_dir / "translations" / "de_default" / "todos"
     if todo_dir.exists():
-        json_files = list(todo_dir.glob("*.json"))
+        json_files = [
+            path
+            for path in todo_dir.glob("*.json")
+            if not path.name.endswith(".state.json")
+        ]
         assert len(json_files) <= 1, f"expected at most 1 todo, got {len(json_files)}"
 
 
