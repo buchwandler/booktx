@@ -50,8 +50,11 @@ class TodoLifecycleEntry:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
-        "+00:00", "Z"
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
     )
 
 
@@ -129,8 +132,7 @@ def list_todo_lifecycle(
     project: Project, todos: Iterable[TranslationTodo]
 ) -> list[TodoLifecycleEntry]:
     return [
-        TodoLifecycleEntry(todo, load_todo_lifecycle(project, todo))
-        for todo in todos
+        TodoLifecycleEntry(todo, load_todo_lifecycle(project, todo)) for todo in todos
     ]
 
 
