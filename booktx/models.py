@@ -797,6 +797,18 @@ class TranslationTask(BaseModel):
         default=None,
         description="Canonical source-config hash when the task was created",
     )
+    concordance_path: str | None = Field(
+        default=None, description="Project-relative advisory concordance Markdown path"
+    )
+    concordance_sha256: str | None = Field(
+        default=None, description="sha256 of the task concordance report"
+    )
+    concordance_store_sha256: str | None = Field(
+        default=None, description="sha256 of the translation store snapshot used"
+    )
+    concordance_scope: str | None = Field(
+        default=None, description="Concordance scope used for the task report"
+    )
     source_words: int = 0
     record_count: int = 0
     requested_max_words: int | None = None

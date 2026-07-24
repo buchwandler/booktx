@@ -33,12 +33,14 @@ from booktx.workflows.translate import (
     translate_todo_submit_workflow,
     translation_activate_workflow,
     translation_compare_workflow,
+    translation_concordance_workflow,
     translation_get_record_workflow,
     translation_list_workflow,
     translation_review_workflow,
     translation_revise_block_workflow,
     translation_revise_record_workflow,
     translation_search_cmd_workflow,
+    translation_todo_doctor_workflow,
 )
 
 translate_app = typer.Typer(help="Command-based translation workflow.")
@@ -579,6 +581,31 @@ def translate_task_status(
     )
 
 
+@translate_app.command(name="todo-doctor")
+def translate_todo_doctor(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    overlaps: bool = typer.Option(
+        False, "--overlaps", help="Report overlapping open todos."
+    ),
+    supersede_identical: bool = typer.Option(
+        False,
+        "--supersede-identical",
+        help="Select older identical duplicates for supersession.",
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Write lifecycle supersession sidecars."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """Diagnose legacy todo overlaps without deleting immutable todo files."""
+    translation_todo_doctor_workflow(
+        project_dir, profile, overlaps, supersede_identical, write, as_json
+    )
+
+
 @translate_app.command(name="get-record")
 def translation_get_record(
     project_dir: Path = typer.Argument(..., help="Project directory."),
@@ -878,6 +905,20 @@ def translation_search_cmd(
     jsonl: bool = typer.Option(
         False, "--jsonl", help="Output one JSON object per match per line."
     ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit one stable JSON envelope."
+    ),
+    limit: int | None = typer.Option(
+        None, "--limit", min=1, help="Limit rendered matches."
+    ),
+    count_only: bool = typer.Option(
+        False, "--count-only", help="Print only the total match count."
+    ),
+    show_source: bool = typer.Option(
+        True,
+        "--show-source/--hide-source",
+        help="Include source text in human results.",
+    ),
 ) -> None:
     """"""
     translation_search_cmd_workflow(
@@ -896,4 +937,60 @@ def translation_search_cmd(
         exclude_source_regex=exclude_source_regex,
         match=match,
         write_block=write_block,
+        as_json=as_json,
+        limit=limit,
+        count_only=count_only,
+        show_source=show_source,
+    )
+
+
+@translate_app.command(name="concordance")
+def translation_concordance_cmd(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    task_id: str | None = typer.Option(
+        None, "--task-id", help="Task whose prior records define the scope."
+    ),
+    source: list[str] = typer.Option(
+        [], "--source", help="Repeatable source literal query."
+    ),
+    target: list[str] = typer.Option(
+        [], "--target", help="Repeatable target literal query."
+    ),
+    source_regex: list[str] = typer.Option(
+        [], "--source-regex", help="Repeatable source regex query."
+    ),
+    target_regex: list[str] = typer.Option(
+        [], "--target-regex", help="Repeatable target regex query."
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Extract conservative continuity cues from the task."
+    ),
+    scope: str = typer.Option(
+        "before-task", "--scope", help="Scope: before-task or all."
+    ),
+    max_examples: int = typer.Option(3, "--max-examples", min=1, max=20),
+    write_report: bool = typer.Option(
+        False,
+        "--write-report",
+        help="Write a profile-local report when a task is supplied.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON report."),
+) -> None:
+    """Show grouped prior source/target evidence for consistency."""
+    translation_concordance_workflow(
+        project_dir,
+        profile,
+        task_id,
+        source,
+        target,
+        source_regex,
+        target_regex,
+        auto,
+        scope,
+        max_examples,
+        write_report,
+        as_json,
     )

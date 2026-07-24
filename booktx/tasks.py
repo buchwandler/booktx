@@ -28,6 +28,7 @@ project-relative display strings and submit commands the CLI prints.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -42,6 +43,8 @@ from booktx.config import (
     translation_ingest_block_path,
     translation_ingest_path,
     translation_task_agent_brief_path,
+    translation_task_concordance_json_path,
+    translation_task_concordance_markdown_path,
     translation_task_source_block_path,
 )
 from booktx.context import (
@@ -61,6 +64,10 @@ from booktx.models import (
 )
 from booktx.path_display import display_path
 from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
+from booktx.translation_concordance import (
+    build_concordance,
+    render_concordance_markdown,
+)
 from booktx.validate import load_validation_context
 from booktx.versioning import canonical_json_sha256, resolve_current_version
 
@@ -337,11 +344,15 @@ def _task_relevant_termbase(
 
 
 def _render_action_contract_section(
+    project: Project,
     display: TaskPathDisplay,
     lint_hint: str,
     submit_hint: str,
     task: TranslationTask,
 ) -> list[str]:
+    concordance_path = project_relative(
+        translation_task_concordance_markdown_path(project, task.task_id), project.root
+    )
     lines = [
         "# booktx translation task brief",
         "",
@@ -350,6 +361,9 @@ def _render_action_contract_section(
         f"- Read this brief first: {display.agent_brief}",
         f"- Edit only: {display.ingest_block}",
         f"- Source reference only: {display.source_block}",
+        f"- Historical consistency evidence: {concordance_path}",
+        "- Concordance evidence is advisory; binding context, glossary, termbase, and protected names take precedence.",
+        "- Read the editable ingest file before writing it.",
         "- Write only translated target prose under each `>>>` header.",
         "- Reserved directives are source-only and must never be copied into target text: "
         + ", ".join(SOURCE_ONLY_DIRECTIVE_PREFIXES),
@@ -580,7 +594,9 @@ def _render_task_agent_brief(
         {term for record in task.records for term in record.protected_terms},
         key=str.casefold,
     )
-    lines = _render_action_contract_section(display, lint_hint, submit_hint, task)
+    lines = _render_action_contract_section(
+        project, display, lint_hint, submit_hint, task
+    )
     lines.extend(_render_task_identity_section(task))
     lines.extend(_render_global_policy_section(context))
     lines.extend(_render_terminology_section(glossary, termbase, protected_terms))
@@ -993,6 +1009,41 @@ def create_translation_task(
             )
             for record_id in record_ids
         ],
+    )
+    concordance = build_concordance(
+        project,
+        bundle,
+        task=task,
+        auto=True,
+        scope="before-task",
+        max_examples=3,
+    )
+    concordance_json_path = translation_task_concordance_json_path(
+        project, task.task_id
+    )
+    concordance_markdown_path = translation_task_concordance_markdown_path(
+        project, task.task_id
+    )
+    concordance_json_path.parent.mkdir(parents=True, exist_ok=True)
+    concordance_json = (
+        json.dumps(concordance.model_dump(mode="json"), ensure_ascii=False, indent=2)
+        + "\n"
+    )
+    concordance_markdown = render_concordance_markdown(concordance)
+    if not concordance_json_path.exists():
+        write_json_text_atomic(concordance_json_path, concordance_json)
+    if not concordance_markdown_path.exists():
+        write_text_atomic(concordance_markdown_path, concordance_markdown)
+    concordance_bytes = concordance_markdown_path.read_bytes()
+    task = task.model_copy(
+        update={
+            "concordance_path": project_relative(
+                concordance_markdown_path, project.root
+            ),
+            "concordance_sha256": hashlib.sha256(concordance_bytes).hexdigest(),
+            "concordance_store_sha256": concordance.store_sha256,
+            "concordance_scope": concordance.scope,
+        }
     )
     write_translation_task(project, task)
     write_ingest_template(project, task)

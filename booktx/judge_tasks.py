@@ -340,9 +340,15 @@ def render_judge_decision_block(task: JudgeTask) -> str:
 def render_judge_grammar_task(task: JudgeTask) -> str:
     """Render a compact target-first grammar task (v2)."""
     lines = [
+        "# booktx judge revision task",
         "# booktx grammar task",
         "format: grammar-task-v2",
         f"judge_task_id: {task.judge_task_id}",
+        "purpose: revise",
+        "revision_focus: grammar",
+        "# BASE_TARGET [A] is the authoritative grammar base target.",
+        "# BASE_TARGET is authoritative for wording and terminology.",
+        "# Do not change vocabulary, terminology, style, flow, tone, register,",
         f"chapter: {task.chapter_id}",
         f"records: {len(task.records)}",
         "",
@@ -370,9 +376,11 @@ def render_judge_grammar_task(task: JudgeTask) -> str:
 def render_judge_grammar_decisions(task: JudgeTask) -> str:
     """Render compact one-line copy decisions with multiline edit targets."""
     lines = [
+        "# booktx judge grammar revision decisions",
         "# booktx grammar revision decisions",
         "format: grammar-decisions-v2",
         f"judge_task_id: {task.judge_task_id}",
+        "# Do not rewrite grammatically valid text for style or fluency.",
         "# Syntax: RECORD_ID | copy|edited | A|B|C|edited [| reason]",
         "# Copy leaves TARGET empty; edited requires a complete TARGET.",
         "",

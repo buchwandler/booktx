@@ -425,11 +425,17 @@ def latest_incomplete_todo(
     ]
     if overlaps:
         overlap_display = ", ".join(sorted(overlaps))
+        table = "; ".join(
+            f"{todo.todo_id}: chapters={','.join(sorted(chapter_sets[todo.todo_id]))}"
+            for todo in incomplete
+        )
         raise _err(
             "ambiguous_latest_todo",
             (
                 f"latest incomplete todo {latest.todo_id} overlaps planned chapters "
-                f"with {overlap_display}. Use --todo-id to select the intended todo."
+                f"with {overlap_display}. Candidates: {table}. "
+                "Use --todo-id to select the intended todo or "
+                "booktx translate todo-doctor . --overlaps."
             ),
         )
     return latest

@@ -442,6 +442,9 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "translate todo-next": "Create a bounded translation todo for an agent run.",
     "translate todo-status": "Show progress for a bounded translation todo.",
     "translate todo-resume": "Resume the next task from a bounded translation todo.",
+    "translate todo-doctor": (
+        "Diagnose and safely supersede identical legacy todo overlaps.",
+    ),
     "translate import-legacy": "Import legacy translated chunk files into the store.",
     "translate migrate-store": (
         "Inspect, migrate, verify, or roll back the profile's canonical "
@@ -462,6 +465,9 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "translate migrate-inline-xhtml": "Normalize inline XHTML in stored translations.",
     "translate search": (
         "Search stored translations and optionally generate a fix block."
+    ),
+    "translate concordance": (
+        "Show grouped prior source/target evidence for translation consistency."
     ),
     "glossary status": "Show glossary coverage and active binding entries.",
     "glossary add": (

@@ -154,7 +154,13 @@ booktx translate next . --unit batch --max-words 800 --format block
 This writes `tasks/TASK.agent.md`, `tasks/TASK.source.block.txt`,
 `ingest/TASK.block.txt`, and `ingest/TASK.json`.
 
-Read `tasks/TASK.agent.md` first. Edit only the generated
+Read all three generated task files before writing:
+
+1. `tasks/TASK.agent.md`
+2. `tasks/TASK.source.block.txt`
+3. `ingest/TASK.block.txt`
+
+Edit only the generated
 `ingest/TASK.block.txt`. Keep record headers, placeholder tokens, protected
 names, and required inline markup unchanged. Treat `# glossary:`, `# style:`,
 and `# termbase:` as source-only directives and never copy them into target
@@ -171,6 +177,36 @@ Submit only after lint passes:
 booktx translate insert . \
   --task-id TASK --file ingest/TASK.block.txt --format block
 ```
+
+## Historical consistency lookup
+
+Use booktx-mediated lookup before any direct filesystem search.
+
+1. Binding context, glossary, termbase, and protected-name instructions take precedence.
+2. When prior usage is needed, use `booktx translate search`; do not Grep/Search
+   `translation-store.json`, `translation-store/`, `context-history/`,
+   `source-index.json`, `target-index.json`, or `source-target-index.json`.
+3. Combine related cues into one source or target regex and use `--jsonl` when
+   full source/target evidence is required.
+4. Perform at most one initial consistency lookup per batch. A second lookup is
+   allowed only for a concrete unresolved ambiguity.
+5. Observed historical usage is advisory and must not override binding policy.
+6. Do not promote observed usage into context or glossary without explicit human approval.
+
+Example:
+
+```bash
+booktx translate search . \
+  --source-regex 'Beetle girl|the Wasps|Avaris the Spider|Salmae cavalry' \
+  --jsonl
+```
+
+If evidence suggests a recurring kinden/person or dialogue form, record only a
+recommendation. Approved glossary usage notes may cover collective, person,
+plural, adjectival, vocative, and role-compound forms; approved dialogue
+decisions may cover address, pronoun capitalization, quotes, ellipses, and
+dashes. Never write policy from observed usage without explicit human approval.
+Quote validation counters exactly; do not infer that `chunks_checked == chunks_passed`.
 
 For a translation todo, a task is one bounded batch inside the user's todo.
 After every successful insert, run the printed scoped check and query the exact

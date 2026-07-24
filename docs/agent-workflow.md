@@ -74,14 +74,17 @@ This writes:
 - `tasks/TASK.source.block.txt`
 - `ingest/TASK.block.txt`
 - `ingest/TASK.json`
+- `tasks/TASK.concordance.md`
+- `tasks/TASK.concordance.json`
 
 The task JSON also records the dotted baseline version plus the immutable
 context-view snapshot used for that task.
 
 ## 4. Fill the durable ingest file
 
-Read `tasks/TASK.agent.md` first. Translate only the record bodies in
-`ingest/TASK.block.txt`. Keep record ids and placeholders unchanged. Treat
+Read all three generated task files before writing: `tasks/TASK.agent.md`,
+`tasks/TASK.source.block.txt`, and `ingest/TASK.block.txt`. Translate only the
+record bodies in `ingest/TASK.block.txt`. Keep record ids and placeholders unchanged. Treat
 `# glossary:`, `# style:`, and `# termbase:` as source-only directives; never
 copy them into target text.
 
@@ -102,6 +105,20 @@ booktx translate insert . \
 Lint is read-only. If lint fails, repair the same ingest file and rerun lint
 once. If the same failure class remains, stop and report it.
 
+For historical consistency, use booktx-mediated lookup. Binding context,
+glossary, termbase, and protected-name rules win over observed usage. Use one
+batched lookup per batch when possible:
+
+```bash
+booktx translate search . \
+  --source-regex 'Beetle girl|the Wasps|Avaris the Spider|Salmae cavalry' \
+  --jsonl
+```
+
+Do not Grep/Search canonical stores, context history, or generated editor
+indexes in isolated agent mode. The concordance report is advisory evidence,
+not approval or policy.
+
 ## 6. Validate and build
 
 ```bash
@@ -121,7 +138,7 @@ booktx translate export-index .
 
 This writes `source-index.json`, `target-index.json`, and `source-target-index.json` into the profile directory. Use `rg` to search translated terms without English source false positives (`rg "Wespen" target-index.json`) or source terms without target matches (`rg "Wasp" source-index.json`). Use `nvim source-target-index.json` for side-by-side scanning.
 
-The three files are generated artifacts. Do not edit them manually and do not use them as build input.
+The three files are generated artifacts. Do not edit them manually and do not use them as build input. They are optional human/editor exploration artifacts, not the agent consistency protocol; use `translate search` or `translate concordance` instead.
 
 ## 7. Longer bounded runs
 

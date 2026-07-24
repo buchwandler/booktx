@@ -141,6 +141,8 @@ __all__ = [
     "translation_task_dir",
     "translation_task_path",
     "translation_task_source_block_path",
+    "translation_task_concordance_json_path",
+    "translation_task_concordance_markdown_path",
     "translation_ingest_dir",
     "translation_ingest_path",
     "translation_ingest_block_path",
@@ -1425,6 +1427,16 @@ def translation_task_source_block_path(project: Project, task_id: str) -> Path:
 def translation_task_agent_brief_path(project: Project, task_id: str) -> Path:
     safe_task_id = safe_artifact_id(task_id, kind="task")
     return translation_task_dir(project) / f"{safe_task_id}.agent.md"
+
+
+def translation_task_concordance_json_path(project: Project, task_id: str) -> Path:
+    safe_task_id = safe_artifact_id(task_id, kind="task")
+    return translation_task_dir(project) / f"{safe_task_id}.concordance.json"
+
+
+def translation_task_concordance_markdown_path(project: Project, task_id: str) -> Path:
+    safe_task_id = safe_artifact_id(task_id, kind="task")
+    return translation_task_dir(project) / f"{safe_task_id}.concordance.md"
 
 
 def translation_ingest_dir(project: Project) -> Path:

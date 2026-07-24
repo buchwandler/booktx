@@ -114,6 +114,8 @@ booktx translate compare ./book --profile PROFILE RECORD --versions 1.1,1.2
 booktx translate revise-record ./book --profile PROFILE RECORD --target "Revised target"
 booktx translate revise-block ./book --profile PROFILE --file ingest/fixes.block.txt --format block --activate
 booktx translate search ./book --profile PROFILE --target "Wespen" --before 1 --after 1
+booktx translate concordance ./book --profile PROFILE --task-id TASK --auto --json
+booktx translate todo-doctor ./book --profile PROFILE --overlaps
 ```
 
 The agent workflow requires approved context, bounded tasks, unchanged record

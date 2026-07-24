@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -80,6 +81,8 @@ from booktx.config import (
     translation_ingest_block_path,
     translation_ingest_path,
     translation_store_path,
+    translation_task_concordance_json_path,
+    translation_task_concordance_markdown_path,
     translation_task_source_block_path,
     translation_todo_json_path,
     translation_todo_lifecycle_path,
@@ -89,6 +92,7 @@ from booktx.config import (
 from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.editor_indexes import EditorIndexError, export_editor_indexes
 from booktx.errors import BooktxError, _err
+from booktx.io_utils import write_json_text_atomic
 from booktx.linguistic_audit import audit_records
 from booktx.models import (
     AgentNextAction,
@@ -128,6 +132,11 @@ from booktx.todo_status import (
     current_todo_chapter_id,
     list_translation_todos,
     load_translation_todo,
+)
+from booktx.translation_concordance import (
+    build_concordance,
+    render_concordance_human,
+    render_concordance_markdown,
 )
 from booktx.translation_store import (
     active_candidate,
@@ -783,14 +792,25 @@ def _render_lint_block_human(
 ) -> None:
     errors = [finding for finding in findings if finding.severity == Severity.ERROR]
     warnings = [finding for finding in findings if finding.severity == Severity.WARN]
-    ok = not missing_record_ids and not extra_record_ids and not errors and not warnings
+    advisories = list(linguistic_findings or [])
+    linguistic_blocking = quality == "strict" and bool(advisories)
+    ok = (
+        not missing_record_ids
+        and not extra_record_ids
+        and not errors
+        and not warnings
+        and not linguistic_blocking
+    )
 
     console.print(f"task: {task_id}")
     console.print(f"protocol validation: {'ok' if ok else 'failed'}")
     if quality == "protocol":
         console.print("linguistic audit: not run")
     else:
-        console.print(f"linguistic audit: {len(linguistic_findings or [])} warning(s)")
+        console.print(f"linguistic advisories: {len(advisories)}")
+        console.print(
+            f"linguistic blocking findings: {len(advisories) if linguistic_blocking else 0}"
+        )
     console.print("semantic/literary quality: not checked")
     console.print(f"submitted records: {submitted_count} / {expected_count}")
     console.print(
@@ -802,9 +822,19 @@ def _render_lint_block_human(
         + (", ".join(extra_record_ids) if extra_record_ids else "none")
     )
     console.print(f"errors: {len(errors)}")
+    console.print(f"protocol warnings: {len(warnings)}")
+    # Keep the historical summary key for existing harnesses while making the
+    # protocol/linguistic split explicit above.
     console.print(f"warnings: {len(warnings)}")
+    for finding in advisories:
+        record = getattr(finding, "record_id", "") or "?"
+        rule = getattr(finding, "rule", "linguistic")
+        message = getattr(finding, "message", str(finding))
+        console.print(
+            f"- ADVISORY {record} {rule}: {message}", soft_wrap=True, markup=False
+        )
     if ok:
-        console.print("lint: ok")
+        console.print("lint: ok with advisories" if advisories else "lint: ok")
         return
 
     console.print("lint: failed")
@@ -954,6 +984,10 @@ def translate_lint_block_workflow(
             "extra_record_ids": extra_record_ids,
             "errors": len(errors),
             "warnings": len(warnings),
+            "linguistic_advisory_count": len(linguistic_findings),
+            "linguistic_blocking_count": len(linguistic_findings)
+            if quality == "strict"
+            else 0,
             "findings": [finding.as_dict() for finding in findings],
             "quality": quality,
             "protocol_ok": protocol_ok,
@@ -1310,6 +1344,7 @@ def translate_todo_status_workflow(
         scoped_report = validate_project(
             proj, chapter_id=scope_chapter, status_bundle=bundle
         )
+
         global_report = validate_project(proj) if include_global_validation else None
         timing["validation"] = int((time.perf_counter() - timing_started) * 1000)
         status = build_todo_status(
@@ -1338,6 +1373,76 @@ def translate_todo_status_workflow(
             ),
             file=sys.stderr,
         )
+
+
+def translation_todo_doctor_workflow(
+    project_dir: Path,
+    profile: str | None = None,
+    overlaps: bool = False,
+    supersede_identical: bool = False,
+    write: bool = False,
+    as_json: bool = False,
+) -> None:
+    """Report overlapping todos and optionally supersede safe duplicates."""
+    if supersede_identical and not write:
+        _die("--supersede-identical requires --write")
+        return
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    bundle = _project_status_snapshot(proj)
+    todos = [
+        todo
+        for todo in list_translation_todos(proj)
+        if load_todo_lifecycle(proj, todo).state == "open"
+    ]
+    rows: list[dict[str, object]] = []
+    duplicate_groups: dict[tuple[str, tuple[str, ...]], list[Any]] = {}
+    for todo in todos:
+        status = build_todo_status(proj, todo, bundle, fail_on_warnings=False)
+        chapters = tuple(chapter.chapter_id for chapter in todo.chapters)
+        fingerprint = todo.scope_fingerprint or todo_scope_fingerprint(todo)
+        duplicate_groups.setdefault((fingerprint, chapters), []).append(todo)
+        rows.append(
+            {
+                "todo_id": todo.todo_id,
+                "created_at": todo.created_at,
+                "chapters": list(chapters),
+                "complete": status.goal_complete,
+                "current": status.current_chapter.chapter_id
+                if status.current_chapter
+                else None,
+                "scope_fingerprint": fingerprint,
+            }
+        )
+    superseded: list[str] = []
+    if supersede_identical:
+        for group in duplicate_groups.values():
+            if len(group) < 2:
+                continue
+            newest = max(group, key=lambda todo: (todo.created_at, todo.todo_id))
+            older = [todo for todo in group if todo.todo_id != newest.todo_id]
+            supersede_todos_atomically(
+                proj,
+                older,
+                superseded_by=newest.todo_id,
+                reason="todo-doctor: superseded identical legacy duplicate",
+            )
+            superseded.extend(todo.todo_id for todo in older)
+    if as_json:
+        console.print_json(
+            json.dumps({"todos": rows, "superseded": superseded}, ensure_ascii=False)
+        )
+        return
+    console.print("Todo overlap doctor")
+    console.print("| todo | created | chapters | complete | current | scope |")
+    console.print("|---|---|---|---:|---|---|")
+    for row in rows:
+        console.print(
+            f"| {row['todo_id']} | {row['created_at']} | {','.join(row['chapters'])} | "
+            f"{row['complete']} | {row['current'] or '-'} | {str(row['scope_fingerprint'])[:12]} |"
+        )
+    if superseded:
+        console.print("superseded: " + ", ".join(sorted(superseded)))
 
 
 def translate_todo_resume_workflow(
@@ -2672,12 +2777,19 @@ def translation_search_cmd_workflow(
     exclude_source_regex: str | None = None,
     match: str = "any",
     write_block: Path | None = None,
+    as_json: bool = False,
+    limit: int | None = None,
+    count_only: bool = False,
+    show_source: bool = True,
 ) -> None:
     """Search effective translations without scripting against translation-store.json."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
     if match not in {"any", "all"}:
         _die("--match must be 'any' or 'all'")
+        return
+    if limit is not None and limit < 1:
+        _die("--limit must be >= 1")
         return
     import re as _re
 
@@ -2755,6 +2867,7 @@ def translation_search_cmd_workflow(
         return eff.target if eff is not None else ""
 
     matches: list[dict[str, object]] = []
+    records_scanned = 0
     for cid in chapters_to_search:
         flat = list(bundle.index.record_ids_by_chapter.get(cid, []))
         for idx, record_id in enumerate(flat):
@@ -2764,6 +2877,7 @@ def translation_search_cmd_workflow(
             eff = effective_target_candidate(stored)
             if eff is None:
                 continue
+            records_scanned += 1
             source_view = source_by_id.get(record_id)
             source_text = source_view.source if source_view else ""
             target_text = eff.target
@@ -2835,7 +2949,12 @@ def translation_search_cmd_workflow(
 
                 matches.append(match_item)
 
-    if write_block is not None:
+    total_matches = len(matches)
+    visible_matches = matches[:limit] if limit is not None else matches
+    if count_only:
+        visible_matches = []
+
+    if write_block is not None and not count_only:
         try:
             block_path = resolve_profile_local_path(
                 proj, write_block, purpose="--write-block"
@@ -2846,7 +2965,7 @@ def translation_search_cmd_workflow(
         block_path.parent.mkdir(parents=True, exist_ok=True)
         lines: list[str] = []
         source_lines: list[str] = []
-        for item in matches:
+        for item in visible_matches:
             rid = str(item["id"])
             lines.extend([f">>> {rid}", str(item["target"]), ""])
             source_lines.extend(
@@ -2863,21 +2982,103 @@ def translation_search_cmd_workflow(
         )
         console.print(f"wrote block: {block_path}")
 
-    if jsonl:
+    if as_json:
+        payload = {
+            "matches": [] if count_only else visible_matches,
+            "match_count": total_matches,
+            "rendered_count": len(visible_matches),
+            "truncated": len(visible_matches) < total_matches,
+            "records_scanned": records_scanned,
+        }
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    elif jsonl:
         import json as _json
 
-        for m in matches:
+        for m in visible_matches:
             console.print(
                 _json.dumps(m, ensure_ascii=False),
                 soft_wrap=True,
                 markup=False,
             )
     else:
-        console.print(f"found {len(matches)} matches")
-        for m in matches:
+        console.print(
+            f"found {total_matches} matches (records scanned: {records_scanned})"
+        )
+        for m in visible_matches:
             rec_id = m.get("id", "")
             target_text = str(m.get("target", ""))
             disp = f"{rec_id}: {target_text[:100]}"
             if len(disp) < len(target_text):
                 disp += "..."
+            if show_source:
+                disp += f" | source: {m.get('source', '')}"
             console.print(f"  {disp}", soft_wrap=True, markup=False)
+
+
+def translation_concordance_workflow(
+    project_dir: Path,
+    profile: str | None = None,
+    task_id: str | None = None,
+    source: list[str] | None = None,
+    target: list[str] | None = None,
+    source_regex: list[str] | None = None,
+    target_regex: list[str] | None = None,
+    auto: bool = False,
+    scope: str = "before-task",
+    max_examples: int = 3,
+    write_report: bool = False,
+    json_output: bool = False,
+) -> None:
+    """Render grouped, read-only historical translation evidence."""
+    if scope not in {"before-task", "all"}:
+        _die("--scope must be 'before-task' or 'all'")
+        return
+    if auto and task_id is None:
+        _die("--auto requires --task-id")
+        return
+    if scope == "before-task" and task_id is None:
+        _die("--scope before-task requires --task-id")
+        return
+    if write_report and task_id is None:
+        _die("--write-report requires --task-id")
+        return
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    task = _load_translation_task_or_exit(proj, task_id) if task_id else None
+    bundle = _project_status_snapshot(proj)
+    try:
+        report = build_concordance(
+            proj,
+            bundle,
+            task=task,
+            source_queries=source or (),
+            target_queries=target or (),
+            source_regexes=source_regex or (),
+            target_regexes=target_regex or (),
+            auto=auto,
+            scope=scope,  # type: ignore[arg-type]
+            max_examples=max_examples,
+        )
+    except (ValueError, re.error) as exc:
+        _die(str(exc))
+        return
+    if write_report and task is not None:
+        json_path = translation_task_concordance_json_path(proj, task.task_id)
+        markdown_path = translation_task_concordance_markdown_path(proj, task.task_id)
+        if not json_path.exists():
+            write_json_text_atomic(
+                json_path,
+                json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2)
+                + "\n",
+            )
+        if not markdown_path.exists():
+            markdown_path.write_text(
+                render_concordance_markdown(report), encoding="utf-8"
+            )
+        console.print(f"wrote concordance: {display_path(markdown_path, runtime.mode)}")
+    if json_output:
+        console.print_json(
+            json.dumps(report.model_dump(mode="json"), ensure_ascii=False)
+        )
+    else:
+        console.print(render_concordance_human(report), end="")
