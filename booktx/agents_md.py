@@ -276,6 +276,25 @@ def _terminology_change_playbook() -> str:
     )
 
 
+def _startup_failure_rule() -> str:
+    return (
+        "Startup failure rule:\n"
+        "\n"
+        "If `booktx mode . --json` fails before argument parsing with a Python "
+        "traceback, `ImportError`, `TypeError`, or another CLI-startup failure:\n"
+        "\n"
+        "1. Do not inspect parent directories or package internals from this "
+        "isolated profile.\n"
+        "2. Do not attempt translation-store edits or manual recovery.\n"
+        "3. Report the exact final exception class and message.\n"
+        "4. State that no booktx command ran and no project data was modified.\n"
+        "5. Instruct the user to repair and verify the booktx checkout in "
+        "project-root development mode.\n"
+        "6. Do not ask the user what the agent should do next.\n"
+        "\n"
+    )
+
+
 def _render_isolated_body(*, profile: str, target_locale: str) -> str:
     return (
         "\n\n"
@@ -296,6 +315,7 @@ def _render_isolated_body(*, profile: str, target_locale: str) -> str:
         "booktx context status .\n"
         "```\n"
         "\n"
+        f"{_startup_failure_rule()}"
         "If context is missing, not ready, or has unresolved approval "
         "questions, stop and ask the user. Do not translate and do not "
         "approve or mark context ready.\n"
@@ -427,6 +447,7 @@ def _render_isolated_selection_body(*, profile: str, target_locale: str) -> str:
         "booktx judge status .\n"
         "```\n"
         "\n"
+        f"{_startup_failure_rule()}"
         "If context is missing, not ready, or has unresolved approval "
         "questions, stop and ask the user.\n"
         "\n"

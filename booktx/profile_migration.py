@@ -393,6 +393,8 @@ def migrate_current_project(
     tasks_root = _profile_tasks_dir(project_root, profile_name)
     if tasks_root.is_dir():
         for task_path in tasks_root.glob("*.json"):
+            if task_path.name.endswith(".concordance.json"):
+                continue
             task = TranslationTask.model_validate_json(task_path.read_text("utf-8"))
             if not task.profile:
                 task.profile = profile_name

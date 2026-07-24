@@ -136,7 +136,11 @@ def test_profile_migrate_current_moves_mutable_state_and_stamps_tasks(tmp_path: 
     assert (profile_dir / "context.md").is_file()
     assert (profile_dir / "translated").is_dir()
     assert (profile_dir / "output" / "book.de.md").is_file()
-    task_path = next((profile_dir / "tasks").glob("*.json"))
+    task_path = next(
+        path
+        for path in (profile_dir / "tasks").glob("*.json")
+        if not path.name.endswith(".concordance.json")
+    )
     task = json.loads(task_path.read_text("utf-8"))
     assert task["profile"] == "de_gpt5_5"
     assert task["target_locale"] == "de"

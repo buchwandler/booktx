@@ -14,6 +14,14 @@ Before any other filesystem inspection or booktx command:
 
 1. Read a local `AGENTS.md` completely when it exists.
 2. Run `booktx mode . --json` and dispatch by its reported protocol.
+   If this command fails before argument parsing with a Python traceback,
+   `ImportError`, `TypeError`, or another CLI-startup failure:
+   - do not inspect parent directories or package internals from the isolated profile;
+   - do not attempt translation-store edits or manual recovery;
+   - report the exact final exception class and message;
+   - state that no booktx command ran and no project data was modified;
+   - instruct the user to repair and verify the booktx checkout in project-root development mode;
+   - do not ask the user what the agent should do next.
 3. In a selection/judge profile, run `booktx judge status .` first and never run a `booktx translate` mutation command.
 4. In profile-root mode, use only profile-local relative paths; do not inspect parents/absolute paths or chain commands with `;`, `&&`, `||`, or shell loops.
 5. If the judge snapshot is missing or invalid, stop and report the project-root preparation command.

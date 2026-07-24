@@ -70,6 +70,12 @@ def test_isolated_render_contains_required_commands():
     assert "Read `tasks/TASK.agent.md` first." in text
     assert "Always lint the completed block before the first insert with" in text
     assert "If the installed booktx package fails to import in isolated mode" in text
+    assert "Startup failure rule:" in text
+    assert "no project data was modified" in text
+    assert "Do not ask the user what the agent should do next." in text
+    assert text.index("Startup failure rule:") < text.index(
+        "When the user says `continue`:"
+    )
     # bounded-todo completion does not require a whole-book build
     assert "booktx build . --require-complete" in text
 
@@ -100,6 +106,7 @@ def test_agents_md_isolated_judge_forbids_regex_scripts():
     text = render_agents_md(**ISO_SELECTION_KWARGS)
     assert "Do not use Python, sed, perl, awk, regex scripts" in text
     assert "Do not chain insert and next" in text
+    assert "Startup failure rule:" in text
 
 
 def test_agents_md_isolated_judge_says_copy_target_empty():

@@ -10,7 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import TYPE_CHECKING, Literal, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,9 +19,9 @@ from booktx.config import load_translation_store
 from booktx.translation_store import effective_target_candidate
 
 if TYPE_CHECKING:
+    from booktx.config import Project
     from booktx.models import TranslationTask
     from booktx.status import StatusBundle
-    from booktx.config import Project
 
 __all__ = [
     "ConcordanceQuery",
@@ -44,7 +45,9 @@ class ConcordanceQuery(BaseModel):
     side: Literal["source", "target"]
     text: str
     mode: Literal["literal", "regex"] = "literal"
-    origin: Literal["explicit", "glossary", "termbase", "source_analysis", "heuristic"] = "explicit"
+    origin: Literal[
+        "explicit", "glossary", "termbase", "source_analysis", "heuristic"
+    ] = "explicit"
 
 
 class ConcordanceHit(BaseModel):
@@ -94,7 +97,9 @@ class TranslationConcordanceReport(BaseModel):
 
 
 def _fingerprint(value: object) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -104,13 +109,17 @@ def _query_pattern(query: ConcordanceQuery) -> re.Pattern[str]:
     return re.compile(re.escape(query.text), re.IGNORECASE)
 
 
-def _auto_queries(task: TranslationTask, bundle: StatusBundle) -> list[ConcordanceQuery]:
+def _auto_queries(
+    task: TranslationTask, bundle: StatusBundle
+) -> list[ConcordanceQuery]:
     """Extract a small deterministic set of continuity cues from task sources."""
     candidates: set[str] = set()
     for item in task.records:
         text = item.source
-        for match in re.finditer(r"\b[A-ZÄÖÜ][\wÄÖÜäöüß-]*(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß-]*){0,3}", text):
-            cue = match.group(0).strip(".,;:!?()[]{}\"")
+        for match in re.finditer(
+            r"\b[A-ZÄÖÜ][\wÄÖÜäöüß-]*(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß-]*){0,3}", text
+        ):
+            cue = match.group(0).strip('.,;:!?()[]{}"')
             if len(cue) >= 4:
                 candidates.add(cue)
         for match in re.finditer(r"\b[\wÄÖÜäöüß]+-[\wÄÖÜäöüß-]+\b", text):
@@ -125,7 +134,9 @@ def _auto_queries(task: TranslationTask, bundle: StatusBundle) -> list[Concordan
     source_ids = set(bundle.index.source_by_id)
     del source_ids  # Keeps the helper's dependency explicit for callers/tests.
     return [
-        ConcordanceQuery(query_id=f"q-{idx:04d}", side="source", text=cue, origin="heuristic")
+        ConcordanceQuery(
+            query_id=f"q-{idx:04d}", side="source", text=cue, origin="heuristic"
+        )
         for idx, cue in enumerate(ordered[:MAX_AUTO_QUERIES], 1)
     ]
 
@@ -153,17 +164,47 @@ def build_concordance(
     number = 1
     for text in source_queries:
         if text.strip():
-            queries.append(ConcordanceQuery(query_id=f"q-{number:04d}", side="source", text=text, origin="explicit"))
+            queries.append(
+                ConcordanceQuery(
+                    query_id=f"q-{number:04d}",
+                    side="source",
+                    text=text,
+                    origin="explicit",
+                )
+            )
             number += 1
     for text in target_queries:
         if text.strip():
-            queries.append(ConcordanceQuery(query_id=f"q-{number:04d}", side="target", text=text, origin="explicit"))
+            queries.append(
+                ConcordanceQuery(
+                    query_id=f"q-{number:04d}",
+                    side="target",
+                    text=text,
+                    origin="explicit",
+                )
+            )
             number += 1
     for text in source_regexes:
-        queries.append(ConcordanceQuery(query_id=f"q-{number:04d}", side="source", text=text, mode="regex", origin="explicit"))
+        queries.append(
+            ConcordanceQuery(
+                query_id=f"q-{number:04d}",
+                side="source",
+                text=text,
+                mode="regex",
+                origin="explicit",
+            )
+        )
         number += 1
     for text in target_regexes:
-        queries.append(ConcordanceQuery(query_id=f"q-{number:04d}", side="target", text=text, mode="regex", origin="explicit"))
+        queries.append(
+            ConcordanceQuery(
+                query_id=f"q-{number:04d}",
+                side="target",
+                text=text,
+                mode="regex",
+                origin="explicit",
+            )
+        )
         number += 1
     if auto:
         auto_items = _auto_queries(task, bundle) if task is not None else []
@@ -184,13 +225,20 @@ def build_concordance(
     ]
     store = load_translation_store(project)
     store_records = store.records
-    ordered_ids = [record_id for chapter in bundle.index.record_ids_by_chapter.values() for record_id in chapter]
-    # Chapter lists are ordered but can overlap in custom maps; preserve first occurrence.
+    ordered_ids = [
+        record_id
+        for chapter in bundle.index.record_ids_by_chapter.values()
+        for record_id in chapter
+    ]
+    # Chapter lists are ordered but can overlap in custom maps; preserve the
+    # first occurrence.
     ordered_ids = list(dict.fromkeys(ordered_ids))
     task_ids = {item.id for item in task.records} if task is not None else set()
     cutoff = len(ordered_ids)
     if task is not None and task_ids:
-        positions = [idx for idx, record_id in enumerate(ordered_ids) if record_id in task_ids]
+        positions = [
+            idx for idx, record_id in enumerate(ordered_ids) if record_id in task_ids
+        ]
         cutoff = min(positions) if positions else len(ordered_ids)
 
     for index, record_id in enumerate(ordered_ids):
@@ -207,7 +255,7 @@ def build_concordance(
             continue
         source_text = source_view.source
         target_text = effective.target
-        for group, query, pattern in zip(groups, queries, patterns):
+        for group, query, pattern in zip(groups, queries, patterns, strict=True):
             haystack = source_text if query.side == "source" else target_text
             matches = list(pattern.finditer(haystack))
             if not matches:
@@ -221,13 +269,22 @@ def build_concordance(
                     record_id=record_id,
                     chapter_id=bundle.index.record_to_chapter.get(record_id, ""),
                     chapter_title=(
-                        bundle.index.chapters_by_id.get(bundle.index.record_to_chapter.get(record_id, ""), None).title
-                        if bundle.index.record_to_chapter.get(record_id, "") in bundle.index.chapters_by_id
+                        chapter.title
+                        if (
+                            chapter := bundle.index.chapters_by_id.get(
+                                bundle.index.record_to_chapter.get(record_id, "")
+                            )
+                        )
+                        is not None
                         else ""
                     ),
                     source=source_text,
                     target=target_text,
-                    effective_ref=(getattr(effective, "review_ref", None) or getattr(effective, "version_ref", None) or ""),
+                    effective_ref=(
+                        getattr(effective, "review_ref", None)
+                        or getattr(effective, "version_ref", None)
+                        or ""
+                    ),
                     matched_text=matches[0].group(0),
                     match_spans=[match.span() for match in matches],
                     precedes_task=index < cutoff,
@@ -272,18 +329,22 @@ def render_concordance_human(report: TranslationConcordanceReport) -> str:
         report.policy_notice,
     ]
     for group in report.queries:
-        lines.extend([
-            "",
-            f"{group.side.upper()} {group.query!r}",
-            f"matches: {group.total_matches}",
-            f"examples: {group.rendered_examples}",
-        ])
+        lines.extend(
+            [
+                "",
+                f"{group.side.upper()} {group.query!r}",
+                f"matches: {group.total_matches}",
+                f"examples: {group.rendered_examples}",
+            ]
+        )
         for hit in group.examples:
-            lines.extend([
-                f"  {hit.record_id} [{hit.effective_ref}]",
-                f"    source: {hit.source}",
-                f"    target: {hit.target}",
-            ])
+            lines.extend(
+                [
+                    f"  {hit.record_id} [{hit.effective_ref}]",
+                    f"    source: {hit.source}",
+                    f"    target: {hit.target}",
+                ]
+            )
         if group.truncated:
             lines.append("  (examples truncated)")
     return "\n".join(lines) + "\n"
@@ -300,10 +361,28 @@ def render_concordance_markdown(report: TranslationConcordanceReport) -> str:
         f"- Source fingerprint: `{report.source_sha256}`",
         f"- Store fingerprint: `{report.store_sha256}`",
         "",
-        "> Binding policy wins over concordance evidence. Concordance evidence is read-only observed usage and is not approval.",
+        "> Binding policy wins over concordance evidence. Concordance evidence "
+        "is read-only observed usage and is not approval.",
     ]
     for group in report.queries:
-        lines.extend(["", f"## {group.side.upper()} `{group.query}`", "", f"- Matches: {group.total_matches}", f"- Examples: {group.rendered_examples}", f"- Origin: `{group.origin}`"])
+        lines.extend(
+            [
+                "",
+                f"## {group.side.upper()} `{group.query}`",
+                "",
+                f"- Matches: {group.total_matches}",
+                f"- Examples: {group.rendered_examples}",
+                f"- Origin: `{group.origin}`",
+            ]
+        )
         for hit in group.examples:
-            lines.extend(["", f"### `{hit.record_id}` ({hit.effective_ref})", "", f"- Source: {hit.source}", f"- Target: {hit.target}"])
+            lines.extend(
+                [
+                    "",
+                    f"### `{hit.record_id}` ({hit.effective_ref})",
+                    "",
+                    f"- Source: {hit.source}",
+                    f"- Target: {hit.target}",
+                ]
+            )
     return "\n".join(lines) + "\n"

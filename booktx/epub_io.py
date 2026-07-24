@@ -149,7 +149,7 @@ def build_epub(
     pass-through builds stay byte-identical even when the joined sentence XHTML
     differs from the stored block fragment.
     """
-    from text2epub import (  # type: ignore[import-not-found]
+    from text2epub import (
         Replacement,
         ReplacementPlan,
         rebuild_epub,

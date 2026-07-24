@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from booktx.models import StoredTranslationRecordV2, TranslationCandidate, TranslationStoreV2
+from booktx.models import (
+    StoredTranslationRecordV2,
+    TranslationCandidate,
+    TranslationStoreV2,
+)
 from booktx.translation_concordance import build_concordance, render_concordance_human
 
 
-def _record(source: str, target: str, chunk: str, part: str) -> StoredTranslationRecordV2:
-    record_id = f"{chunk}-{part}"
+def _record(
+    source: str, target: str, chunk: str, part: str
+) -> StoredTranslationRecordV2:
     return StoredTranslationRecordV2(
         chunk_id=chunk,
         part_id=part,
@@ -33,7 +38,9 @@ def _bundle():
     source = {
         ids[0]: SimpleNamespace(source="The Dragonfly guard arrived.", chunk_id="0001"),
         ids[1]: SimpleNamespace(source="A quiet sentence.", chunk_id="0001"),
-        ids[2]: SimpleNamespace(source="The Dragonfly captain waited.", chunk_id="0001"),
+        ids[2]: SimpleNamespace(
+            source="The Dragonfly captain waited.", chunk_id="0001"
+        ),
     }
     index = SimpleNamespace(
         record_ids_by_chapter={"0001": ids},
@@ -48,13 +55,32 @@ def test_concordance_groups_queries_and_excludes_later_task_records(monkeypatch)
     store = TranslationStoreV2(
         source_sha256="source",
         records={
-            "0001-000001": _record("The Dragonfly guard arrived.", "Die Libellenwache kam.", "0001", "000001"),
-            "0001-000002": _record("A quiet sentence.", "Ein ruhiger Satz.", "0001", "000002"),
-            "0001-000003": _record("The Dragonfly captain waited.", "Der Libellenhauptmann wartete.", "0001", "000003"),
+            "0001-000001": _record(
+                "The Dragonfly guard arrived.",
+                "Die Libellenwache kam.",
+                "0001",
+                "000001",
+            ),
+            "0001-000002": _record(
+                "A quiet sentence.", "Ein ruhiger Satz.", "0001", "000002"
+            ),
+            "0001-000003": _record(
+                "The Dragonfly captain waited.",
+                "Der Libellenhauptmann wartete.",
+                "0001",
+                "000003",
+            ),
         },
     )
-    monkeypatch.setattr("booktx.translation_concordance.load_translation_store", lambda project: store)
-    task = SimpleNamespace(task_id="TASK", records=[SimpleNamespace(id="0001-000003", source="The Dragonfly captain waited.")])
+    monkeypatch.setattr(
+        "booktx.translation_concordance.load_translation_store", lambda project: store
+    )
+    task = SimpleNamespace(
+        task_id="TASK",
+        records=[
+            SimpleNamespace(id="0001-000003", source="The Dragonfly captain waited.")
+        ],
+    )
     report = build_concordance(
         SimpleNamespace(profile="de", root="."),
         _bundle(),
@@ -73,9 +99,29 @@ def test_concordance_groups_queries_and_excludes_later_task_records(monkeypatch)
 def test_concordance_auto_suppresses_unseen_cues(monkeypatch):
     store = TranslationStoreV2(
         source_sha256="source",
-        records={"0001-000001": _record("The Dragonfly guard arrived.", "Die Libellenwache kam.", "0001", "000001")},
+        records={
+            "0001-000001": _record(
+                "The Dragonfly guard arrived.",
+                "Die Libellenwache kam.",
+                "0001",
+                "000001",
+            )
+        },
     )
-    monkeypatch.setattr("booktx.translation_concordance.load_translation_store", lambda project: store)
-    task = SimpleNamespace(task_id="TASK", records=[SimpleNamespace(id="0001-000002", source="The Dragonfly guard arrived.")])
-    report = build_concordance(SimpleNamespace(profile="de", root="."), _bundle(), task=task, auto=True, scope="before-task")
+    monkeypatch.setattr(
+        "booktx.translation_concordance.load_translation_store", lambda project: store
+    )
+    task = SimpleNamespace(
+        task_id="TASK",
+        records=[
+            SimpleNamespace(id="0001-000002", source="The Dragonfly guard arrived.")
+        ],
+    )
+    report = build_concordance(
+        SimpleNamespace(profile="de", root="."),
+        _bundle(),
+        task=task,
+        auto=True,
+        scope="before-task",
+    )
     assert all(group.total_matches > 0 for group in report.queries)

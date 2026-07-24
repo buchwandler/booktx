@@ -27,6 +27,7 @@ translate through profile-local tasks, validate, and build output.
 - [Troubleshooting](troubleshooting.md)
 - [Maintenance](maintenance.md)
 - [Development](development.md)
+- [Releasing](releasing.md)
 
 ## Reference
 
@@ -52,6 +53,7 @@ epub
 architecture
 api
 development
+releasing
 mypy-baseline
 maintenance
 troubleshooting

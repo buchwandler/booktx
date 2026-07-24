@@ -115,6 +115,19 @@ def _handle_selection_profile(
     profile = project.profile
     ctx = load_context(project)
 
+    if ctx is None:
+        return GuideResult(
+            stage="context_missing",
+            project=str(project.root),
+            profile=profile,
+            human_blockers=("The required translation context is missing.",),
+            human_next=GuideAction(
+                summary="Initialize the translation context questionnaire.",
+                command=_project_command(runtime, project_arg, "context init"),
+            ),
+            agent_next=None,
+        )
+
     unresolved = unresolved_required_questions(ctx)
     unapproved = unapproved_required_questions(ctx)
     if unresolved or unapproved:
@@ -258,6 +271,7 @@ def _handle_source_analysis_and_interview(
 
     from booktx.workflows.source_interview import interview_status
 
+    assert profile is not None
     interview = interview_status(project, profile=profile)
     if bool(interview["missing"]) or bool(interview["stale"]):
         return GuideResult(

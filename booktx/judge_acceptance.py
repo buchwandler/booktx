@@ -119,7 +119,7 @@ def _validate_grammar_scope(
             f"record {item.id} changed inline XHTML structure",
         )
     similarity = SequenceMatcher(None, base_target, target).ratio()
-    if similarity < 0.72:
+    if max(len(base_target.strip()), len(target.strip())) >= 40 and similarity < 0.72:
         raise _err(
             "judge_grammar_nonminimal",
             f"record {item.id} grammar edit is too large (similarity {similarity:.2f})",

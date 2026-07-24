@@ -95,6 +95,18 @@ def test_mode_help_subprocess() -> None:
     assert "mode" in result.stdout.lower()
 
 
+def test_translate_todo_doctor_help_subprocess() -> None:
+    result = _run_booktx_subprocess("translate", "todo-doctor", "--help")
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "Diagnose and safely supersede" in result.stdout
+
+
+def test_cli_catalog_doctor_subprocess() -> None:
+    result = _run_booktx_subprocess("doctor", "cli")
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "CLI catalog: PASS" in result.stdout
+
+
 def test_translate_migrate_store_help_subprocess() -> None:
     result = _run_booktx_subprocess("translate", "migrate-store", "--help")
     assert result.returncode == 0, result.stderr or result.stdout

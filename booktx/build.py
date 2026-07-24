@@ -234,17 +234,17 @@ def _build_epub(
     require_complete: bool = False,
     require_reviewed: bool = False,
 ) -> BuildResult:
-    from text2epub import (  # type: ignore[import-not-found]
+    from text2epub import (
         Replacement,
         ReplacementPlan,
         rebuild_epub,
     )
-    from text2epub.errors import (  # type: ignore[import-not-found]
+    from text2epub.errors import (
         PackageError,
         ReplacementError,
         ValidationError,
     )
-    from text2epub.validation import (  # type: ignore[import-not-found]
+    from text2epub.validation import (
         scan_epub_for_unresolved_tokens,
     )
 
@@ -350,13 +350,13 @@ def _build_epub(
             audit = audit_epub_output_policy(
                 tmp_path, extraction_hrefs=extraction_hrefs, policy=policy
             )
-            if (
-                output_rewrite is not None
-                and upstream_report is not None
-                and getattr(upstream_report, "output_rewrite", None) is not None
-            ):
-                upstream_css = list(upstream_report.output_rewrite.css_injected_entries)
-                reconcile_css_injection(tmp_path, upstream_css_entries=upstream_css)
+            if output_rewrite is not None and upstream_report is not None:
+                upstream_output_rewrite = getattr(
+                    upstream_report, "output_rewrite", None
+                )
+                if upstream_output_rewrite is not None:
+                    upstream_css = list(upstream_output_rewrite.css_injected_entries)
+                    reconcile_css_injection(tmp_path, upstream_css_entries=upstream_css)
         except PolicyError as exc:
             raise BuildError(str(exc)) from exc
 

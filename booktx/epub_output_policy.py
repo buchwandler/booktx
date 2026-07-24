@@ -14,7 +14,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import IO, Literal
+from typing import IO, Any, Literal
 from zipfile import BadZipFile, ZipFile
 
 from booktx.config import Project
@@ -403,7 +403,7 @@ def _read_all(zf: ZipFile) -> list[tuple[str, str]]:
 # --------------------------------------------------------------------------- #
 
 
-def to_text2epub_output_rewrite(policy: EpubOutputPolicy):  # type: ignore[no-untyped-def]  # Phase 0 baseline: return type is a lazily-imported text2epub OutputRewriteOptions; see docs/mypy-baseline.md
+def to_text2epub_output_rewrite(policy: EpubOutputPolicy) -> Any:
     """Map a resolved policy to a text2epub ``OutputRewriteOptions`` or None.
 
     Returns ``None`` for a fully preserving policy so text2epub retains its
@@ -420,7 +420,7 @@ def to_text2epub_output_rewrite(policy: EpubOutputPolicy):  # type: ignore[no-un
     if is_preserve_language and not inject_css and not policy.patch_body_language:
         return None
 
-    from text2epub import OutputRewriteOptions  # type: ignore[import-not-found]
+    from text2epub import OutputRewriteOptions
 
     return OutputRewriteOptions(
         language=policy.language,

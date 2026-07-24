@@ -219,7 +219,7 @@ def interview_skip(
                 project,
                 report,
                 candidate_id=candidate_id,
-                disposition=disposition,  # type: ignore[arg-type]
+                disposition=disposition,
                 reason=reason,
                 decided_by="source-interview",
                 write=True,

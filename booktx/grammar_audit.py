@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -75,7 +76,7 @@ def audit_judge_task(task: JudgeTask) -> list[GrammarAuditFinding]:
 
 
 def audit_submitted_decisions(
-    task: JudgeTask, submitted: list[object]
+    task: JudgeTask, submitted: Sequence[object]
 ) -> list[GrammarAuditFinding]:
     """Audit the actual targets represented by copy/edited decisions."""
     by_id = {getattr(item, "id", ""): item for item in submitted}

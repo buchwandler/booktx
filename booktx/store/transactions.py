@@ -7,9 +7,10 @@ import os
 import shutil
 import socket
 import uuid
+from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 from booktx.config import BooktxError, _err
 from booktx.io_utils import utc_timestamp, write_json_model_atomic, write_text_atomic
@@ -62,7 +63,9 @@ def _process_alive(pid: int) -> bool:
 
         process_query_limited_information = 0x1000
         error_invalid_parameter = 87
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        ctypes_api = cast(Any, ctypes)
+        win_dll = cast(Callable[..., Any], ctypes_api.WinDLL)
+        kernel32 = win_dll("kernel32", use_last_error=True)
         kernel32.OpenProcess.argtypes = [
             wintypes.DWORD,
             wintypes.BOOL,
@@ -79,7 +82,8 @@ def _process_alive(pid: int) -> bool:
         if handle:
             kernel32.CloseHandle(handle)
             return True
-        return ctypes.get_last_error() != error_invalid_parameter
+        get_last_error = cast(Callable[[], int], ctypes_api.get_last_error)
+        return bool(get_last_error() != error_invalid_parameter)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

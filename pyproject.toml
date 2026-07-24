@@ -58,7 +58,7 @@ docs = [
 ]
 
 [project.scripts]
-booktx = "booktx.cli:main"
+booktx = "booktx.bootstrap:main"
 
 [project.urls]
 Homepage = "https://buchwandler.de/tools/booktx/"
@@ -90,4 +90,8 @@ strict = true
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_untyped_calls = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["epub2text.*", "spacy", "spacy.*", "text2epub.*", "tomli"]
 ignore_missing_imports = true

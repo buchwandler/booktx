@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
@@ -443,8 +444,9 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "translate todo-status": "Show progress for a bounded translation todo.",
     "translate todo-resume": "Resume the next task from a bounded translation todo.",
     "translate todo-doctor": (
-        "Diagnose and safely supersede identical legacy todo overlaps.",
+        "Diagnose and safely supersede identical legacy todo overlaps."
     ),
+    "doctor cli": "Diagnose command-catalog metadata without loading project data.",
     "translate import-legacy": "Import legacy translated chunk files into the store.",
     "translate migrate-store": (
         "Inspect, migrate, verify, or roll back the profile's canonical "
@@ -505,17 +507,46 @@ SUMMARY_OVERRIDES: dict[str, str] = {
 }
 
 
-def _validate_summary_overrides(values: Mapping[str, object]) -> None:
-    invalid = {
+def _invalid_summary_overrides(values: Mapping[str, object]) -> dict[str, str]:
+    return {
         path: type(value).__name__
         for path, value in values.items()
         if not isinstance(value, str)
     }
+
+
+def validate_command_catalog(*, strict: bool = True) -> dict[str, str]:
+    """Validate optional catalog metadata when a caller explicitly requests it.
+
+    Catalog metadata is presentation-only. Strict validation remains available
+    to tests and release tooling, while normal CLI startup can use the native
+    command help if an optional summary is malformed.
+    """
+    invalid = _invalid_summary_overrides(SUMMARY_OVERRIDES)
     if invalid:
-        raise TypeError(f"invalid command summaries: {invalid}")
+        if strict:
+            raise TypeError(f"invalid command summaries: {invalid}")
+    return invalid
 
 
-_validate_summary_overrides(SUMMARY_OVERRIDES)
+_catalog_warning_emitted = False
+
+
+def _warn_invalid_catalog(invalid: Mapping[str, str]) -> None:
+    global _catalog_warning_emitted
+    if _catalog_warning_emitted or not invalid:
+        return
+    details = ", ".join(
+        f"{path!r} (expected str, got {kind})" for path, kind in sorted(invalid.items())
+    )
+    warnings.warn(
+        "booktx warning: command catalog metadata is invalid for "
+        f"{details}. Using native command help. Run `booktx doctor cli` "
+        "for details.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    _catalog_warning_emitted = True
 
 
 PANEL_BY_AUDIENCE = {
@@ -627,12 +658,16 @@ def descriptor_for_path(path: str) -> CommandDescriptor:
     parts = path.split()
     if len(parts) == 1:
         raise KeyError(path)
-    summary = SUMMARY_OVERRIDES.get(path)
-    if summary is None:
+    raw_summary = SUMMARY_OVERRIDES.get(path)
+    if isinstance(raw_summary, str):
+        summary = raw_summary
+    else:
         summary = f"Run the `{path}` workflow."
     audience = _leaf_audience(parts[0], parts[-1])
     writes: WritesMode = "conditional"
-    if any(
+    if path == "doctor cli":
+        writes = "never"
+    elif any(
         flag in path
         for flag in ("status", "show", "list", "compare", "inspect", "grep")
     ):
@@ -706,10 +741,14 @@ def apply_command_catalog(
     root_app: typer.Typer,
 ) -> None:
     """Mutate Typer registrations so help output reflects the command catalog."""
+    invalid_catalog = validate_command_catalog(strict=False)
+    _warn_invalid_catalog(invalid_catalog)
     app.info.help = ROOT_HELP
     app.info.short_help = "Human-first book translation preparation."
 
     def apply_command(path: str, info: CommandInfo) -> None:
+        if path in invalid_catalog:
+            return
         descriptor = descriptor_for_path(path)
         info.help = descriptor.render_help()
         info.short_help = descriptor.summary
@@ -718,6 +757,8 @@ def apply_command_catalog(
         info.deprecated = descriptor.deprecated
 
     def apply_group(path: str, info: TyperInfo) -> None:
+        if path in invalid_catalog:
+            return
         descriptor = descriptor_for_path(path)
         info.help = descriptor.render_help()
         info.short_help = descriptor.summary

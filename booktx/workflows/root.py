@@ -1331,6 +1331,30 @@ def doctor_isolation_cmd(
         raise typer.Exit(code=1)
 
 
+@doctor_app.command(name="cli")
+def doctor_cli_cmd(
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """Check optional command-catalog metadata without loading project data."""
+    from booktx.command_catalog import validate_command_catalog
+
+    invalid = validate_command_catalog(strict=False)
+    payload = {
+        "status": "FAIL" if invalid else "PASS",
+        "invalid_summaries": invalid,
+    }
+    if as_json:
+        console.print_json(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    elif invalid:
+        console.print("CLI catalog: FAIL")
+        for path, kind in sorted(invalid.items()):
+            console.print(f"  {path}: expected str, got {kind}")
+    else:
+        console.print("CLI catalog: PASS")
+    if invalid:
+        raise typer.Exit(code=1)
+
+
 __all__ = [
     "audit_chapters_workflow",
     "doctor_app",

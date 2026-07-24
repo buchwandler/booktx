@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,7 +94,7 @@ from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.editor_indexes import EditorIndexError, export_editor_indexes
 from booktx.errors import BooktxError, _err
 from booktx.io_utils import write_json_text_atomic
-from booktx.linguistic_audit import audit_records
+from booktx.linguistic_audit import LinguisticAuditFinding, audit_records
 from booktx.models import (
     AgentNextAction,
     StoredTranslationRecordV2,
@@ -590,12 +591,14 @@ def translate_todo_submit_workflow(
         _die("todo-submit currently supports --format block only")
     if input_file is None:
         _die("--file is required")
+    assert input_file is not None
     _require_chunks(proj)
     _require_no_source_drift(proj)
     _require_ready_context(proj)
     task = _load_translation_task_or_exit(proj, task_id or "")
     if not task.todo_id:
         _die("todo-submit requires a task created from a translation todo")
+    assert task.todo_id is not None
     try:
         parsed = resolve_submission(
             record_id=None,
@@ -666,6 +669,7 @@ def translate_todo_submit_workflow(
     todo = load_translation_todo(proj, task.todo_id)
     if todo is None:
         _die(f"todo {task.todo_id} disappeared after submission")
+    assert todo is not None
     todo_status = build_todo_status(
         proj,
         todo,
@@ -787,7 +791,7 @@ def _render_lint_block_human(
     missing_record_ids: list[str],
     extra_record_ids: list[str],
     findings: list[Finding],
-    linguistic_findings: list[object] | None = None,
+    linguistic_findings: Sequence[object] | None = None,
     quality: str = "protocol",
 ) -> None:
     errors = [finding for finding in findings if finding.severity == Severity.ERROR]
@@ -949,7 +953,7 @@ def translate_lint_block_workflow(
     protocol_ok = (
         not missing_record_ids and not extra_record_ids and not errors and not warnings
     )
-    linguistic_findings: list[object] = []
+    linguistic_findings: list[LinguisticAuditFinding] = []
     if quality != "protocol":
         configured = getattr(proj.profile_config, "submission_quality", None)
         if configured is None or configured.linguistic_audit != "off":
@@ -1290,9 +1294,8 @@ def translate_todo_list_workflow(
         console.print("no translation todos")
         return
     for row in rows:
-        console.print(
-            f"{row['state']}: {row['todo_id']} chapters={','.join(row['chapters'])}"
-        )
+        chapters = cast(list[str], row["chapters"])
+        console.print(f"{row['state']}: {row['todo_id']} chapters={','.join(chapters)}")
 
 
 def translate_todo_abandon_workflow(
@@ -1310,9 +1313,11 @@ def translate_todo_abandon_workflow(
         _die("--write is required to abandon a todo")
     if not todo_id:
         _die("--todo-id is required")
+    assert todo_id is not None
     todo = load_translation_todo(proj, todo_id)
     if todo is None:
         _die(f"unknown todo id: {todo_id}")
+    assert todo is not None
     try:
         abandon_todo(proj, todo, reason=reason)
     except BooktxError as exc:
@@ -1437,8 +1442,9 @@ def translation_todo_doctor_workflow(
     console.print("| todo | created | chapters | complete | current | scope |")
     console.print("|---|---|---|---:|---|---|")
     for row in rows:
+        row_chapters = cast(list[str], row["chapters"])
         console.print(
-            f"| {row['todo_id']} | {row['created_at']} | {','.join(row['chapters'])} | "
+            f"| {row['todo_id']} | {row['created_at']} | {','.join(row_chapters)} | "
             f"{row['complete']} | {row['current'] or '-'} | {str(row['scope_fingerprint'])[:12]} |"
         )
     if superseded:

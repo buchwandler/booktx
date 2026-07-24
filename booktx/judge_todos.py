@@ -10,8 +10,9 @@ from typing import Any
 
 
 def todo_dir(project: Any) -> Path:
-    assert project.profile_dir is not None
-    return project.profile_dir / "judge-todos"
+    profile_dir = project.profile_dir
+    assert isinstance(profile_dir, Path)
+    return profile_dir / "judge-todos"
 
 
 def _path(project: Any, todo_id: str) -> Path:

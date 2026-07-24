@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.table import Table
@@ -851,6 +851,7 @@ def judge_show(
     if task is None:
         _die(f"judge task not found: {judge_task_id}")
     assert task is not None
+    assert task is not None
     record = next((item for item in task.records if item.id == record_id), None)
     if record is None:
         _die(f"record {record_id} is not part of judge task {judge_task_id}")
@@ -1337,6 +1338,7 @@ def judge_audit_copies(
     task = load_judge_task(runtime.project, judge_task_id)
     if task is None:
         _die(f"judge task not found: {judge_task_id}")
+    assert task is not None
     if task.revision_focus != "grammar":
         _die("judge audit-copies requires a grammar revision task")
     if chapter and task.chapter_id != chapter:
@@ -1351,7 +1353,8 @@ def judge_audit_copies(
         soft_wrap=True,
         markup=False,
     )
-    for finding in payload["findings"]:
+    findings = cast(list[dict[str, object]], payload["findings"])
+    for finding in findings:
         console.print(
             f"{finding['severity']}: {finding['record_id']}: "
             f"{finding['rule']}: {finding['message']}",
@@ -1589,6 +1592,7 @@ def judge_todo_next(
         end = through_chapter or ordered_ids[-1] if ordered_ids else None
         if start not in ordered_ids or end not in ordered_ids:
             _die("chapter range is not contained in the source chapter order")
+        assert start is not None and end is not None
         start_index = ordered_ids.index(start)
         end_index = ordered_ids.index(end)
         if start_index > end_index:
@@ -1726,13 +1730,15 @@ def judge_todo_status(
     )
     if todo is None:
         _die("judge todo not found; pass --todo-id or --latest")
+    assert todo is not None
     payload = build_judge_status_workflow(
         runtime.project,
         runtime,
         bundle=_project_status_snapshot(runtime.project),
         sources_csv=None,
     )
-    chapter_rows = {str(row["chapter_id"]): row for row in payload.get("chapters", [])}
+    chapter_payload = cast(list[dict[str, Any]], payload.get("chapters", []))
+    chapter_rows = {str(row["chapter_id"]): row for row in chapter_payload}
     remaining = [
         chapter
         for chapter in todo.chapter_ids
@@ -1786,7 +1792,7 @@ def judge_todo_status(
         console.print(f"judge todo: {todo.todo_id}")
         console.print(
             f"progress: {records_selected}/{records_total} records; "
-            f"remaining chapters: {', '.join(remaining) if remaining else 'none'}"
+            f"remaining: chapters {', '.join(remaining) if remaining else 'none'}"
         )
         if next_safe_command:
             console.print(f"next: {next_safe_command}")

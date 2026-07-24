@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from booktx.config import Project, translation_validation_receipt_path
 from booktx.io_utils import write_json_text_atomic
@@ -78,4 +78,4 @@ def load_matching_validation_receipt(
         return None
     if payload.get("receipt_key") != key or payload.get("state") != "pass":
         return None
-    return payload
+    return cast(dict[str, object], payload)

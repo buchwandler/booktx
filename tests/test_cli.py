@@ -910,7 +910,7 @@ def test_command_tree_group_snapshots():
     expected = {
         "agents": {"clean", "status", "write"},
         "identity": {"clear", "set"},
-        "doctor": {"isolation"},
+        "doctor": {"cli", "isolation"},
         "epub": {"extract-text", "grep", "inspect"},
         "review": {
             "activate",

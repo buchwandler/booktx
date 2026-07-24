@@ -53,6 +53,27 @@ ruff check .
 mypy booktx
 ```
 
+## Canonical quality gate
+
+Before a checkout is installed into a translation environment, run the
+repository quality gate from a clean project-root checkout:
+
+```bash
+python scripts/quality_gate.py --require-clean --artifact-dir dist \
+  --evidence-file /tmp/booktx-quality-gate.json
+```
+
+The gate runs compilation, the static command-catalog check, focused CLI import
+tests, the full test suite, Ruff, mypy, package building, and help smoke tests
+against the wheel installed in a temporary virtual environment. It stops at
+the first failed stage and prints the failed command. The evidence records the
+checked-out commit SHA, Python version, wheel filename and SHA-256, quality
+result, and installation target. Do not install an untested dirty checkout.
+
+The release workflow uses the same command and publishes the exact `dist/`
+artifacts produced by that successful run. Pull requests and `main`, `master`,
+and `release/*` branches run the gate on Python 3.10 and 3.13.
+
 For documentation changes, install the `docs` extra and run the repository's
 warnings-as-errors check:
 

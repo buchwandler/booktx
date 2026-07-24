@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-import phrasplit  # type: ignore[import-not-found]
+import phrasplit
 from phrasplit import split_with_offsets
 
 from booktx.models import Chunk, Placeholder, Record
