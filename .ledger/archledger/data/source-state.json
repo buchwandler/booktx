@@ -1,0 +1,1248 @@
+{
+  "directories": {
+    ".": {
+      "file_count": 344,
+      "sha256": "572e52981c6dda4bf647a16b8c7acb090a60b66474cdf1ef1be7c792307a2373"
+    },
+    ".github": {
+      "file_count": 5,
+      "sha256": "42df69870444f717b724c6f7f990a5cd2686db4d809508835487b3a77619b6e6"
+    },
+    ".github/workflows": {
+      "file_count": 5,
+      "sha256": "3e519976e288a13fe5b5c33a7114e9314e5ca7b3a04c323f6e2484cdb5cef560"
+    },
+    ".releaseledger": {
+      "file_count": 81,
+      "sha256": "3f9e7ce127667c7f303bec131fe162246376b968dd1a209e67c1c9ebaf701edd"
+    },
+    ".releaseledger/ledgers": {
+      "file_count": 81,
+      "sha256": "ea3344d363305cefd4a91d7cfafe37af08528efbde31d8a103a87568fe3c382b"
+    },
+    ".releaseledger/ledgers/main": {
+      "file_count": 81,
+      "sha256": "3d535ff59f862d649055d796521c8ad2dd560a39227262462a56986989637f6d"
+    },
+    ".releaseledger/ledgers/main/indexes": {
+      "file_count": 2,
+      "sha256": "e63aafd49b0f46cfca5c89785dd57e84531ca7f5cc77808afbb66b6849d571e1"
+    },
+    ".releaseledger/ledgers/main/releases": {
+      "file_count": 79,
+      "sha256": "dadac5bb4e78aea06e5c81235da61b1480ac9a61809e5cddc273d2f514b72142"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0": {
+      "file_count": 15,
+      "sha256": "5f4221203f0d3f07f566c35b0c30527e5667b53f72515378964fa7faee230415"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/audit": {
+      "file_count": 1,
+      "sha256": "a6dfc108e699cfc79a26554c27e36da8be7f1290ba980d538584b4a5c55f2769"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries": {
+      "file_count": 13,
+      "sha256": "7c7603c6fbe40a196d7fa5f470ecefbed8e1825a391a5e83b6e99739e24daa3c"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0": {
+      "file_count": 14,
+      "sha256": "6024aad49a63e486a666934d1011959d025de864b2ed5c004ec085866759b235"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries": {
+      "file_count": 13,
+      "sha256": "6c65edc2a32ff70874cf997ed0cb655d892cca74cf4237ba7143942c49e0600a"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1": {
+      "file_count": 9,
+      "sha256": "14ec5393c20c39e249afbf32eac84373483b388f05fe2e246424b21f409b80f5"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries": {
+      "file_count": 8,
+      "sha256": "837e585295f72b07d37a0210207c0f2d8b39df09a571e490d7ecc90634b94ebe"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0": {
+      "file_count": 12,
+      "sha256": "c1d63b1a0adf7a9883df7c280884e3c9d67e69aa28e0a78320624e05a8cc8e70"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries": {
+      "file_count": 11,
+      "sha256": "96f7c5ac62ea3646c294192d93718fe95b9810c6a308910b63dc9bec74327921"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.1": {
+      "file_count": 4,
+      "sha256": "5bcf8892404930476310b1e87a759f59ee9d81e0381a2c5ab266d1f525b2b6b1"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.1/entries": {
+      "file_count": 3,
+      "sha256": "97910de61891644abbdbea42cf4e2c5ab4ef851c1cbedf157b4e529675e5b0a3"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.2": {
+      "file_count": 4,
+      "sha256": "66f916a53140082b15b6714659d366dfdf07ff7c7ea0b23226227d054afbb802"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.2/entries": {
+      "file_count": 3,
+      "sha256": "90a8f167222b0d6b62e70848f74b66ec8c0a84970b485f36940b77c6dfa42114"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3": {
+      "file_count": 13,
+      "sha256": "aa5a26426e16bc3cc3694c6e485145812a76b7776eb00df3aefd50e49b5fa50e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/audit": {
+      "file_count": 1,
+      "sha256": "6157b3b2092c442f74dd0796912f49e3bcb4e9401dc486571de9d93f3f11959e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries": {
+      "file_count": 11,
+      "sha256": "6db57f4643dc6688e180818730a933be053308ae619fc5c7b28f744d9ecfef08"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0": {
+      "file_count": 8,
+      "sha256": "8a85a429b3a8b7bcbb5ad7337986473b77cd69fc20cbdd5b9956bf17b95da3c8"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/audit": {
+      "file_count": 1,
+      "sha256": "fd556fd79d19c550eddabdaa269d7e876932256a38fcd92b091d6c841b16dce8"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/entries": {
+      "file_count": 6,
+      "sha256": "be983e9944ff5611573d8ba445d5e528318f50e789dc04acf0ba1e65a34905b9"
+    },
+    "booktx": {
+      "file_count": 127,
+      "sha256": "bfc298f6f501b5998eb4db284b80a538b7efa5e42aebd58369145bc2e78ef925"
+    },
+    "booktx/commands": {
+      "file_count": 16,
+      "sha256": "907af306c5d61561f3b9adb4f536ee8b0a4d1a1fcf862e30666785d12e3456b8"
+    },
+    "booktx/store": {
+      "file_count": 9,
+      "sha256": "e8fa1413c6ccc7d8ab83080e6be6c9f0b03248339ebde67cee3b4b0f495a9e10"
+    },
+    "booktx/templates": {
+      "file_count": 1,
+      "sha256": "adf2769fead07bcf2d9d9c919cbc11611e7b1d94a7a7ff97b521686b9da08a7f"
+    },
+    "booktx/workflows": {
+      "file_count": 16,
+      "sha256": "f9afd626cd413ccf5d18122fbc25b6542a14d9c0dcd6c5898b42437bb06afc3e"
+    },
+    "docs": {
+      "file_count": 21,
+      "sha256": "e47f5316d4ea2c347489020c7427650caa8e020ffcbae7c9870a4ca964f02cbb"
+    },
+    "scripts": {
+      "file_count": 2,
+      "sha256": "b46baf6d5b28bace38c8968793cd0e762d05effc4813f046983880859f858fd3"
+    },
+    "skills": {
+      "file_count": 1,
+      "sha256": "23243dcc5d95995fc433bc8bce2871371594a23bce7cc79fd5527b12cec03ad8"
+    },
+    "skills/booktx": {
+      "file_count": 1,
+      "sha256": "f6d9c8a9e6512c7f02383ff743aece069f240d4c7b1ebed3685ddb064ba6e86a"
+    },
+    "tests": {
+      "file_count": 97,
+      "sha256": "25c81a672cd54d578ac91a636aa78eb70eb871156a4d0aa761e7dcc4876aa3b3"
+    },
+    "tests/book": {
+      "file_count": 10,
+      "sha256": "3f25d1b69a816efd46031117b5012c72d51a7d439bd8a2b903f9f16207e37cab"
+    },
+    "tests/book/.booktx": {
+      "file_count": 6,
+      "sha256": "decda19d5319531bbaa6d5608464dd8133603e4d1f0c20980a7cc154d2b688c0"
+    },
+    "tests/book/.booktx/chunks": {
+      "file_count": 1,
+      "sha256": "a5d6e9ee58a6636fd5c732a187c04a80a039244844d8c23eaa54a76c6ef8797b"
+    },
+    "tests/book/.booktx/reports": {
+      "file_count": 1,
+      "sha256": "01cf55073c8190454e7d73c4883b58a82bbd934ae1231b62d4ecf80dcf35525d"
+    },
+    "tests/book/translations": {
+      "file_count": 4,
+      "sha256": "33cae20317a714de6ddef2401cc6860a65d3b701136cc7cce6b96f2a635434d9"
+    },
+    "tests/book/translations/de_default": {
+      "file_count": 4,
+      "sha256": "44aa19d981a5a0d4f868cbe42242c821fd236cdd393e27156c551a343296de62"
+    },
+    "tests/book/translations/de_default/translated": {
+      "file_count": 1,
+      "sha256": "c32ee34b94e6678868fd45f7ee7779734cfd254be6fe5c261721d34a192a4749"
+    }
+  },
+  "files": {
+    ".codecrate.toml": {
+      "sha256": "19b10b671511b71e0d7a15ee2014172ca96369d2bca0f82cfda89feeea14c676"
+    },
+    ".github/workflows/codecov.yml": {
+      "sha256": "38f978fafd266e8c0ede289c983c4ed9dd443846f5c7c73b3e4007bec90c4915"
+    },
+    ".github/workflows/pre-commit.yml": {
+      "sha256": "58d92d74ca5f6b04a2e3acc3030e14d81d3aec1100570ce0e5bf80cac4042d11"
+    },
+    ".github/workflows/python-publish.yml": {
+      "sha256": "208837907eee7b004c956f02fa856b6e6355425428cc38a8de959e95f2dce592"
+    },
+    ".github/workflows/quality.yml": {
+      "sha256": "54480e99ba903566b056fe54c1aabae6b8f17fc71728a4293f459619b4861e0a"
+    },
+    ".github/workflows/tests.yml": {
+      "sha256": "ea5e80f0b05f74daf706d49f717093720cd194383bf3b6a5968d476a2503d58f"
+    },
+    ".planledger.toml": {
+      "sha256": "0cedaccaa698efb2d8d70ca0b4eec28d1032ed1cdeb028512018da9e1bdc3de6"
+    },
+    ".pre-commit-config.yaml": {
+      "sha256": "f62c5fe9146a9e7f992c5af12f5f02010bc1896d9a5426c02d6829547b016dc9"
+    },
+    ".readthedocs.yaml": {
+      "sha256": "da28d5b8d562fdb135b048a945b344a2a99ad9132754dc0aa5e3125f04c09e71"
+    },
+    ".releaseledger.toml": {
+      "sha256": "56fb5291a4e75ee787876a382613fd09325e94f9fff9da9a9cfeed6bbbf1bfcb"
+    },
+    ".releaseledger/ledgers/main/indexes/entries.json": {
+      "sha256": "7ea8fff4e0e6cdfbc93a58f90b91da2c438afce024721394a6ee435557d472bb"
+    },
+    ".releaseledger/ledgers/main/indexes/releases.json": {
+      "sha256": "682cfd47491af585735bf9cf8beced25246268bece06221f0015b07e77a1efd3"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/audit/commit-audit.yaml": {
+      "sha256": "3b68bc4b42b0b140d96a863c6c95ff96a3fd6cfe7e080f136f2b8b64c97678fb"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0001.md": {
+      "sha256": "f4435ada958ba8f733f4da8d69838113832de5fb9bc993142e850555ddb1d21c"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0002.md": {
+      "sha256": "615d01e608e984f8b7b8e7cba8cd9dedffefed0ecf61f6890db0c357c751a843"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0003.md": {
+      "sha256": "bdd258319197b853186224af831c289ba48b557d35e376499783ae7d2dc1ac62"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0004.md": {
+      "sha256": "33499933541860fe8c535986dc35f5fd76404945b076b3348801592a552f63e3"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0005.md": {
+      "sha256": "cd105418b5510f14d9fb6169e28e48de3f2721bbb3e867b8a38a54149d9523cd"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0006.md": {
+      "sha256": "ff2913639add8c483cc582b29d12589e49b28856a6780392b7764a3bdeb00893"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0007.md": {
+      "sha256": "6934f968e2c0a221b869773146a76dd2292b10ea82d8519326f3d383b02ffe82"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0008.md": {
+      "sha256": "0f0292ab5851a7f7f2b3186462c04569e9eb098b0582780108a5bece762cda4d"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0009.md": {
+      "sha256": "42f620d2254bad9fbe36f53ff5c946ed6047fbbf711dfb4a426aae6466cfe940"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0010.md": {
+      "sha256": "37b517add0e44c2537114475ef69623b5c1e535f21585a005e5674175814530e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0011.md": {
+      "sha256": "8ad5ad4969b9648d5f7e1d64bb4d906c18349ba40083464dd4eb02e5aab1f8f2"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0012.md": {
+      "sha256": "b38db60e5834be09276e077e5c237b2ff470e216ad058eabc8f427f700fcbd72"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0013.md": {
+      "sha256": "cb8395cb8a8bf1d0260cf4177462d0922b4ec061d27517f449ada019323c4eaf"
+    },
+    ".releaseledger/ledgers/main/releases/v0.2.0/release.md": {
+      "sha256": "893d12860f01c9dde5f534e59b98bc668a367a6e8cdcbecd23d843e9d09afa19"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0001.md": {
+      "sha256": "a99f077c438975b16455cace5a578bfb8e0c8d5d5942994e83fe123a1052c81d"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0002.md": {
+      "sha256": "f5b1c67e70cae1e5b6402b6b60c7eadd3d7d6c0526cd97edaac23423a88c0fa5"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0003.md": {
+      "sha256": "c8d60a2e34f36181a0fcaf7caa45ab4cec1b7a57d6002d42405ed98bdf2a9916"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0004.md": {
+      "sha256": "5287c1313f40e5df8e6213401e3a5cc331b079d176a17843877cc7cee1260e0b"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0005.md": {
+      "sha256": "fab32a075519371dcb63c9b5a87bebf44e59ec85b8b45b6a02aaea0ba24c4ce1"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0006.md": {
+      "sha256": "af1899bd530c146a40a33db6af6a5caa4c972d3c67c70485ddf6d83a51582061"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0007.md": {
+      "sha256": "67f8fdf564091f512622b4c6a9eeb86ed241982997b213be3728b1310d97f82a"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0008.md": {
+      "sha256": "398f8490fbef101f88f3ab774dca8e4f3f993c72af3fc098ecc16188a3110f18"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0009.md": {
+      "sha256": "1b848549c20d8d48ee6f364df1c09e5ff93d31e02496760cec9a33b62c865331"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0010.md": {
+      "sha256": "485ebf0f5b6907e71d64ef3e3c872003ca80c2555a6ef1fee4fc9a8fac8d8349"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0011.md": {
+      "sha256": "3e56b4cfdc392a47f92286ea35cb45022d12cc5c653378b959606a2636981ffe"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0012.md": {
+      "sha256": "eab0af5cc5d4a5886178afb41fd0bc45a760f5c288153088f8d9625009618da1"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0013.md": {
+      "sha256": "4d0852b806cb1aeba43d6aa351a1077cc65c2497fb4ba6325164dd682a7a6ce7"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.0/release.md": {
+      "sha256": "532a2611d05d6ee44a4b9fafe6543fe04ae79d6d10df93269efff86c8a8ea088"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0001.md": {
+      "sha256": "4408458195e104426b11c8dec534160f5078f59693200142dea4e1f096f1803f"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0002.md": {
+      "sha256": "09e763fca71c352366fb455820d653fedbda5b84f95b4315cbc5a714c034a8c4"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0003.md": {
+      "sha256": "b6e6d89c6f8526a33742b1a3e7303899072858266f6a6ed3ff510bc351e8781e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0004.md": {
+      "sha256": "b02ac05a17fe340e923035da876bdb2157ae9a75f4f441a3624c24a35b1d0d95"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0005.md": {
+      "sha256": "bc5d2ceabf12b44687cf9ff2dc4acfeaf590f39562fe39b699ea47d057718413"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0006.md": {
+      "sha256": "4cec84f6458bf6f13a195f86695d1bb97f021d7f998fea06322251bc68a0a04c"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0007.md": {
+      "sha256": "baff8c8c07da72eed3b62be4fbbb2bd305230261e5a38ff9cff98f45e7acd442"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0008.md": {
+      "sha256": "3b1f31fee641871e247eb4898bfa87f6f878061603a18bbf792a3f4a849d0c55"
+    },
+    ".releaseledger/ledgers/main/releases/v0.3.1/release.md": {
+      "sha256": "c5f156bb45d6fc16cc258befae8ab0885e769ba1ce7727fb0190130a29e4d36e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0001.md": {
+      "sha256": "d690be283f10d8e311eda31c107bd8a0e733451563c6660311fe8b160bf73040"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0002.md": {
+      "sha256": "7d768134eba7f3c7ee29944e62d6651646860b3dd3b1d6abb74bd85e4ca481f6"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0003.md": {
+      "sha256": "a813c7af1482e0cf0dd9396e64c57b90ed82b25cc2096d0c94dabb02b1e88c14"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0004.md": {
+      "sha256": "2c1e89c2f88cf115d1808373307b423ed674b69621eb270ec0b34ccfb9e8f57f"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0005.md": {
+      "sha256": "e9e450a4350e6929f679ae042f902deef31db6e8fe41c7d4c453341f0cf33bf1"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0006.md": {
+      "sha256": "6366d23c794992dfbdbc03ddf8a2c6c17c75cc9b5f5db70a5af497f5057c6680"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0007.md": {
+      "sha256": "f51b3f484388f50db7ba50681958036d392e4b46295c72f9b8ac55f187b417e2"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0008.md": {
+      "sha256": "22261a88607291f0eadca5b4569b7ab45c4f6609d0a2f57492bddd3ec3bed959"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0009.md": {
+      "sha256": "5b9b0d755c6bfaa8ba4fc52c6274b2260da15258a0587ba80f693f4127a37900"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0010.md": {
+      "sha256": "28fe4b3a5332a9049a922f92120c37f4d0742f7b021534ada5610a7e84c861b9"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0011.md": {
+      "sha256": "d7aa276e1f62667b729bc9c9052131102ff8b1a8e15b396a46a10c1d48169bdb"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.0/release.md": {
+      "sha256": "46d570a6c8edbb039a8dd87ce87b9e1a3566e932d1ed43de5fc2e8a2adbbe06e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.1/entries/entry-0001.md": {
+      "sha256": "5a8b42b73f27de4dce2674c7c1fea91c348aaec39e80baf881fa1380d9196550"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.1/entries/entry-0002.md": {
+      "sha256": "2b05d7e294db1a999ad2823caa698a25bfbf0a025f5191bcc270829b0f320f4c"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.1/entries/entry-0003.md": {
+      "sha256": "88ccd73cc6bb29b10ff2af4a5043077f025d3da223486cca0c06b151f0f64f75"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.1/release.md": {
+      "sha256": "63da033d2fb4a507089fe8d8782d63f587197c1b401a7c7b5151f9a2e9ea051b"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.2/entries/entry-0001.md": {
+      "sha256": "b734547384967b08f40ce260b5c3049101ea9694ddd330216f85ed756d0ad0fc"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.2/entries/entry-0002.md": {
+      "sha256": "0c86435c5ea0701cf8a5e92f3fe42200d99aee50ea8068086da0a0926c4f4f81"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.2/entries/entry-0003.md": {
+      "sha256": "4d5642cc4b862671d54bfb1017989f15d1acb8642d55ec5d79816e4cbb9dca2e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.2/release.md": {
+      "sha256": "0819d22309178cf9be74d7fc0018a8c1289ee3c94f3d433007b7495d5da3f789"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/audit/commit-audit.yaml": {
+      "sha256": "7f899ec93309dacd56b747d6ce7cab59c91cf25d3f8eb728011e5bfeddafb479"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0001.md": {
+      "sha256": "5a9b4515bf0243ab6634003e6257eb71ba1664109354877530e33944f5d13937"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0002.md": {
+      "sha256": "42a896abcafbc54c8d7d85c13f4cd8f1936d8abd4d6e4ffaeca4d6ef417f6e7e"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0003.md": {
+      "sha256": "b3fbdc05f803f4bc612494f94fd3c40ef2e5502793abef1984e3ffb21e58307a"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0004.md": {
+      "sha256": "27de2cacceb7d3f0ffa53da98ee7f514d0d9fb1b34ef2f2be00dcbc9db21cec0"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0005.md": {
+      "sha256": "4a77f3028e16992ef2e709d63a59e6eee010cba4bf6b503c557ee4afe1b919b7"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0006.md": {
+      "sha256": "904b551e8f29d162d5147ec9547767f17a3fe6f4504c561dd97c7c4a9134caa6"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0007.md": {
+      "sha256": "5e8bb7662479ae89298845a97083ab8b3adae327b5d317eed2d4feb5954b4cb7"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0008.md": {
+      "sha256": "deac9e185887f0060cd63732e61849b5f4332c08d7883dbc8749a34349ab270c"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0009.md": {
+      "sha256": "e6d71494cd26dbcbffe3735c7f11a0591a94d75b69b9da12f322c2c460c30f28"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0010.md": {
+      "sha256": "c8456bf49caab3c74da47e3fa9cd8378fd4880d009747d51c43fac43699c9351"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0011.md": {
+      "sha256": "8ad44c2527f6b608f2819d6433183616c6eb6daaa270ada225068c49f260470b"
+    },
+    ".releaseledger/ledgers/main/releases/v0.4.3/release.md": {
+      "sha256": "aeae822a9124345459538e9740d9075ae3434e3a2f03545f5f7156d8d4850a33"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/audit/commit-audit.yaml": {
+      "sha256": "70ca409f83e5a9126edc55a2d3d36bbf08e3f673c254a12a3f5b27f2b04d15d5"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0001.md": {
+      "sha256": "3ffa3933bbfb218e8ce2b2f24745ec98156a4fe51e14e2da22bb6f67158e5d83"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0002.md": {
+      "sha256": "2def5403419abf9f61efa5857be557229228904519f390b4b95b99db030f741c"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0003.md": {
+      "sha256": "c5236841e4a23830532732010f1c01031a592cbc6291d87fd1c8309a424dd804"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0004.md": {
+      "sha256": "07d44f4734b7c39555c18a3e8a43aa37ffd5e25ec5619e3a24bfc71faf357975"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0005.md": {
+      "sha256": "a8896629dbc288a12b30d895754cbcefa721e129d2e4facbf45dd7bd3f507165"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0006.md": {
+      "sha256": "ed70cba7f846610a508a8ba3f00b8042c3e87e1773b85b7937507edb3560da76"
+    },
+    ".releaseledger/ledgers/main/releases/v0.5.0/release.md": {
+      "sha256": "6364eb8f1547f85ba5ec1e4f43daffaa29995651372960951095f8be98fda117"
+    },
+    ".ruff.toml": {
+      "sha256": "7127a0f9ca1865d7f6d55e4caa8778cc1d31cf45a605e6cb491982ac01bf3637"
+    },
+    "ARCHITECTURE.md": {
+      "sha256": "5d33814e38edd5be89446dcd8fea7d59c74a5b26f1a2094bdab999502c493c79"
+    },
+    "CHANGELOG.md": {
+      "sha256": "61326fa8002bb884cec7f228a739cec15d80b2b79def702e8ca47ee19055d30e"
+    },
+    "README.md": {
+      "sha256": "b3e495db63cacb4f9681b897f8587521bded81ad76306027e000b460917ab1cf"
+    },
+    "booktx/__init__.py": {
+      "sha256": "9179541d04dfb1899f0367a9125510bbf08dd62d240433a97354846ef3341f5d"
+    },
+    "booktx/acceptance.py": {
+      "sha256": "5f2a7f9db421beedba3a728da452a2ee13f0869f407e5b497294cf30a249fc23"
+    },
+    "booktx/acceptance_preflight.py": {
+      "sha256": "55933106d6eb67ffc3c549f7a53291f3484c6cf1de1313d8a9b940ed156ad627"
+    },
+    "booktx/agent_todo.py": {
+      "sha256": "1bfd7ad7aa342cadb54328234c2816f77563011376fd9954d227a0c78b661c05"
+    },
+    "booktx/agents_md.py": {
+      "sha256": "b3d6fb99b808b10e4861c825ad8a69825c956b053d414293341c09f79a748a1c"
+    },
+    "booktx/block_protocol.py": {
+      "sha256": "49b29fb3501979f6c3026ff4a6d0e452964374c62b1e63fac1d703803032a71f"
+    },
+    "booktx/bootstrap.py": {
+      "sha256": "733fcc5475221415b7abdc9bf9c46fcffb86c50ac35c454de5e123aa2748105f"
+    },
+    "booktx/build.py": {
+      "sha256": "02e5238553da6b1f99c93fbc1f053e4f9877729ae176172235632c1a74eff3e1"
+    },
+    "booktx/chapters.py": {
+      "sha256": "9ac29dee8f6f1043f2e587a6c4882fb9100801980a84c02608c4720cd5d7f9e2"
+    },
+    "booktx/chunking.py": {
+      "sha256": "a3b63998cf53fa9bbabcb98e08afdbcb8bf7ac28bf34ea0326f6a98b65ecdb61"
+    },
+    "booktx/cli.py": {
+      "sha256": "32570c893fa3bb147d78840b582fa09f8c506b8b826b5e597a6b63f992e56217"
+    },
+    "booktx/cli_support.py": {
+      "sha256": "d4403c9cd85a6abadb0579c759d60ea49151a57b147d11e21200502c5627d42f"
+    },
+    "booktx/command_catalog.py": {
+      "sha256": "0342fb5cc533bbfd35d98d6e53b6b37839351b8d3befb5b414923bd0b2251034"
+    },
+    "booktx/command_hints.py": {
+      "sha256": "45363023e034d6085180615f366334c045d58baa827cdd7bcffaa561ccb37276"
+    },
+    "booktx/commands/__init__.py": {
+      "sha256": "4ea5bf7d3e545f8ba258243a286ebc1f6022f6db9291aadaacbc9d54fb516e99"
+    },
+    "booktx/commands/agents.py": {
+      "sha256": "b6346b7bea5f2b0d11a450e47809f8d8d183c41056b8a6e23f464e9c06385b28"
+    },
+    "booktx/commands/context.py": {
+      "sha256": "f8c3a2f07fb0622f2e4823a1d2a2d096300dfc160df6a7d1aa369034ad0f00c3"
+    },
+    "booktx/commands/epub.py": {
+      "sha256": "a7d3994710d1955a19c87d03953d50429e966a3e35ad68dd84fe9b17d101aa4d"
+    },
+    "booktx/commands/glossary.py": {
+      "sha256": "ee2a8517b103ef1fcd4cea4dd5d61a7890204456a2e08437e6687eadd55cbec8"
+    },
+    "booktx/commands/guide.py": {
+      "sha256": "4ec1c931525c500c48be11b9e737335c2de757b630a8a81cd9b7d545caf30a42"
+    },
+    "booktx/commands/identity.py": {
+      "sha256": "968dffc6bb81f58e1e15aef305377c02b2fcd52a2ad8dee410e9f8947aeefc57"
+    },
+    "booktx/commands/judge.py": {
+      "sha256": "ab163054db5e1ace3eada225b3a3f870ebb1a92cee4c2c7d93edf0ed51a04f60"
+    },
+    "booktx/commands/profile.py": {
+      "sha256": "b71161c4035eea5cce3b8ff7e101eccafadeeab7fcb1cdbe6a3aac3e6d0146b0"
+    },
+    "booktx/commands/review.py": {
+      "sha256": "d45b4f2fa933d3587854149daff0557b94dbd4c849d2823ccca74af40d4e92c4"
+    },
+    "booktx/commands/root.py": {
+      "sha256": "eb168aba5da5e18e3cf007c37fc4e2217f7699a03c38d7a0b74b759e8582c96e"
+    },
+    "booktx/commands/series.py": {
+      "sha256": "899762fe81c5672cab71692b39595e839fc27d5bd8b253710a4da33cd25e8c07"
+    },
+    "booktx/commands/source.py": {
+      "sha256": "d4f2a962f1bc33981b709d33cc8360d0480064fe0c0554eb45bc46101a39321f"
+    },
+    "booktx/commands/termbase.py": {
+      "sha256": "906b62a8ffb53b3a47f95e2930b5e6eb32e8139029a650d50214233d26b6208f"
+    },
+    "booktx/commands/translate.py": {
+      "sha256": "afbe7804edf5ab0fb8be2a9d5175e3b9fa7bea28dab78b0cf1d5ed3b22d2633b"
+    },
+    "booktx/commands/version.py": {
+      "sha256": "1e76e8218e7a9dcfc0021ff5935583eda494f79ed95707e4f4567a43447a6efe"
+    },
+    "booktx/config.py": {
+      "sha256": "43bdbb6a5bdb3e9f6c70a9e4b8af610a727dc2ca9f7b01edd83c3395b89086ba"
+    },
+    "booktx/context.py": {
+      "sha256": "b40a981d93addf9adc62d0d4d543aab72b5d712b46006c0874601df2af7fa662"
+    },
+    "booktx/context_organization.py": {
+      "sha256": "f919e4a8f59e1f3daeb0e8ef46d95a1a1c703ffb344eb634de501799913d89f6"
+    },
+    "booktx/context_packs.py": {
+      "sha256": "41963b010999156677c3e1158ce24739f4754e31a4c7caa6262ee0b202691043"
+    },
+    "booktx/context_sync.py": {
+      "sha256": "34762ee51bf9b6b9a1ef3d79e1d7fd35250ce7452b10ee77bbe3f963915c4eba"
+    },
+    "booktx/editor_indexes.py": {
+      "sha256": "243237989982ddb5b98a9bd1af47b6a5a2819049950da20c35c89c0af68be7c8"
+    },
+    "booktx/epub_inline_xhtml.py": {
+      "sha256": "e3e55a9692951d90f4514b0c9d5e915aa821328e25499ebeb98a91b23eae1828"
+    },
+    "booktx/epub_io.py": {
+      "sha256": "8c99c91314601b9ce8dc6ddd9d8b9be83b4d152087264d248371ab761edf94fd"
+    },
+    "booktx/epub_manifest.py": {
+      "sha256": "cff142d3bff4d357f66f6abf972a59804ef76254433a47ed55dcaf53a17694fb"
+    },
+    "booktx/epub_output_policy.py": {
+      "sha256": "6b95ac28d1a6e08d623a9917edabbb6d91c8d3c7241617051f80788b450079ce"
+    },
+    "booktx/epub_preflight.py": {
+      "sha256": "6ed152751ce8cc6a112649440c0e087743bdb5e4b396bc1ef6d4d947bab950b3"
+    },
+    "booktx/epub_toc_audit.py": {
+      "sha256": "070ea1cafa17a652d5c846f1e607586a7fefb736333f50de328ca5dccd39315e"
+    },
+    "booktx/errors.py": {
+      "sha256": "784f23b4934204785b1c41f7995b67b59adc9c631f4b201d76ec23be9f069e2d"
+    },
+    "booktx/glossary_audit.py": {
+      "sha256": "2606cb671113365df2c35cebf32711948cb10fa73301e31d34654d96a0239f6e"
+    },
+    "booktx/glossary_context_migration.py": {
+      "sha256": "5aa825d3551044496c276b195f0543644fcfb9c06251b5e0329d8a44384b992f"
+    },
+    "booktx/glossary_diagnostics.py": {
+      "sha256": "662b90e6092fb2069f04e9f75d879f78ba111473321f5b26738712eb6129a337"
+    },
+    "booktx/glossary_match.py": {
+      "sha256": "50983e9d9e1841d1c2ed1f222fbf1271900864e53bb12e4d1874a67df3de447a"
+    },
+    "booktx/glossary_tasking.py": {
+      "sha256": "6ab9488eab1c31139a18b1002aa958538c9287cecb8a14a681e8e12d450368e8"
+    },
+    "booktx/grammar_audit.py": {
+      "sha256": "a00263712f46ee3be7ddfafe695da524070f0bbcd8c6abf8d9378e63dc2f422b"
+    },
+    "booktx/html_io.py": {
+      "sha256": "eeef796de05855f7149b712d65842ca0751223ad51f6d1f4d157652eed9cfe84"
+    },
+    "booktx/human_guide.py": {
+      "sha256": "e94ef6ad6c0262a5abc3146db0ed240f772ddc3b1328324837c1a59e482447e3"
+    },
+    "booktx/identity.py": {
+      "sha256": "c218d972c1992c2d3af23814447d52689edbb6a28f89f0128b4aa06c9d3d803f"
+    },
+    "booktx/inline_audit.py": {
+      "sha256": "a2ed4606c576d86b548f97b85d228e87092a80490644d4bd359575fbca515ae2"
+    },
+    "booktx/io_utils.py": {
+      "sha256": "63033340f8633c71bea7ea524f57a087fdb6225e24defcdeea29c1aac1bdb46e"
+    },
+    "booktx/judge_acceptance.py": {
+      "sha256": "08e23c0edc5bd87658eb40be616b86680e4cccae7d988900e594a7822d60c09d"
+    },
+    "booktx/judge_policy.py": {
+      "sha256": "d6bec92fc0bdc51f9d07b58b7e0de41547fc784e6e184224e8546e933057b322"
+    },
+    "booktx/judge_provenance.py": {
+      "sha256": "15aa7064475cf21c59d7b5dd8d9cdeea65808187dd099502c27ad23e2cb24049"
+    },
+    "booktx/judge_sources.py": {
+      "sha256": "fce8bf4de6609a45a34bc6fa43a2000f98c4ecac24132f9b08545989b8b95e7f"
+    },
+    "booktx/judge_store.py": {
+      "sha256": "39b7cb06eb7acec1e229b460bebde723c1f84907ac9155973483fe4f537bce42"
+    },
+    "booktx/judge_tasks.py": {
+      "sha256": "35d3b6be835809cfc798b60cbd50f8a5b74cb68acc505f76ca60d791f7e8924a"
+    },
+    "booktx/judge_todos.py": {
+      "sha256": "e17f505811f08c0cd0abe910eae6d8c81a7360a5175180819acb0b2981df61f7"
+    },
+    "booktx/linguistic_audit.py": {
+      "sha256": "2e8c9dcddfeb9469cbf1bcc08a44e4baa836592ee6575a3d10c7bedd790323ad"
+    },
+    "booktx/markdown_io.py": {
+      "sha256": "a96813f72995a62a8e0edf8621739c48c1e47ab0a8fe73adaa3009c492bf6df3"
+    },
+    "booktx/models.py": {
+      "sha256": "7108382429c5e76decdddaf95177a914696c893efd5bf98ab574ac12bc148f0d"
+    },
+    "booktx/pass_through.py": {
+      "sha256": "39e3e2a38018dac6d94e56170fbd27edeaddd0f7e089a43fcdadc177de867b72"
+    },
+    "booktx/path_display.py": {
+      "sha256": "bdf060d972618d93957745f615312091b3acfd288a465bb13690b0c811012e9d"
+    },
+    "booktx/path_ids.py": {
+      "sha256": "3c477cc16716e48cb7ba7fb067fd1ed728ac2858ea5e0e0697ed007b2ff92081"
+    },
+    "booktx/placeholders.py": {
+      "sha256": "4ecbe4433b0462d93844dda8bd13885acf30536449930655850b667a98601e4a"
+    },
+    "booktx/profile_migration.py": {
+      "sha256": "5512883ec6a52689dbeec24a57db0c769c849ebb7aa3615348d850784a0b763d"
+    },
+    "booktx/profile_protocol.py": {
+      "sha256": "2015f7c0c178ce948f5f6426332771498e442580fd5bbcd44054bef06c199ac3"
+    },
+    "booktx/progress.py": {
+      "sha256": "5d1756c7ec6f63d5d426fb01d4f45f403bcecf2682c20b581b3497ce2d6c6900"
+    },
+    "booktx/qa_scan.py": {
+      "sha256": "a4156ace37c6c0548c7dfa31cbcace359b3ec36ad8de94e2ec7852232691c4af"
+    },
+    "booktx/record_refs.py": {
+      "sha256": "aed8dff3d617f1c3ab3d03fc019fb34ab1ac1cf058aec387b65f7782bdc60735"
+    },
+    "booktx/rendering.py": {
+      "sha256": "5cfa39ae5ce7b50ef095ffa0ec8e38f7a006c7fb09f16d19933fccfb9130072b"
+    },
+    "booktx/rendering_guide.py": {
+      "sha256": "3bc359716658001c310fff91aaaf84faffc54c8cffc590d067b7e6f08ea29a4d"
+    },
+    "booktx/review_acceptance.py": {
+      "sha256": "62fc4ac80f4e54daf0169208eda743a1da9608f1ead77ab991806ecffcad4a1c"
+    },
+    "booktx/review_refs.py": {
+      "sha256": "b5543a916c4ff0365b18025382cd00ce38fa31c0bf14854cba802cf4676cd011"
+    },
+    "booktx/review_status.py": {
+      "sha256": "4b9d07d2f5034a76c8e36782a6ef169bda181714059ac9cd43a4014dcb0a893a"
+    },
+    "booktx/review_tasks.py": {
+      "sha256": "8bc7439a35c2a23eda6ca85c23adb41cc5f6fb376a576a34a6b6f82d8a2dd9d4"
+    },
+    "booktx/review_todo.py": {
+      "sha256": "ec11c40c3a905d4405a6093e71dbe26ccff49ea403d62e832338a69234ae7d9e"
+    },
+    "booktx/runtime.py": {
+      "sha256": "3b262922a589f6a38ac7b5dc62423e375588e98be6fa185844180abde85eddf6"
+    },
+    "booktx/selection_mode.py": {
+      "sha256": "a972c50ce3be7eff859a77c563a1a57560a1149ed0f92ead7dab79f43cbd20a0"
+    },
+    "booktx/source_analysis.py": {
+      "sha256": "3a67729e31ac25229abab63af40bccd6c925be58d89bb04c158e67ff0aa021a7"
+    },
+    "booktx/source_analysis_context.py": {
+      "sha256": "779a82e1ac01ffe5e10652a9338185d42d6eb47d9a6a9976309e737df8f3f6e2"
+    },
+    "booktx/source_interview.py": {
+      "sha256": "ccc225552746bc4f77b5b5c50c03ed6f6154f6edb2ecba50e62a9df42e790c21"
+    },
+    "booktx/status.py": {
+      "sha256": "24c87c43070649586ba879d77f906678bded8bb79f577105bab8fb0c7e2d6b1c"
+    },
+    "booktx/store/__init__.py": {
+      "sha256": "123f431353259f57838916bbd5d83d5825c7987bf863e124ab00d7944c6b233e"
+    },
+    "booktx/store/detect.py": {
+      "sha256": "219ef98d13cd96dba34da37673dac5ec32d31ae7f8899ff23c2ad1f92708a23c"
+    },
+    "booktx/store/doctor.py": {
+      "sha256": "1bb437db6838d61c9515328f8f89302ae5237685801b45b43fc78aa6c991191c"
+    },
+    "booktx/store/migration.py": {
+      "sha256": "2cb3de64928af51d99a132279fa593fe16364f93378f34340203d5669d083258"
+    },
+    "booktx/store/models.py": {
+      "sha256": "cbb7b2cb6ff36b89a81d175e504d1d3941bd155a39bfc695d8dcd2cdcee1d351"
+    },
+    "booktx/store/paths.py": {
+      "sha256": "136582118ba514dce991466bcd5c6f5664236c9f396a46e85a1fee8ccf560a19"
+    },
+    "booktx/store/transactions.py": {
+      "sha256": "199b4874d5b4031da3c5921b1b1e766d1418ca5e89013df70ce194b95d0840c1"
+    },
+    "booktx/store/v1_v2.py": {
+      "sha256": "b273f1a1d58d28628fa6a5fccf850562a48ae7502af7c59e304b68cb03a42961"
+    },
+    "booktx/store/v3.py": {
+      "sha256": "c0781e4cba128b35b5514373bee19239d9e8a2f745ee1d1d51b553fe1e5c6076"
+    },
+    "booktx/submissions.py": {
+      "sha256": "1857a0eda19ee5e128f3bfe780d544440315f6182c8d5b102190656b7cc2d766"
+    },
+    "booktx/tasks.py": {
+      "sha256": "3406aecadc221138b6ec8b6012f3447220abf86b6f0e7b777b7c6f5a8ba7d78e"
+    },
+    "booktx/templates/shadows_of_apt.json": {
+      "sha256": "14d1ba8ee2847fd3310121bc7222c43c56aeb4eb2b287265d79ad09c6a9d59c8"
+    },
+    "booktx/termbase.py": {
+      "sha256": "78e9061a1b67f83f9d8009ada1b48ec580115e84d9a3f9741ea6b09b07217e9e"
+    },
+    "booktx/termbase_audit.py": {
+      "sha256": "8a6f4b5bd9c18c88832df89000c2ecc307111323dd852ff51059bbd79753c88b"
+    },
+    "booktx/termbase_match.py": {
+      "sha256": "e1827fce9d03e89d1ab52bcfebc94f0ed61aa8e958fcf9706361c74c9e9f240e"
+    },
+    "booktx/termbase_tasking.py": {
+      "sha256": "d69c026c34c4e992c818d4abde796e54a41ded94195a3cf402236487a4bce6e4"
+    },
+    "booktx/text_normalization.py": {
+      "sha256": "6d91de7e70772e4b9bc07b58631869b138b25fa78cf38eff870677cdbdc41c33"
+    },
+    "booktx/todo_lifecycle.py": {
+      "sha256": "e8785af6187f55cd09a45be27435a122ccda9eb5d012633b34fb4d6bdd790270"
+    },
+    "booktx/todo_resume.py": {
+      "sha256": "c1a970ff774e17e9941efd453c1a0689334607bb77f2d4ae93eb80f55c5bf184"
+    },
+    "booktx/todo_status.py": {
+      "sha256": "1efa91e5b84343ba22b56af3f69e74e6094fcb235f739ad10af45c098fc10531"
+    },
+    "booktx/translation_concordance.py": {
+      "sha256": "a7ec672358a125b52471b14a9fd510633c4364255de9e3dc8688119d7e749324"
+    },
+    "booktx/translation_store.py": {
+      "sha256": "7eac958c59f1a33c2eddc4ac811b6d0dfc0d69444a8216ccac4b45354db7b072"
+    },
+    "booktx/validate.py": {
+      "sha256": "8cd1797c802e3bc7682e8ec6cee44147b59fbc1c864396d926c6af0aa34712bb"
+    },
+    "booktx/validation_receipts.py": {
+      "sha256": "2486eede4edd8924a0da57dd3427cb45b767f9da5e3ce0b59e31e1548af35a0e"
+    },
+    "booktx/versioning.py": {
+      "sha256": "c5634d1f70d244d2d03312b6450f90b11379ecbe40c22c7434c08dd13ec8df81"
+    },
+    "booktx/workflows/__init__.py": {
+      "sha256": "dee3daa93ee579b8603ac1b4e9f4a39dba20eea0bc5ebbcc580f84db475b5a3f"
+    },
+    "booktx/workflows/agents.py": {
+      "sha256": "c7eccac897719ae871aeb43213d96a182ac434fdfe8f5547d23c10a5b7dab299"
+    },
+    "booktx/workflows/context.py": {
+      "sha256": "3269bb331b67660bb87555c06f928c991236ce00bab376d4257e89a0ec7380d6"
+    },
+    "booktx/workflows/epub.py": {
+      "sha256": "11d73e26b60bc531fa20b7c477c40c5d12f01238869d60dc06720bab18e9c73d"
+    },
+    "booktx/workflows/glossary.py": {
+      "sha256": "bf11a8c94b39ccb0cedd790d9e18237389ebdebc60b4b8d11328249bbcae8a70"
+    },
+    "booktx/workflows/identity.py": {
+      "sha256": "b2795815e9061e9706d7b45e1f52aabfc0eea328a11ad6ac9e0f6bf72a2914ae"
+    },
+    "booktx/workflows/judge.py": {
+      "sha256": "3c32b5eee4591aac2e77ab56f8501b48012feceaf2c066192ab5d9c5de9ba753"
+    },
+    "booktx/workflows/profile.py": {
+      "sha256": "c080378fbaaa1fdaa4205750db9ed794dca49ada00e86422ae107b467eeb866e"
+    },
+    "booktx/workflows/review.py": {
+      "sha256": "48e485d214f0216294a2ead4560f146f98f15089e917509b0141e4419992c9ae"
+    },
+    "booktx/workflows/root.py": {
+      "sha256": "107cf75a16fe1e85cdcbc8cc9fa61c9b014b8b0c852061126246b12abb85c7d4"
+    },
+    "booktx/workflows/series.py": {
+      "sha256": "795278ffef25fdf395bf11c651db590cdbcddfe026ec35e0aeb8cd22752eae86"
+    },
+    "booktx/workflows/source.py": {
+      "sha256": "9bef58d373e81b63501e4ecb61600e9e1437170c3b331580eb92869e9480f7d0"
+    },
+    "booktx/workflows/source_interview.py": {
+      "sha256": "0f0a226ad9dc0fba145bbb1a536d9052958a8ff4cda30f178d3152d10d24ab4e"
+    },
+    "booktx/workflows/termbase.py": {
+      "sha256": "711dce8c14112fe66263a952695562a2f26312fbdad3358983e5a444fb1c7b37"
+    },
+    "booktx/workflows/translate.py": {
+      "sha256": "1b7563d53ae4dc9d42079a928d9b644886ce599d9848904a4d3da25e789576e7"
+    },
+    "booktx/workflows/version.py": {
+      "sha256": "6e008040a372ef30a9eca6a788565354ba02ba86c5da2da26e76581f1b80931e"
+    },
+    "docs/agent-workflow.md": {
+      "sha256": "6db08512ec2dce0ee74dd232f9dd983e47f7fa9837390333eb90e9e09faad487"
+    },
+    "docs/api.md": {
+      "sha256": "50c757ce96ebbbf3e870cf56871d51be10b9f1914c1d0e16b44717c031c7bf6f"
+    },
+    "docs/architecture.md": {
+      "sha256": "17a0c5d25c404696c5b282fd2c1f88cda1ef3ae85b9901ef6825db9a03294b18"
+    },
+    "docs/commands.md": {
+      "sha256": "69a8876fc4c5108fb50342fd02a04b065189fa28a1930d12b39df22e89152f01"
+    },
+    "docs/concepts.md": {
+      "sha256": "d8200cc68eb6744e1aea14f614e1c66eeb6178a629b4c9157cc06dfbf5a4509f"
+    },
+    "docs/conf.py": {
+      "sha256": "46b42d5de10b3acda00ee5ad0b4a76ab2a98ed27a9721e8891052f3e6cc0cfd3"
+    },
+    "docs/context.md": {
+      "sha256": "16db9b32c0f0caf9afa5afdc020749f6ec2b12cfcf59ac2bb76ae63405b811c7"
+    },
+    "docs/development.md": {
+      "sha256": "7f597a0926704497e1654f7232b37f1922d4d011cb996d409215b6fe6e110274"
+    },
+    "docs/epub.md": {
+      "sha256": "a1401351425f7037d5ba3147cce2e99d7d2ead6265ce9e9b503564ceded4cb30"
+    },
+    "docs/human-workflows.md": {
+      "sha256": "1193288a9817162af17efc725fc1e0968e59fa2e237ee67367483ac1f1b7e299"
+    },
+    "docs/index.md": {
+      "sha256": "86a087711e4712e758b07bfa1f330ebefa3bc97c0f99a5f53c424c1b0c4c90f4"
+    },
+    "docs/maintenance.md": {
+      "sha256": "04929d2ada41aeb26c751686fbb4f656fb129fd903dc1f953b11daf81c6600e9"
+    },
+    "docs/markdown.md": {
+      "sha256": "3f04da97dfea628c156267ef3ede0dc5cd46174cbb7a12cef59221ac9a1788f8"
+    },
+    "docs/mypy-baseline.md": {
+      "sha256": "8a72ca73770da2f13e6641948eea6016ec00a76c102755cbcbaa814ea19c563d"
+    },
+    "docs/profiles.md": {
+      "sha256": "2a519b98f18c90437e92102d85c957da70effc1aa17f69c36086a27b174d1a64"
+    },
+    "docs/project-layout.md": {
+      "sha256": "0dd569bbd5aa4f09391d40b2484f17128adc2bf9e80f7bb59aa263d1c518518f"
+    },
+    "docs/quickstart.md": {
+      "sha256": "bbdfe020200392e2450e7b924c9a40e91ddb65555e74fdbb015ed115cdfe2f66"
+    },
+    "docs/releasing.md": {
+      "sha256": "3e97498c4e68d69001a8c852a1b4f795ca77bf2dfb0e84f3a8d86081034095b3"
+    },
+    "docs/series.md": {
+      "sha256": "fbb5762ffc6f34388cc97dc22ca01a729199a01070dc2f0035d26f476128e60f"
+    },
+    "docs/translation-contract.md": {
+      "sha256": "0784a970b93d836c7f798f3ae7c4d6343d030012901e89195c276a08ad8745b3"
+    },
+    "docs/troubleshooting.md": {
+      "sha256": "9f81f5f858a6c126be7530da044b7979212d9b71e50615258815a94d8db301bf"
+    },
+    "pyproject.toml": {
+      "sha256": "f6284cc50894f7d3922d0c6e39d23e2efa30818e263411d95eaaf34cd53ad0d3"
+    },
+    "scripts/check_command_catalog.py": {
+      "sha256": "00433c744a2f0914c4cd211ae75cfca7e8362230c208f0e98e42468974a9d452"
+    },
+    "scripts/quality_gate.py": {
+      "sha256": "8ecc79d0a0d5459b241d2deea6e21ad8e51b1d0116ffa1d47639e81220820b0f"
+    },
+    "skills/booktx/SKILL.md": {
+      "sha256": "0116d0db39db8bb287354ecda8dabad024e5a89e1a0ba5189d7f883827cf20d4"
+    },
+    "tests/__init__.py": {
+      "sha256": "56ac42a23f7838a820e4db0496af1aefdbbd709aa1e81b68abe176d658f6c332"
+    },
+    "tests/book/.booktx/chunks/0001.json": {
+      "sha256": "d92ded9672600dac02f885eda98d0da7141ecd8a0a2f1f82ef5629a5d3d12f17"
+    },
+    "tests/book/.booktx/names.json": {
+      "sha256": "4c413778f5ba7213c942ea58ca568e9456e2ae14e61bcb1eb1cd471f71432108"
+    },
+    "tests/book/.booktx/profile-state.json": {
+      "sha256": "cf43a32c7cae1641caa7fe7759913facbfecd6bdf5179a196eeb79066fb60549"
+    },
+    "tests/book/.booktx/reports/chapter-audit.json": {
+      "sha256": "292bbede55b3079f1a4e0082c6a15040578cd0b9c62c6dd9aff380c04bc0396a"
+    },
+    "tests/book/.booktx/source-config.toml": {
+      "sha256": "ac813ccdd66c8949279b74d286d5350bc24780a86a02b39e25b250ddcc51b896"
+    },
+    "tests/book/.booktx/source-manifest.json": {
+      "sha256": "222110a7ade4e3aa10c9673b1bc59033b2d33ac81a06864488a1ab8fb7f23b44"
+    },
+    "tests/book/translations/de_default/.booktx-profile.json": {
+      "sha256": "807024c43fb8218e3195a4789f857e474322270966ad70f23873f6cb2ac5f3a8"
+    },
+    "tests/book/translations/de_default/config.toml": {
+      "sha256": "c9888b281961233ff8cfdc797e4f56edb30a83a7f1c03ca0af79fb83d2b85bf4"
+    },
+    "tests/book/translations/de_default/identity.json": {
+      "sha256": "6831f9a427cb79d93a3d548313e667fa9f67e9353286688490d00c2bb175dee3"
+    },
+    "tests/book/translations/de_default/translated/0001.json": {
+      "sha256": "5389da5b65b5a4dfcd4661281dc31d3fd79a7e904c8edc3911a819ee3e982e0a"
+    },
+    "tests/store_backend_fixtures.py": {
+      "sha256": "316ba3537764a1e5b7dd0e1529507c657d7d1cfb5ee36b24d434f1658e2a6fc1"
+    },
+    "tests/test_acceptance.py": {
+      "sha256": "d81b2682db075f43b0dec422171c7751acf588e7d7b1c842dd540ec556716884"
+    },
+    "tests/test_agents_md.py": {
+      "sha256": "a882bab12d9c671314655fd7018baaad5541210698152339dc033df76bd0063d"
+    },
+    "tests/test_bootstrap.py": {
+      "sha256": "247e35c3cd0db02d11408c591b81574bdc34347bfa34fd2ee34ce7242acd1f00"
+    },
+    "tests/test_build.py": {
+      "sha256": "a92d3a2ccf714140cc63af37d81f5dc5f903a55fc149de1371a647827484f761"
+    },
+    "tests/test_chapters.py": {
+      "sha256": "f50eeb23e8435bbb75c2d10104ff7a7dda59b6a302f3c0e787711579b601ae52"
+    },
+    "tests/test_chunking.py": {
+      "sha256": "f6d99b5debff73d803b3c70b2efb1e8f0fb85990785284871177bdc4f8fd3b55"
+    },
+    "tests/test_cli.py": {
+      "sha256": "c692349695bbd1f39eb3b2b3ffcb84cba8fed8aba5bd708e1ce314fe702538b1"
+    },
+    "tests/test_cli_chapters.py": {
+      "sha256": "e2fdf1c62de502711e57ba0e40b5da14cf5d06d7367490be9ec61d62c1e5c19a"
+    },
+    "tests/test_cli_command_boundary.py": {
+      "sha256": "436afa37ddfc6dc4122f2c3106f4e36d41ad107de75aa58fdaad013acb07b8a7"
+    },
+    "tests/test_cli_context.py": {
+      "sha256": "76e2b5a620cdb101f6b49d96a6f32593923162aaadd1745c6a69d63b9fe09564"
+    },
+    "tests/test_cli_context_pack.py": {
+      "sha256": "dd219d4f1a001425f17de5557a90edc2a5ab9ac1313dd3c5db394b0598218c25"
+    },
+    "tests/test_cli_glossary.py": {
+      "sha256": "9b37d8f2636fb8a38ba91aaf9ef021ba7f5b199412e8c1dee385c3025ba02d47"
+    },
+    "tests/test_cli_isolation.py": {
+      "sha256": "4bd498ee0f6344fdcee8678f4c27cab377690cf850b60e2d83178561d24cd619"
+    },
+    "tests/test_cli_large_chapter.py": {
+      "sha256": "21983c1fcc7b9124ae99636153a089be39fe85f5bdc60d497aaa88cd023e645d"
+    },
+    "tests/test_cli_phase3_context.py": {
+      "sha256": "549baafb32475938f7c6f01f1be2b674a834a025d4b21684e66640a03166407c"
+    },
+    "tests/test_cli_phase3_epub.py": {
+      "sha256": "d7f6a839bd88f0e475a28f77743f58fddc910495c48c4400dca34623c0c7325e"
+    },
+    "tests/test_cli_phase3_identity.py": {
+      "sha256": "26543654330c80bdce1f2d204fa934b7172c45132c071fac67455697868c2100"
+    },
+    "tests/test_cli_phase3_profile.py": {
+      "sha256": "a97179bb26474296b09c722382b555966b59a5481b2afb2daaaf8efeccb96531"
+    },
+    "tests/test_cli_phase3_review.py": {
+      "sha256": "a547761506dbca1ce936882b52ca408983f6aeec03ec2de3d71bb9e9acfef927"
+    },
+    "tests/test_cli_phase3_root.py": {
+      "sha256": "509862879d1d6227170b8bc2475476ea63c3cb4a3344401e989dda026ae969b9"
+    },
+    "tests/test_cli_phase3_source.py": {
+      "sha256": "2ec06681826f953b84c537ab470fbcff6d79acc8795f9e70501cf56d9214c5da"
+    },
+    "tests/test_cli_phase3_translate.py": {
+      "sha256": "47a01bd7a1a230524d9ab2f5c6fb5bc2d5659f5cfb289944e567bae54a4f1d3a"
+    },
+    "tests/test_cli_review.py": {
+      "sha256": "736619f22aa206988d334a6b2094c1d96d163dab545bec319cf5c72b21bf6029"
+    },
+    "tests/test_cli_series.py": {
+      "sha256": "63e743edb23cdc95cc3a128186b2daa41a53775699fb4abc3c01a74bb11bc533"
+    },
+    "tests/test_cli_source_analysis.py": {
+      "sha256": "d4ec78c7c1d1f73d16fc6672307843962c784605bd91a1c82314a59e4634a446"
+    },
+    "tests/test_cli_termbase.py": {
+      "sha256": "b97820e2f970a9157715aad0f6dcccfd40bbae6a02b8ad5baf285a591da9f320"
+    },
+    "tests/test_cli_translate.py": {
+      "sha256": "72ce9a8bf00f3e98daadd2d31af650adff4a6e2703b4cf4962ab701132b44c39"
+    },
+    "tests/test_cli_translate_todo.py": {
+      "sha256": "f64253337d1ab9de673a55e273c03542ca6ff0c88b577166d668551175dda090"
+    },
+    "tests/test_command_catalog.py": {
+      "sha256": "93f87b8f9bb04ac7de0b06a1d30ecff374a202c38bfe31294aea970974412919"
+    },
+    "tests/test_config.py": {
+      "sha256": "7d1b9800b098d6b757c4dab00d9a051560946553d798d4a51065eca47583ce51"
+    },
+    "tests/test_context_io.py": {
+      "sha256": "57fe3161116910d8039d9cfc3a06584ab085f460eb1686ae05c751988890979d"
+    },
+    "tests/test_context_models.py": {
+      "sha256": "76eb0e93889198f1ea0356e9de780e006affea6dcafe68b870a7387d942ddc49"
+    },
+    "tests/test_context_organization.py": {
+      "sha256": "b1e657051a85e6616532ceb535011efdb23de86117ff5920faa88b359d5ea1b5"
+    },
+    "tests/test_context_packs.py": {
+      "sha256": "3f74463acc20e5a5bd6de11c2b60da3e633fd4de763225c7ab0f0a933028a700"
+    },
+    "tests/test_context_sync.py": {
+      "sha256": "20e22fd73ce99e471a9fa5a439cd006396ef4671f55e34b425c71f8e7efe60ad"
+    },
+    "tests/test_docs_consistency.py": {
+      "sha256": "8dc5a2300b2faf2abae0665caed5ca245dd76b9fd72eea1f62c67357509e9ef8"
+    },
+    "tests/test_editor_indexes.py": {
+      "sha256": "480ebee2f5859d13586882d1a8270571288a46e1496b202805a1e798e4d1fcd0"
+    },
+    "tests/test_epub_inline_xhtml.py": {
+      "sha256": "9b5c09c9fa13d335d244e218c43cd7020a5b2fc3485b80cd0f6552a989ec7e22"
+    },
+    "tests/test_epub_io.py": {
+      "sha256": "ee1c53d5ae73574956d74374377cb2a839a0afbb28a32e101fe2c26da50f4a48"
+    },
+    "tests/test_epub_output_policy.py": {
+      "sha256": "5caa3b28dee60105c191c2df9afa086103e893e8d3fb63fd1de98a3419030bfb"
+    },
+    "tests/test_epub_toc_audit.py": {
+      "sha256": "05c210adf80a46650d4c0806ee6752e4316115f4ddc807044b1b0195e8772cc7"
+    },
+    "tests/test_errors.py": {
+      "sha256": "5946a2ceb6e3f61b650f7733545cf551cc4804acc252c3746f71051fb080f52c"
+    },
+    "tests/test_glossary_context_migration.py": {
+      "sha256": "a5618a4bc5dd7b57143f6c10069a39ace198efc4f728dfc54527cf41ed269b1e"
+    },
+    "tests/test_glossary_enforcement.py": {
+      "sha256": "c3bf02d72745517898fe672f7a24ec6db7e2f48c96da452168b34be1f6829617"
+    },
+    "tests/test_grammar_audit.py": {
+      "sha256": "2ebd3fb32c4f3b0244223a9eb7ee91d0f95e94168af539f6d1269c37bf9b6a38"
+    },
+    "tests/test_html_io.py": {
+      "sha256": "24eeb72f729b588e3cfe89b350701ad7db0dae59eb922c45e6edad81b0ad90a0"
+    },
+    "tests/test_import_health.py": {
+      "sha256": "886c25d62528bf4b33bcf1b4c529e4e876aac5cde59c26bf7e556f81ab58ebe1"
+    },
+    "tests/test_judge.py": {
+      "sha256": "00d66e96fb066b885a0c4391a66869e81880dcd90b7a905d5a5e1273857016d4"
+    },
+    "tests/test_judge_compact.py": {
+      "sha256": "ac522a5944b119bd8c4369163158fdc5a0570929413ecf7a59df0535bfe0bd31"
+    },
+    "tests/test_judge_policy.py": {
+      "sha256": "768b52bd223c2e42d2d64086fadab3304be0bd6c46a492de36de70a313b67e6e"
+    },
+    "tests/test_markdown_io.py": {
+      "sha256": "3eb1d3f1087b7a6b5934d3d52bee4f78c1ae676d003d7faa04cdc3a17699894b"
+    },
+    "tests/test_models.py": {
+      "sha256": "3005edf19927ba23ef469f4a5591cb40ab95f0b04e7b772ab5da018127d6f6be"
+    },
+    "tests/test_pass_through.py": {
+      "sha256": "5246ab7b267bbadcea5568480642c9da62231132334e93cae86a71e9586e66a2"
+    },
+    "tests/test_path_ids.py": {
+      "sha256": "37573205e9a40008c16aa126b3a40c947827687bd2b818cfcc0f709e77ea4bfa"
+    },
+    "tests/test_placeholders.py": {
+      "sha256": "cab64fa05f474191680fa3a040997ccc3f235a6a62620c7d0c3607c27e0ffd5b"
+    },
+    "tests/test_profile_migration.py": {
+      "sha256": "4f4eddba856a5b25f5709fb4afc313a9b1a22115a1b7ca4b08efd83ec985ada4"
+    },
+    "tests/test_profiles.py": {
+      "sha256": "ab825cd6ea6a15bd1997586cb17eacf6308aab64f3c993d49916f96328ba59e9"
+    },
+    "tests/test_progress.py": {
+      "sha256": "9e39ba863e30a637c84aba28f1c283c575a35b03f1f5a7633421e2d60ede3091"
+    },
+    "tests/test_qa_scan.py": {
+      "sha256": "cbdbbb3c0e5969d2ffea843fd2be810f9c6f74276e5f28218285cb58200a3b69"
+    },
+    "tests/test_review_acceptance.py": {
+      "sha256": "4a6035522a0f2ce327246af17728b9f65e34311d7cfa2a53b2756fea05508502"
+    },
+    "tests/test_review_refs.py": {
+      "sha256": "d986b3cdf68ac622e737b316a748821c9f5dd9132729122d56835c8f1ed63a57"
+    },
+    "tests/test_review_status.py": {
+      "sha256": "ef440e17fe3cf486204aed29b2f4d0cce227f41be7e046cfddae3e0112215618"
+    },
+    "tests/test_review_store.py": {
+      "sha256": "e6cd3a011cf3a5dde1b727066d524d7098f8ac49a389cbdc4a3332ccfb0d9814"
+    },
+    "tests/test_review_tasks.py": {
+      "sha256": "d78cb19a863a2767d9479c45875692e2adb71526f592a71c6e92ef5cf9750ab4"
+    },
+    "tests/test_review_todo.py": {
+      "sha256": "afa26ec7ec8e494175794839aa4795f3d9c101dbdc5cc1c1664467d33ab8d200"
+    },
+    "tests/test_runtime.py": {
+      "sha256": "966a88c21d535a87b51a45871467c50f5a76c9c786bfd2efbaf29ca29c895724"
+    },
+    "tests/test_source_analysis.py": {
+      "sha256": "7116cbfb31d4bfbe4a9fa2332d2057b7e594796110b02cd0853d63ec9eaa5a2b"
+    },
+    "tests/test_source_analysis_context.py": {
+      "sha256": "a02f0c2237d80d0ccc47e87727ce143e5caf5fa7ff3fda79d639d487baa842c4"
+    },
+    "tests/test_source_interview.py": {
+      "sha256": "52c2ae3605901454d14ce319dce124ae2bbec1e524b96120e5fd329f427c8117"
+    },
+    "tests/test_status.py": {
+      "sha256": "a859b3c017a8a34b74581795fd81844a514eebf65f5895d41d1c0c70b3695ae3"
+    },
+    "tests/test_store_backend_parity.py": {
+      "sha256": "bc0ff9bc4c472ff5fd87a59f4d6f0ff8773417870ae6c5d44317fa1d0f8f5459"
+    },
+    "tests/test_store_backend_v3.py": {
+      "sha256": "89bfdf82c3eee85ecee832001b47bfd551984ea056b9ff9b5af4951696f91815"
+    },
+    "tests/test_store_migration_v3.py": {
+      "sha256": "3f8a330d48a2691c266324878989797ec09f41a43f9bb51014eaf00cb6f6b167"
+    },
+    "tests/test_store_models_v3.py": {
+      "sha256": "97092431ae7ea742b5b15a8688db6dc1fac2d1e6ba796115cb6a46e914ddf5f4"
+    },
+    "tests/test_store_transactions.py": {
+      "sha256": "7f1f92aa0f4e15127de86968bd1679e60e8bf47f215e22ecd99c4af94d1b7227"
+    },
+    "tests/test_tasks_submissions.py": {
+      "sha256": "37c8f010c7f47c64d0dc354dd3d276331ae9317192b867ffb2e1ccfa8ab4027b"
+    },
+    "tests/test_termbase_isolation.py": {
+      "sha256": "3bded1a25f3c79208d8025a786dae7138258c27bf03f62a8b2ffc3e9f67fb728"
+    },
+    "tests/test_termbase_match.py": {
+      "sha256": "48acffbb5fe3b8af422df2b027536efb9aaea01c7f7faa3430ac729e10a38f29"
+    },
+    "tests/test_termbase_models.py": {
+      "sha256": "34363973edc90e93c5c4c07bfd32ac47219571061db33ccec8323d8b03da5dc5"
+    },
+    "tests/test_termbase_tasks.py": {
+      "sha256": "50b1afc5e265c2b87395dcd1bcc671cfa814887af15ed3ebb28fdbe0147ab5da"
+    },
+    "tests/test_termbase_validation.py": {
+      "sha256": "f8e7de90e404aa1d10e59afb229037d413391063c3181f486ab84765cc28406b"
+    },
+    "tests/test_translation_concordance.py": {
+      "sha256": "f3e44d5d51d480f1f1775fb5d6caa85e4d23efbd5754d3fc35c5b778f7d8e895"
+    },
+    "tests/test_validate.py": {
+      "sha256": "3332f537d9cb1af4081232bd11056c5b553937304d309b6321fe18f11b2c4f0b"
+    },
+    "tests/test_validate_context.py": {
+      "sha256": "aaddb5cb9dadeeacaedcfe644266fe2e3e3d0fd48e235504522758daf17702af"
+    },
+    "tests/test_version.py": {
+      "sha256": "918513b386fa8477a8c3047708bcfa84c464fbf2e80488709f235fb9957f0370"
+    }
+  },
+  "project_name": "booktx",
+  "project_uuid": "816e173a-3ffa-4a95-80bd-6da6f6e3a54e",
+  "reason": "Initial complete arc42 architecture documentation for booktx",
+  "scanner": {
+    "exclude": [
+      ".git/**",
+      ".venv/**",
+      "**/__pycache__/**",
+      ".mypy_cache/**",
+      ".pytest_cache/**",
+      ".ruff_cache/**",
+      "dist/**",
+      "build/**",
+      ".ledger/**"
+    ],
+    "hash_algorithm": "sha256",
+    "hash_content": "utf8-surrogateescape-lf-normalized",
+    "include": [
+      "**/*.py",
+      "**/*.toml",
+      "**/*.md",
+      "**/*.adoc",
+      "**/*.rst",
+      "**/*.j2",
+      "**/*.yaml",
+      "**/*.yml",
+      "**/*.json"
+    ],
+    "max_file_bytes": 1000000,
+    "mode": "auto",
+    "used": "git"
+  },
+  "schema": "archledger.source-state.v3",
+  "version": 1
+}

@@ -18,9 +18,7 @@ def render_startup_failure(
 ) -> None:
     """Render an actionable startup error without importing the CLI stack."""
     output = stream or sys.stderr
-    show_traceback = (
-        os.environ.get("BOOKTX_DEBUG") == "1" if debug is None else debug
-    )
+    show_traceback = os.environ.get("BOOKTX_DEBUG") == "1" if debug is None else debug
     output.write(
         "booktx could not start.\n\n"
         "Startup error:\n"

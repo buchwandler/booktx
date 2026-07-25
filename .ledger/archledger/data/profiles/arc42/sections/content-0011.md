@@ -1,0 +1,55 @@
+---
+schema_version: 4
+id: content-0011
+kind: content
+type: section
+section: risks_and_technical_debt
+title: Risks and Technical Debt
+order: 110
+status: accepted
+version: 2
+body_format: markdown
+---
+
+## Risks
+
+### RISK-1: V2 Store Scalability
+
+**Severity:** Medium | **Probability:** Medium
+
+Large books (100k+ records) produce multi-megabyte `translation-store.json` files. The single-file V2 store loads entirely into memory.
+
+**Mitigation:** V3 shard-based store is implemented and under stabilization. Migration path exists (`booktx store migrate-v3`). Parity tests validate V2↔V3 equivalence.
+
+### RISK-2: Agent Context Window Overflow
+
+**Severity:** Medium | **Probability:** Medium
+
+Large chapters with many context records may exceed LLM context windows. Task word budgets and context window sizes are configurable but not automatically enforced against external model limits.
+
+**Mitigation:** `batch_words` and `before_records`/`after_records` config options. `include_untranslated_neighbors` toggle for review tasks. Todo `max_run_words` cap.
+
+### RISK-3: Placeholder Collision
+
+**Severity:** Low | **Probability:** Low
+
+If source text contains literal `__NAME_NNN__`-like strings, extraction may produce false placeholder matches.
+
+**Mitigation:** Placeholder tokens use a distinct pattern unlikely in natural text. Custom patterns configurable via `SourceAnalysisPatternsConfig`.
+
+### RISK-4: Source Format Drift
+
+**Severity:** Medium | **Probability:** Low
+
+EPUB or Markdown parsing libraries may change behavior across versions, affecting extraction output.
+
+**Mitigation:** Pinned dependency versions in `pyproject.toml`. Manifest records source SHA-256; extraction checks for source drift. Test suite covers format-specific edge cases.
+
+## Technical Debt
+
+| Item                                                | Impact                                                                     | Remediation                                    |
+| --------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------- |
+| Legacy layout support (`config.py` dual code paths) | Maintenance burden; every path resolver has two branches                   | Deprecate legacy layout after migration window |
+| V1 flat store compatibility surface                 | `legacy_store_to_v2()` and `migrate_legacy_store()` kept for import/export | Remove after V2-only guarantee                 |
+| `chapter-map.json` dual location                    | Legacy and profile layouts store it differently                            | Normalize to `.booktx/chapter-map.json`        |
+| `context_booktx.*` generated files in repo root     | 6+ MB of context analysis artifacts                                        | Move to `.booktx/` or `.gitignore`             |
