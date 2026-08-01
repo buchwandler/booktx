@@ -6,7 +6,7 @@ import json
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import tomli_w
 
@@ -1114,8 +1114,10 @@ def prepare_series_book(request: SeriesPrepareRequest) -> SeriesPrepareResult:
             "decision_template": interview_report_result.template_path,
             "missing": False,
             "stale": False,
-            "open": interview_payload["summary"]["open"],
-            "counts_by_bucket": interview_payload["summary"]["by_bucket"],
+            "open": cast(dict[str, object], interview_payload["summary"])["open"],
+            "counts_by_bucket": cast(dict[str, object], interview_payload["summary"])[
+                "by_bucket"
+            ],
         },
     )
     steps.append(
@@ -1210,7 +1212,7 @@ def series_status(book: Path, *, profile: str) -> dict[str, Any]:
         "source_interview": {
             "ok": not interview["missing"]
             and not interview["stale"]
-            and int(interview["open"]) == 0,
+            and cast(int, interview["open"]) == 0,
             **interview,
         },
         "context_required_questions": {
@@ -1226,12 +1228,19 @@ def series_status(book: Path, *, profile: str) -> dict[str, Any]:
         "context_ready": {"ok": context.ready},
         "agents": {"ok": agents_ok, "stale": bool(agent and agent.stale)},
     }
-    ready = all(bool(value.get("ok")) for value in checks.values())
+    ready = all(
+        bool(cast(dict[str, Any], value).get("ok")) for value in checks.values()
+    )
     stage = (
         "translating"
         if ready
         else next(
-            (name for name, value in checks.items() if not value.get("ok")), "review"
+            (
+                name
+                for name, value in checks.items()
+                if not cast(dict[str, Any], value).get("ok")
+            ),
+            "review",
         )
     )
     return {

@@ -16,7 +16,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from booktx.config import _err, list_profiles, load_profile_config, load_project
 from booktx.context import (
@@ -959,7 +959,7 @@ def mark_ready_workflow(
                         "source-policy interview is missing or stale; run "
                         "`booktx source interview-plan BOOK --profile PROFILE --write`",
                     )
-                if int(interview["open"]) > 0:
+                if cast(int, interview["open"]) > 0:
                     raise _err(
                         "mark_ready_source_interview_open",
                         "source-policy interview has open items; resolve them "

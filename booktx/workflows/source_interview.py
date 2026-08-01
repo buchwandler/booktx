@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NoReturn
 
 from booktx.config import load_profile_project
 from booktx.context import load_context
@@ -294,7 +294,7 @@ def _validate_manifest(
     return pending, unchanged
 
 
-def _raise_manifest_candidate(candidate_id: str) -> None:
+def _raise_manifest_candidate(candidate_id: str) -> NoReturn:
     raise _err(
         "source_interview_manifest_candidate",
         f"unknown source-analysis candidate: {candidate_id}",
@@ -319,6 +319,7 @@ def interview_apply(
     _pending, unchanged = _validate_manifest(
         project, profile, manifest, ledger, report, context, canonical
     )
+    assert profile_project.profile_dir is not None
     snapshot = (
         _snapshot_tree([project.booktx_dir, profile_project.profile_dir])
         if write
