@@ -194,7 +194,7 @@ def test_judge_admin_commands_blocked_in_profile_root(monkeypatch, tmp_path: Pat
 
 def test_judge_allowed_commands_in_profile_root(monkeypatch, tmp_path: Path):
     """judge status/next/insert are allowed for selection profiles in profile-root."""
-    project_dir, profile_root = _make_project(tmp_path)
+    project_dir, _profile_root = _make_project(tmp_path)
     from booktx.config import (
         create_profile as cp,
     )

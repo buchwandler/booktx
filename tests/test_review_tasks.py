@@ -218,7 +218,7 @@ def _pass1_reviewed_records(tmp_path: Path):
 
 
 def test_select_reviewed_active_review_creates_r1_2(tmp_path: Path):
-    proj, bundle, records = _pass1_reviewed_records(tmp_path)
+    _proj, bundle, records = _pass1_reviewed_records(tmp_path)
     selected = select_review_records(
         bundle,
         records,
@@ -236,7 +236,7 @@ def test_select_reviewed_active_review_creates_r1_2(tmp_path: Path):
 
 
 def test_select_missing_default_skips_reviewed_records(tmp_path: Path):
-    proj, bundle, records = _pass1_reviewed_records(tmp_path)
+    _proj, bundle, records = _pass1_reviewed_records(tmp_path)
     # Default selection (missing) finds nothing because everything is reviewed.
     selected = select_review_records(bundle, records, _pass_cfg(), pass_number=1)
     assert selected == []

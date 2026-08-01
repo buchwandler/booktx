@@ -1904,7 +1904,7 @@ def _classify_candidate(
         accum, features=features, common=common, runtime=runtime
     )
     rarity = _rarity_score(accum)
-    (morphology, name_score, termhood, dispersion, grammar_noise, risk_score) = (
+    (_morphology, _name_score, _termhood, _dispersion, _grammar_noise, risk_score) = (
         _compute_candidate_scores(accum, features, genericity, rarity)
     )
 

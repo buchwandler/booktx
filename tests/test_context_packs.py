@@ -590,7 +590,7 @@ def test_new_imported_questions_get_snnn_ids(tmp_path: Path):
             )
         ],
     )
-    planned, result = plan_context_pack_import(proj, pack)
+    planned, _result = plan_context_pack_import(proj, pack)
     ids = [q.id for q in planned.questions]
     assert any(i.startswith("S") for i in ids)
     # Generic Q099 must not appear as a new id.

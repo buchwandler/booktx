@@ -144,7 +144,7 @@ def _build_review_task(tmp_path: Path):
 
 
 def test_unchanged_target_creates_review_candidate(tmp_path: Path):
-    proj, bundle, cfg, task, records = _build_review_task(tmp_path)
+    proj, bundle, cfg, task, _records = _build_review_task(tmp_path)
     submitted = [SubmittedReview(id=r.id, target=r.base_target) for r in task.records]
     result = accept_review_submission(
         proj, task, submitted, bundle=bundle, quality_cfg=cfg
@@ -159,7 +159,7 @@ def test_unchanged_target_creates_review_candidate(tmp_path: Path):
 
 
 def test_changed_target_does_not_alter_base_version(tmp_path: Path):
-    proj, bundle, cfg, task, records = _build_review_task(tmp_path)
+    proj, bundle, cfg, task, _records = _build_review_task(tmp_path)
     submitted = [
         SubmittedReview(id=r.id, target=r.base_target + " polished")
         for r in task.records
@@ -176,7 +176,7 @@ def test_changed_target_does_not_alter_base_version(tmp_path: Path):
 
 
 def test_base_drift_rejects_atomically(tmp_path: Path):
-    proj, bundle, cfg, task, records = _build_review_task(tmp_path)
+    proj, bundle, cfg, task, _records = _build_review_task(tmp_path)
     # Drift the base translation target after the task was created.
     store = load_translation_store(proj)
     first_id = task.records[0].id
@@ -194,7 +194,7 @@ def test_base_drift_rejects_atomically(tmp_path: Path):
 
 
 def test_no_activate_leaves_active_review_unchanged(tmp_path: Path):
-    proj, bundle, cfg, task, records = _build_review_task(tmp_path)
+    proj, bundle, cfg, task, _records = _build_review_task(tmp_path)
     submitted = [SubmittedReview(id=r.id, target=r.base_target) for r in task.records]
     result = accept_review_submission(
         proj, task, submitted, bundle=bundle, quality_cfg=cfg, no_activate=True
@@ -209,7 +209,7 @@ def test_no_activate_leaves_active_review_unchanged(tmp_path: Path):
 
 
 def test_idempotent_resubmission_is_noop(tmp_path: Path):
-    proj, bundle, cfg, task, records = _build_review_task(tmp_path)
+    proj, bundle, cfg, task, _records = _build_review_task(tmp_path)
     submitted = [SubmittedReview(id=r.id, target=r.base_target) for r in task.records]
     accept_review_submission(proj, task, submitted, bundle=bundle, quality_cfg=cfg)
     # Resubmit identical targets: no error, no duplicate candidates.
@@ -224,7 +224,7 @@ def test_idempotent_resubmission_is_noop(tmp_path: Path):
 
 
 def test_conflicting_review_ref_rejected(tmp_path: Path):
-    proj, bundle, cfg, task, records = _build_review_task(tmp_path)
+    proj, bundle, cfg, task, _records = _build_review_task(tmp_path)
     submitted = [SubmittedReview(id=r.id, target=r.base_target) for r in task.records]
     accept_review_submission(proj, task, submitted, bundle=bundle, quality_cfg=cfg)
     # Resubmit same review_ref with a different target -> conflict.

@@ -1333,7 +1333,7 @@ def finalize_series_book(book: Path, *, profile: str, write: bool) -> dict[str, 
         raise _err(
             "series_finalize_blocked", "finalization blocked by: " + ", ".join(blockers)
         )
-    source_project, profile_project, context = _load_series_profile(book, profile)
+    _source_project, profile_project, context = _load_series_profile(book, profile)
     if write:
         from booktx.workflows.context import mark_ready_workflow
 

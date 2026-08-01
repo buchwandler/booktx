@@ -154,7 +154,7 @@ def test_accept_one_record_persists_and_reports_chapter(tmp_path: Path):
 def test_translate_insert_respects_longer_glossary_shadow(tmp_path: Path) -> None:
     project_dir = _make_project(tmp_path)
     proj = load_project(project_dir, profile="de_default")
-    chunk_path = sorted(proj.chunks_dir.glob("*.json"))[0]
+    chunk_path = min(proj.chunks_dir.glob("*.json"))
     chunk_payload = json.loads(chunk_path.read_text("utf-8"))
     chunk_payload["records"][0]["source"] = (
         "One of the great Mole Cricket-kinden turned and nodded."

@@ -1112,7 +1112,7 @@ def test_judge_insert_rejects_candidate_hash_drift(tmp_path: Path):
 
 
 def test_judge_insert_rejects_forbidden_glossary_violation(tmp_path: Path):
-    project_dir, record_ids = _judge_project(tmp_path)
+    project_dir, _record_ids = _judge_project(tmp_path)
     lowlands_record = _record_id_for_text(project_dir, "Lowlands")
     mandate = runner.invoke(
         app,
@@ -2854,7 +2854,7 @@ def test_judge_accept_identical_complete_chapter_prints_global_next(tmp_path: Pa
 
 
 def test_judge_task_renders_binding_glossary_details(tmp_path: Path):
-    project_dir, record_ids = _judge_project(tmp_path)
+    project_dir, _record_ids = _judge_project(tmp_path)
     lowlands_record = _record_id_for_text(project_dir, "Lowlands")
     mandate = runner.invoke(
         app,
@@ -2902,7 +2902,7 @@ def test_judge_task_renders_binding_glossary_details(tmp_path: Path):
 
 
 def test_judge_task_renders_full_validation_messages(tmp_path: Path):
-    project_dir, record_ids = _judge_project(tmp_path)
+    project_dir, _record_ids = _judge_project(tmp_path)
     lowlands_record = _record_id_for_text(project_dir, "Lowlands")
     mandate = runner.invoke(
         app,

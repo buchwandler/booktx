@@ -206,7 +206,7 @@ def test_select_review_todo_chapters_counts_gaps_without_crashing(tmp_path):
     assert runner.invoke(app, ["extract", str(project_dir)]).exit_code == 0
 
     proj = load_project(project_dir, profile="de_default")
-    chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
+    chunk = json.loads(min(proj.chunks_dir.glob("*.json")).read_text("utf-8"))
     rec = chunk["records"][0]
     store = TranslationStoreV2(
         records={

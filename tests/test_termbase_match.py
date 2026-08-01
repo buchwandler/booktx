@@ -357,7 +357,7 @@ def test_preferred_absence_follows_policy():
 
 
 def test_audit_flags_forbidden_effective_target_only(tmp_path: Path):
-    project_dir, record_id = _make_project(tmp_path)
+    project_dir, _record_id = _make_project(tmp_path)
     project = load_project(project_dir, profile="de_default")
     bundle = build_status_snapshot(project, context_exists=False, context_ready=False)
     matching_view = next(

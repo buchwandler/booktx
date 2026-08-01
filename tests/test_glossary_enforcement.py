@@ -171,7 +171,7 @@ def _write_store_and_ledger(
             updated_at="2026-06-22T12:00:00Z",
             subversions={str(s.subversion): s for s in subs},
         )
-    active = record.active_version or sorted(tracked_refs)[0]
+    active = record.active_version or min(tracked_refs)
     write_translation_version_ledger(
         proj,
         TranslationVersionLedger(active_version=active, tracks=tracks),
@@ -224,7 +224,7 @@ def _write_store_and_ledger_multi(
             updated_at="2026-06-22T12:00:00Z",
             subversions={str(s.subversion): s for s in subs},
         )
-    active = sorted(tracked_refs)[-1]
+    active = max(tracked_refs)
     write_translation_version_ledger(
         proj,
         TranslationVersionLedger(active_version=active, tracks=tracks),

@@ -2467,7 +2467,7 @@ def test_translate_insert_stages_new_records_in_partially_translated_epub_chunk(
 def test_translate_revise_record_succeeds(tmp_path: Path):
     """ac-0007: revise-record accepts a new target and writes to the store."""
     project_dir = _make_project(tmp_path)
-    task, record, _ = _insert_identity_target(project_dir)
+    _task, record, _ = _insert_identity_target(project_dir)
     record_id = record["id"]
 
     # Revise the record with a new target.
@@ -2516,7 +2516,7 @@ def test_translate_revise_record_rejects_unknown_record(tmp_path: Path):
 def test_translate_revise_record_rejects_empty_target(tmp_path: Path):
     """ac-0008: revise-record rejects empty targets."""
     project_dir = _make_project(tmp_path)
-    task, record, _ = _insert_identity_target(project_dir)
+    _task, record, _ = _insert_identity_target(project_dir)
     record_id = record["id"]
 
     res = runner.invoke(
@@ -2540,7 +2540,7 @@ def test_translate_revise_record_rejects_empty_target(tmp_path: Path):
 def test_translate_revise_record_store_stays_valid(tmp_path: Path):
     """ac-0007: after revision, the store is valid Pydantic JSON."""
     project_dir = _make_project(tmp_path)
-    task, record, _ = _insert_identity_target(project_dir)
+    _task, record, _ = _insert_identity_target(project_dir)
     record_id = record["id"]
 
     runner.invoke(
@@ -2806,7 +2806,7 @@ def _write_one_record_v2_store(project_dir: Path) -> str:
     from booktx.progress import source_record_sha256
 
     proj = _proj(project_dir)
-    chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
+    chunk = json.loads(min(proj.chunks_dir.glob("*.json")).read_text("utf-8"))
     rec = chunk["records"][0]
     target = rec["source"] + " [de]"
     store = TranslationStoreV2(

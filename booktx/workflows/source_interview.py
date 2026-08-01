@@ -316,7 +316,7 @@ def interview_apply(
             "no source interview ledger; generate it before applying decisions",
         )
     canonical = load_decisions(project)
-    pending, unchanged = _validate_manifest(
+    _pending, unchanged = _validate_manifest(
         project, profile, manifest, ledger, report, context, canonical
     )
     snapshot = (

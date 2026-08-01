@@ -74,7 +74,7 @@ def _setup_store(tmp_path: Path) -> Path:
     project_dir = _make_project(tmp_path)
     proj = load_project(project_dir, profile="de_default")
     # Write a v2 identity store with one record.
-    chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
+    chunk = json.loads(min(proj.chunks_dir.glob("*.json")).read_text("utf-8"))
     rec = chunk["records"][0]
     store = TranslationStoreV2(
         records={
@@ -289,7 +289,7 @@ def _setup_store_with_pass1_review(tmp_path: Path) -> Path:
 
     project_dir = _make_project(tmp_path)
     proj = load_project(project_dir, profile="de_default")
-    chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
+    chunk = json.loads(min(proj.chunks_dir.glob("*.json")).read_text("utf-8"))
     rec = chunk["records"][0]
     source = rec["source"]
     review = TranslationReviewCandidate(
@@ -518,7 +518,7 @@ def test_review_insert_rejects_dropped_inline_tag_for_epub(tmp_path: Path):
     find_source_file(proj)
     assert runner.invoke(app, ["extract", str(proj.root)]).exit_code == 0
     proj = load_project(proj.root, profile="de_default")
-    chunk = json.loads(sorted(proj.chunks_dir.glob("*.json"))[0].read_text("utf-8"))
+    chunk = json.loads(min(proj.chunks_dir.glob("*.json")).read_text("utf-8"))
     rec = chunk["records"][0]
     rid = rec["id"]
     cid, pid = (int(x) for x in rid.split("-"))

@@ -423,7 +423,7 @@ def strict_load_translated(path: Path) -> tuple[TranslatedChunk | None, str | No
         return model, "translated file has commentary before the JSON object"
     # Find the real end of the top-level object via the parsed span.
     decoder = json.JSONDecoder()
-    obj, end = decoder.raw_decode(raw.lstrip())
+    _obj, end = decoder.raw_decode(raw.lstrip())
     trailing = raw.lstrip()[end:].strip()
     if trailing:
         return model, "translated file has commentary after the JSON object"

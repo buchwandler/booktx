@@ -78,7 +78,7 @@ def _make_project(tmp_path: Path) -> Path:
 
 def _write_versioned_store(project_dir: Path) -> None:
     proj = load_project(project_dir, profile="de_default")
-    chunk = json.loads(sorted((proj.chunks_dir).glob("*.json"))[0].read_text("utf-8"))
+    chunk = json.loads(min((proj.chunks_dir).glob("*.json")).read_text("utf-8"))
     first_record = chunk["records"][0]
     write_translation_store(
         proj,
