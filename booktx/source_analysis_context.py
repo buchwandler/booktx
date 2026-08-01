@@ -205,21 +205,12 @@ def _question_candidate_terms(question: ContextQuestion) -> set[str]:
     }
 
 
-def _question_hyphen_suffixes(question: ContextQuestion) -> set[str]:
-    suffixes: set[str] = set()
-    for term in _question_candidate_terms(question):
-        if "-" in term:
-            suffixes.add(term.rsplit("-", 1)[1])
-    return suffixes
-
-
 def _partition_bucket_candidates(
     context: TranslationContext,
     report: SourceAnalysisReport,
     *,
     topic: str,
     candidate_ids: list[str],
-    family_match: bool,
 ) -> tuple[list[str], list[str], list[str]]:
     glossary_covered: list[str] = []
     imported_policy_covered: list[str] = []
@@ -239,15 +230,6 @@ def _partition_bucket_candidates(
         if candidate_term in imported_terms:
             imported_policy_covered.append(candidate_id)
             continue
-        if family_match and "-" in candidate_term:
-            suffix = candidate_term.rsplit("-", 1)[1]
-            if suffix in {
-                value
-                for question in imported_questions
-                for value in _question_hyphen_suffixes(question)
-            }:
-                imported_policy_covered.append(candidate_id)
-                continue
         needs_review.append(candidate_id)
     return glossary_covered, imported_policy_covered, needs_review
 
@@ -481,7 +463,6 @@ def _prefill_one(
             report,
             topic="source-analysis binding glossary",
             candidate_ids=binding_ids,
-            family_match=True,
         )
     _ensure_source_analysis_question(
         context,
@@ -524,7 +505,6 @@ def _prefill_one(
             report,
             topic="source-analysis names",
             candidate_ids=name_ids,
-            family_match=False,
         )
     _ensure_source_analysis_question(
         context,
@@ -564,7 +544,6 @@ def _prefill_one(
             report,
             topic="source-analysis rare terms",
             candidate_ids=rare_ids,
-            family_match=False,
         )
     _ensure_source_analysis_question(
         context,

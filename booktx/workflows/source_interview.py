@@ -59,6 +59,18 @@ class InterviewReportResult:
     written: bool
 
 
+def write_interview_report_output(
+    result: InterviewReportResult, output: Path, output_format: str
+) -> None:
+    """Write a rendered interview report to a caller-selected output path."""
+    if output_format in {"markdown", "both"}:
+        write_text_atomic(output, result.markdown)
+    if output_format == "json":
+        write_json_text_atomic(
+            output, json.dumps(result.payload, ensure_ascii=False, indent=2)
+        )
+
+
 @dataclass(frozen=True)
 class InterviewApplyResult:
     total: int

@@ -444,7 +444,10 @@ def source_interview_report_cmd(
     if output_format not in {"markdown", "json", "both"}:
         _die("--format must be markdown, json, or both")
     runtime = _load_project_root_runtime(project_dir, "interview-report")
-    from booktx.workflows.source_interview import interview_report
+    from booktx.workflows.source_interview import (
+        interview_report,
+        write_interview_report_output,
+    )
 
     try:
         result = interview_report(
@@ -459,14 +462,7 @@ def source_interview_report_cmd(
         _handle_booktx_error(exc)
         return
     if output is not None:
-        from booktx.io_utils import write_json_text_atomic, write_text_atomic
-
-        if output_format in {"markdown", "both"}:
-            write_text_atomic(output, result.markdown)
-        if output_format == "json":
-            write_json_text_atomic(
-                output, json.dumps(result.payload, ensure_ascii=False, indent=2)
-            )
+        write_interview_report_output(result, output, output_format)
     if stdout or not write:
         if output_format in {"markdown", "both"}:
             console.print(result.markdown)
