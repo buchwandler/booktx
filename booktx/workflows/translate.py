@@ -1497,7 +1497,7 @@ def translate_import_legacy_workflow(
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     require_translation_protocol(proj, command="translate import-legacy")
     _require_chunks(proj)
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
     resolution = resolve_current_version(
         proj,
@@ -1506,7 +1506,7 @@ def translate_import_legacy_workflow(
     imported_records = 0
     imported_chunks = 0
     source_chunks = {chunk.chunk_id: chunk for chunk in load_source_chunks(proj)}
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
 
     def _mutate(store: TranslationStoreV2) -> None:
         nonlocal imported_records, imported_chunks
@@ -1695,7 +1695,7 @@ def translate_migrate_store_workflow(
             "cannot migrate store with missing source records: "
             + ", ".join(migration.missing_source_ids)
         )
-    open_translation_store(proj, default_format=StoreFormat.V2).write_materialized_v2(
+    open_translation_store(proj).write_materialized_v2(
         migration.store
     )
     console.print(
@@ -2210,10 +2210,10 @@ def translation_activate_workflow(
     """Activate one stored candidate version for a single record."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     require_translation_protocol(proj, command="translate activate")
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
     record_id = parse_record_ref(record_ref).canonical_id
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
     activated_ref: str | None = None
 
     def _mutate(store: TranslationStoreV2) -> None:
@@ -2255,10 +2255,10 @@ def translation_review_workflow(
     """Review one stored candidate and optionally activate it."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     require_translation_protocol(proj, command="translate review")
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
     record_id = parse_record_ref(record_ref).canonical_id
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
     reviewed_ref: str | None = None
 
     def _mutate(store: TranslationStoreV2) -> None:
@@ -2507,9 +2507,9 @@ def translation_revise_record_workflow(
         proj, bundle=bundle, record_ids={record_id}
     )[bundle.index.record_to_chapter[record_id]]
     version_ref = write_context.version_ref
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
 
     def _mutate(store: TranslationStoreV2) -> None:
         ensure_store_record(
@@ -2657,9 +2657,9 @@ def translation_revise_block_workflow(
         proj, bundle=bundle, record_ids=submitted_ids
     )
     version_ref = next(iter(write_contexts.values())).version_ref
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
 
     def _mutate(store_to_edit: TranslationStoreV2) -> None:
         for item in submitted:

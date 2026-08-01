@@ -19,7 +19,7 @@ from booktx.glossary_audit import (
 from booktx.glossary_match import (
     entry_is_binding,
 )
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.translation_store import effective_target_candidate
 
 if TYPE_CHECKING:
@@ -173,7 +173,7 @@ def qa_scan(
     Uses the effective target (active review or active translation), never
     iterates raw ``versions[]``/``reviews[]``.
     """
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
     source_by_id = bundle.index.source_by_id
 
     chapters_to_scan = (

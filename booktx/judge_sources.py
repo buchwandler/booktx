@@ -64,7 +64,7 @@ from booktx.models import (
     TranslationStoreV2,
     TranslationVersionLedger,
 )
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.store.doctor import inspect_store
 from booktx.translation_store import (
     EffectiveCandidateError,
@@ -88,7 +88,7 @@ MANIFEST_VERSION = 1
 
 
 def _materialize_store_from_repo(project: Project) -> TranslationStoreV2:
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
     report = inspect_store(project)
     return TranslationStoreV2(
         source_sha256=report.stored_source_sha256 or "",

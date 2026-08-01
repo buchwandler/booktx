@@ -248,9 +248,9 @@ def _has_accepted_store_records(proj: Project) -> bool:
     else:
         candidates = [proj]
     for candidate in candidates:
-        from booktx.store import StoreFormat, open_translation_store
+        from booktx.store import open_translation_store
 
-        repo = open_translation_store(candidate, default_format=StoreFormat.V2)
+        repo = open_translation_store(candidate)
         if repo.is_empty():
             continue
         store = repo.materialize_v2()
@@ -433,6 +433,25 @@ def extract_project_workflow(
                 names_sha256=names_sha256,
             ),
         )
+
+    # Legacy single-layout projects historically materialized their v2 store
+    # as part of the first extraction/translation workflow. Keep that
+    # compatibility boundary explicit now that normal profile workflows must
+    # never infer a backend for a missing store. Existing v1/v2 stores remain
+    # authoritative through filesystem detection.
+    if proj.layout_version == "legacy":
+        from booktx.store import (
+            StoreFormat,
+            create_translation_store,
+            detect_store_format,
+        )
+
+        if detect_store_format(proj) == StoreFormat.MISSING:
+            create_translation_store(
+                proj,
+                format=StoreFormat.V2,
+                source_sha256=current_source_sha256,
+            )
 
     return ExtractWorkflowResult(
         project=proj,

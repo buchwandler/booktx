@@ -271,11 +271,11 @@ def _write_accepted(
     task: TranslationTask | None,
 ) -> tuple[str, str]:
     """Persist accepted records atomically and return timestamp plus version_ref."""
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
     source_by_id = bundle.index.source_by_id
     updated_at = utc_timestamp()
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
 
     def _mutate(store: TranslationStoreV2) -> None:
         store.source_sha256 = bundle.snapshot.source.source_sha256

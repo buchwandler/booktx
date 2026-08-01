@@ -52,8 +52,9 @@ book/
 ## Profile-local state
 
 Each `translations/<profile>/` directory is an isolation boundary. The
-canonical store is v2 by default. When a profile opts into v3, the
-`translation-store/` directory becomes the canonical shard backend; `context.json`
+new profiles use v3 by default. Existing profiles keep their detected backend;
+the v2 `translation-store.json` remains supported and the
+`translation-store/` directory is the canonical v3 shard backend. `context.json`
 and the version ledger are also durable state. Tasks, todos, submission files,
 reviews, judge artifacts, and reports remain profile-local.
 

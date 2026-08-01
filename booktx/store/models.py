@@ -522,8 +522,17 @@ def validate_v3_shard_consistency(
     current: V3CurrentShard | None,
     translations: V3TranslationShard | None,
     reviews: V3ReviewShard | None,
+    validate_active_selection: bool = True,
 ) -> None:
     """Validate cross-shard pointer, graph, and selection invariants."""
+
+    revisions = {
+        shard.revision
+        for shard in (current, translations, reviews)
+        if shard is not None
+    }
+    if len(revisions) > 1:
+        raise ValueError("v3 shards must share one revision")
 
     shard_chunk_ids = {
         shard.chunk_id
@@ -590,7 +599,7 @@ def validate_v3_shard_consistency(
                 )
             ],
         )
-        if materialized.active_review is not None:
+        if materialized.active_review is not None and validate_active_selection:
             from booktx.translation_store import (
                 EffectiveCandidateError,
                 effective_candidate_selection,

@@ -231,9 +231,9 @@ def accept_review_submission(
     timestamp = utc_timestamp()
     activated = False
     created_refs: list[str] = []
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
 
     def _mutate(store: TranslationStoreV2) -> None:
         nonlocal activated

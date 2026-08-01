@@ -452,6 +452,7 @@ SUMMARY_OVERRIDES: dict[str, str] = {
         "Inspect, migrate, verify, or roll back the profile's canonical "
         "translation store format."
     ),
+    "translate store-status": "Show canonical store health and backend identity.",
     "translate export": "Export accepted translations as legacy-compatible files.",
     "translate export-index": "Export generated editor QA indexes.",
     "translate task-status": "Show status for one durable translation task.",

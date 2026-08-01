@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from booktx.identity import store_identity_payload
+from booktx.status import build_status_snapshot
 from booktx.store import StoreFormat, open_translation_store
+from booktx.validate import validate_project
 from tests.store_backend_fixtures import (
     EXPECTED_BUILD_TEXT,
     build_output_text,
@@ -122,3 +127,35 @@ def test_v2_and_v3_match_build_and_editor_index_goldens(tmp_path: Path):
     assert cicada["selected_kind"] == "translation"
     assert cicada["selected_ref"] == "1.1"
     assert cicada["target"] == "Die Zikadensaengerin wartete."
+
+
+@pytest.mark.parametrize("store_format", [StoreFormat.V2, StoreFormat.V3])
+def test_shared_backend_workflow_contract_matrix(
+    tmp_path: Path, store_format: StoreFormat
+):
+    """Run the shared workflow contract against each canonical backend."""
+
+    fixture = create_rich_store_fixture(
+        tmp_path / store_format.value,
+        store_format=store_format,
+        activate_stale_review=False,
+    )
+    project = fixture.project
+    repo = open_translation_store(project)
+    projection = normalized_semantic_projection(repo.materialize_v2())
+    status = build_status_snapshot(
+        project,
+        context_exists=True,
+        context_ready=True,
+    )
+    identity = store_identity_payload(project)
+    report = validate_project(project)
+
+    assert projection["record_ids"] == sorted(fixture.record_ids.values())
+    assert build_output_text(project) == EXPECTED_BUILD_TEXT
+    assert normalized_editor_indexes(project)["findings"] == []
+    assert status.snapshot.totals.records_total == 6
+    assert status.snapshot.totals.records_translated == 4
+    assert identity["format"] == store_format.value
+    assert identity["record_count"] == 4
+    assert report.errors == []

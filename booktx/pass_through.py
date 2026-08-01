@@ -155,9 +155,9 @@ def write_pass_through_chunks(
 
 
 def ensure_no_store_override(project: Project, *, clear_store: bool = False) -> None:
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
     if not repo.is_empty() and not clear_store:
         raise _err(
             "pass_through_store_not_empty",

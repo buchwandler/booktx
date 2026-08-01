@@ -40,7 +40,7 @@ from booktx.io_utils import write_text_atomic
 from booktx.models import Chunk
 from booktx.progress import load_source_chunks, source_record_sha256
 from booktx.record_refs import parse_record_ref
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.translation_store import (
     EffectiveCandidateError,
     EffectiveCandidateSelection,
@@ -382,7 +382,7 @@ def build_editor_indexes(
         for tr in translated_chunk.records:
             build_targets[tr.id] = tr.target
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
 
     findings: list[Finding] = list(effective.findings)
     target_payloads: dict[str, dict[str, Any]] = {}

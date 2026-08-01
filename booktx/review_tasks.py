@@ -32,7 +32,7 @@ from booktx.models import (
     TranslationReviewTask,
     TranslationReviewTaskRecord,
 )
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.termbase import resolve_effective_termbase
 from booktx.termbase_audit import audit_termbase
 from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
@@ -374,7 +374,7 @@ def create_review_task(
     """Build and persist a review task plus its source/ingest block artifacts."""
     from booktx.config import write_translation_review_task
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
     pcfg = next((p for p in quality_cfg.passes if p.pass_number == pass_number), None)
     before_n = pcfg.before_records if pcfg is not None else 2
     after_n = pcfg.after_records if pcfg is not None else 2

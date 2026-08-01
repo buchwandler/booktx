@@ -25,7 +25,7 @@ from booktx.glossary_match import (
     target_terms,
 )
 from booktx.models import TranslationReviewCandidate
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.termbase import TermbaseEntry
 from booktx.termbase_match import TermbaseRuleEvaluation, evaluate_entry_policy
 from booktx.translation_store import (
@@ -202,7 +202,7 @@ def audit_glossary_term(
     if entry is None:
         return None
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
     source_by_id = bundle.index.source_by_id
 
     result = GlossaryAuditResult(

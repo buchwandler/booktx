@@ -15,7 +15,14 @@ from .models import StoreFormat, TranslationStoreRepository, V3Manifest
 from .v1_v2 import V1V2TranslationStoreRepository
 from .v3 import V3TranslationStoreRepository
 
-__all__ = ["detect_store_format", "open_translation_store"]
+DEFAULT_NEW_PROFILE_STORE_FORMAT = StoreFormat.V3
+
+__all__ = [
+    "DEFAULT_NEW_PROFILE_STORE_FORMAT",
+    "detect_store_format",
+    "open_translation_store",
+    "create_translation_store",
+]
 
 
 def detect_store_format(project: Project) -> StoreFormat:
@@ -58,15 +65,51 @@ def detect_store_format(project: Project) -> StoreFormat:
 
 
 def open_translation_store(
-    project: Project, *, default_format: StoreFormat = StoreFormat.V2
+    project: Project, *, default_format: StoreFormat | None = None
 ) -> TranslationStoreRepository:
-    """Open the detected canonical store repository."""
+    """Open an existing canonical store repository."""
 
     detected = detect_store_format(project)
     if detected == StoreFormat.V3:
         return V3TranslationStoreRepository(project)
-    if detected == StoreFormat.MISSING and default_format == StoreFormat.V3:
-        return V3TranslationStoreRepository(project)
     if detected == StoreFormat.MISSING:
-        return V1V2TranslationStoreRepository(project, format=default_format)
+        if default_format is not None:
+            # Explicit backend selection remains available for migrations and
+            # test fixture construction; normal workflows must not use it.
+            return (
+                V3TranslationStoreRepository(project)
+                if default_format == StoreFormat.V3
+                else V1V2TranslationStoreRepository(project, format=default_format)
+            )
+        raise _err(
+            "translation_store_missing",
+            "canonical translation store is missing; create it explicitly",
+        )
     return V1V2TranslationStoreRepository(project, format=detected)
+
+
+def create_translation_store(
+    project: Project,
+    *,
+    format: StoreFormat = DEFAULT_NEW_PROFILE_STORE_FORMAT,
+    source_sha256: str = "",
+) -> TranslationStoreRepository:
+    """Create one canonical store with an explicit backend policy."""
+
+    detected = detect_store_format(project)
+    if detected != StoreFormat.MISSING:
+        raise _err(
+            "translation_store_exists",
+            f"cannot create a new store while {detected.value} is canonical",
+        )
+    if format == StoreFormat.V3:
+        repository: TranslationStoreRepository = V3TranslationStoreRepository(project)
+    elif format in {StoreFormat.V1, StoreFormat.V2}:
+        repository = V1V2TranslationStoreRepository(project, format=format)
+    else:
+        raise _err(
+            "invalid_translation_store_format",
+            f"unsupported store format: {format}",
+        )
+    repository.clear_all(source_sha256=source_sha256)
+    return repository

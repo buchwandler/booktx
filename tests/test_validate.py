@@ -13,6 +13,8 @@ from booktx.cli import app
 from booktx.config import (
     init_project,
     load_project,
+    translation_store_path,
+    translation_version_ledger_path,
     write_manifest,
     write_translation_store,
     write_translation_version_ledger,
@@ -43,6 +45,7 @@ from booktx.validate import (
     validate_record_pair,
     write_report,
 )
+from tests.store_backend_fixtures import create_rich_store_fixture
 
 runner = CliRunner()
 
@@ -407,6 +410,7 @@ def test_missing_ledger_version_is_an_error_for_v2_store(tmp_path: Path):
     v3_root = translation_store_v3_root(proj)
     if v3_root.exists():
         shutil.rmtree(v3_root)
+    translation_store_path(proj).unlink(missing_ok=True)
     write_translation_store(
         proj,
         TranslationStoreV2(
@@ -436,6 +440,40 @@ def test_missing_ledger_version_is_an_error_for_v2_store(tmp_path: Path):
 
     assert not report.passed
     assert any(f.rule == "missing_ledger_version" for f in report.findings)
+
+
+def test_missing_ledger_version_is_an_error_for_v3_store(tmp_path: Path):
+    fixture = create_rich_store_fixture(tmp_path / "v3", store_format="v3")
+    translation_version_ledger_path(fixture.project).unlink()
+
+    report = validate_project(
+        load_project(fixture.project.root, profile="de_default")
+    )
+
+    missing = [
+        finding
+        for finding in report.findings
+        if finding.rule == "missing_ledger_version"
+    ]
+    assert not report.passed
+    assert len(missing) == 5
+
+
+def test_missing_ledger_version_parity_between_v2_and_v3(tmp_path: Path):
+    counts: dict[str, int] = {}
+    for store_format in ("v2", "v3"):
+        fixture = create_rich_store_fixture(
+            tmp_path / store_format, store_format=store_format
+        )
+        translation_version_ledger_path(fixture.project).unlink()
+        report = validate_project(
+            load_project(fixture.project.root, profile="de_default")
+        )
+        counts[store_format] = sum(
+            finding.rule == "missing_ledger_version" for finding in report.findings
+        )
+
+    assert counts == {"v2": 5, "v3": 5}
 
 
 def test_context_render_drift_is_a_warning(tmp_path: Path):

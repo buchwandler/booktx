@@ -1002,6 +1002,7 @@ def create_profile(
     harness: str | None = None,
     model: str | None = None,
     output_filename: str | None = None,
+    store_format: str = "v3",
     kind: Literal["translation", "pass-through", "selection"] = "translation",
 ) -> Project:
     validate_profile_name(profile_name)
@@ -1068,14 +1069,28 @@ def create_profile(
     write_profile_root_marker(source_project, profile_name, profile_config=cfg)
     _materialize_source_analysis_snapshot(source_project, profile_name)
     profile_project = load_profile_project(source_project.root, profile_name)
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import StoreFormat, create_translation_store
 
     try:
         source_sha256 = project_source_sha256(profile_project)
     except BooktxError:
         source_sha256 = ""
-    open_translation_store(profile_project, default_format=StoreFormat.V2).clear_all(
-        source_sha256=source_sha256
+    try:
+        selected_format = StoreFormat(store_format)
+    except ValueError as exc:
+        raise _err(
+            "invalid_translation_store_format",
+            f"unsupported profile store format: {store_format!r}; expected v2 or v3",
+        ) from exc
+    if selected_format not in {StoreFormat.V2, StoreFormat.V3}:
+        raise _err(
+            "invalid_translation_store_format",
+            f"unsupported profile store format: {store_format!r}; expected v2 or v3",
+        )
+    create_translation_store(
+        profile_project,
+        format=selected_format,
+        source_sha256=source_sha256,
     )
     return profile_project
 
@@ -1320,10 +1335,10 @@ def identity_path(project: Project) -> Path:
 
 
 def load_translation_store(project: Project) -> TranslationStoreV2:
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
     return open_translation_store(
-        project, default_format=StoreFormat.V2
+        project
     ).materialize_v2()
 
 
@@ -1361,7 +1376,12 @@ def load_translation_selection_ledger(project: Project) -> TranslationSelectionL
 def write_translation_store(
     project: Project, store: TranslationStore | TranslationStoreV2
 ) -> None:
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import (
+        StoreFormat,
+        create_translation_store,
+        detect_store_format,
+        open_translation_store,
+    )
     from booktx.translation_store import legacy_store_to_v2
 
     if isinstance(store, TranslationStore):
@@ -1374,9 +1394,11 @@ def write_translation_store(
     else:
         store_v2 = store
 
-    open_translation_store(
-        project, default_format=StoreFormat.V2
-    ).write_materialized_v2(store_v2)
+    if detect_store_format(project) == StoreFormat.MISSING:
+        repository = create_translation_store(project, format=StoreFormat.V2)
+    else:
+        repository = open_translation_store(project)
+    repository.write_materialized_v2(store_v2)
 
 
 def write_translation_version_ledger(

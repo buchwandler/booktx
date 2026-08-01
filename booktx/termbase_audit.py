@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from booktx.config import Project
 from booktx.models import TranslationReviewCandidate
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.termbase import (
     EffectiveTranslationTermbase,
     TermbaseEntry,
@@ -200,7 +200,7 @@ def audit_termbase(
     """Audit effective targets for records whose source matches the termbase."""
     entries = _relevant_entries(project, effective, entry_ids=entry_ids)
     entry_by_id = {entry.id: entry for entry in entries}
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
     result = TermbaseAuditResult()
     clean_records: set[str] = set()
     violation_records: set[str] = set()

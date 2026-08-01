@@ -12,6 +12,7 @@ from booktx.config import (
     init_project,
     load_project,
     translation_store_path,
+    translation_store_v3_manifest_path,
     translation_store_v3_root,
 )
 from booktx.io_utils import write_json_model_atomic
@@ -22,7 +23,7 @@ from booktx.models import (
     TranslationCandidate,
     TranslationStoreV2,
 )
-from booktx.store import StoreFormat, detect_store_format
+from booktx.store import StoreFormat, detect_store_format, open_translation_store
 from booktx.store.doctor import inspect_store
 from booktx.store.migration import execute_store_migration
 
@@ -138,6 +139,37 @@ def test_migration_write_can_keep_legacy_copy_when_migrating_to_v3(tmp_path: Pat
     assert result.changed is True
     assert detect_store_format(proj) == StoreFormat.V3
     assert translation_store_path(proj).is_file()
+
+
+def test_v3_migration_provenance_survives_manifest_mutations(tmp_path: Path):
+    proj = _legacy_v2_project(tmp_path)
+    execute_store_migration(proj, target_format=StoreFormat.V3, dry_run=False)
+    manifest_path = translation_store_v3_manifest_path(proj)
+    migrated_from = json.loads(manifest_path.read_text("utf-8"))["migrated_from"]
+    repo = open_translation_store(proj, default_format=StoreFormat.V3)
+
+    store = repo.materialize_v2()
+    added = next(iter(store.records.values())).model_copy(deep=True)
+    added.chunk_id = 2
+    added.part_id = 1
+    store.records["0002-000001"] = added
+    repo.write_materialized_v2(store)
+    assert (
+        json.loads(manifest_path.read_text("utf-8"))["migrated_from"]
+        == migrated_from
+    )
+
+    repo.update_source_sha256("new-source-sha")
+    assert (
+        json.loads(manifest_path.read_text("utf-8"))["migrated_from"]
+        == migrated_from
+    )
+
+    repo.clear_all(source_sha256="")
+    assert (
+        json.loads(manifest_path.read_text("utf-8"))["migrated_from"]
+        == migrated_from
+    )
 
 
 def test_store_doctor_reports_pending_transaction_for_v3(tmp_path: Path):

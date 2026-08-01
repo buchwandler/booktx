@@ -1,11 +1,16 @@
 # Translation contract
 
-Translation state is profile-local. New profiles currently use
-`translations/<profile>/translation-store.json` (`TranslationStoreV2`) as the
-durable current record store. The shard-based
-`translations/<profile>/translation-store/` backend is an explicit opt-in v3
-migration target. The version ledger, context, tasks, submissions, reviews,
-and reports are also profile-local.
+Translation state is profile-local. New profiles use the v3
+`translations/<profile>/translation-store/` backend, consisting of a manifest
+and per-chunk current, translation-candidate, and review-candidate files.
+Existing profiles keep their detected backend, including v2
+`translation-store.json`. The version ledger, context, tasks, submissions,
+reviews, and reports are also profile-local.
+
+Readers validate one shared chunk revision across all three v3 shard files and
+retry while a transaction is publishing. Writers use a lock, staged journal,
+optimistic hashes/revisions, and roll-forward recovery after interruption. Use
+`booktx translate store-status` for non-mutating health inspection.
 
 ## Task metadata
 

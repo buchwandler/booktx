@@ -156,6 +156,27 @@ def test_profile_create_then_list_command(tmp_path: Path) -> None:
     assert "de_one" in names
 
 
+def test_profile_create_v2_escape_hatch(tmp_path: Path) -> None:
+    project_dir = _make_source_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "profile",
+            "create",
+            str(project_dir),
+            "de_legacy",
+            "--target",
+            "de",
+            "--store-format",
+            "v2",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    profile_dir = project_dir / "translations" / "de_legacy"
+    assert (profile_dir / "translation-store.json").is_file()
+    assert not (profile_dir / "translation-store").exists()
+
+
 def test_profile_show_command_json(tmp_path: Path) -> None:
     project_dir = _make_source_project(tmp_path)
     _add_profile(project_dir, "de_show")

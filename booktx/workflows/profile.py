@@ -25,6 +25,7 @@ from booktx.errors import BooktxError
 from booktx.progress import load_source_records
 from booktx.record_refs import parse_record_ref
 from booktx.status import build_profiles_overview, build_status_snapshot
+from booktx.store.status import build_store_status
 from booktx.translation_store import active_candidate
 from booktx.versioning import resolve_identity
 
@@ -62,6 +63,7 @@ def build_profile_detail_payload(
         chapters_total = bundle.snapshot.totals.chapters_total
     from booktx.tasks import project_relative
 
+    store_status = build_store_status(profile_project)
     return {
         "profile": profile_name,
         "kind": profile_cfg.kind,
@@ -71,6 +73,8 @@ def build_profile_detail_payload(
         "target_language": profile_cfg.target_language,
         "target_locale": profile_cfg.target_locale or profile_cfg.target_language,
         "output_filename": profile_cfg.output_filename,
+        "store_format": store_status["canonical_format"],
+        "store_path": store_status["canonical_path"],
         # Live identity comes from translations/<profile>/identity.json;
         # profile_cfg.identity is only the initial default captured at creation.
         "actor": resolved_identity.actor,
@@ -95,6 +99,7 @@ def create_profile_workflow(
     harness: str | None = None,
     model: str | None = None,
     output_filename: str | None = None,
+    store_format: str = "v3",
     kind: str = "translation",
 ) -> Project:
     return create_profile(
@@ -106,6 +111,7 @@ def create_profile_workflow(
         harness=harness,
         model=model,
         output_filename=output_filename,
+        store_format=store_format,
         kind=kind,  # type: ignore[arg-type]
     )
 

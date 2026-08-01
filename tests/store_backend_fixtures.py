@@ -15,7 +15,6 @@ from booktx.config import (
     project_source_sha256,
     translation_store_path,
     translation_store_v3_root,
-    write_translation_store,
     write_translation_version_ledger,
 )
 from booktx.editor_indexes import build_editor_indexes
@@ -29,7 +28,7 @@ from booktx.models import (
     TranslationVersionLedger,
 )
 from booktx.progress import load_source_chunks, source_record_sha256
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import StoreFormat, create_translation_store, open_translation_store
 from booktx.translation_store import effective_candidate_selection, sha256_text
 
 TS = "2026-06-22T12:00:00Z"
@@ -478,7 +477,9 @@ def create_rich_store_fixture(
     if store_format == StoreFormat.V2:
         if v3_root.exists():
             shutil.rmtree(v3_root)
-        write_translation_store(project, store)
+        create_translation_store(project, format=StoreFormat.V2).write_materialized_v2(
+            store
+        )
     elif store_format == StoreFormat.V3:
         if legacy_path.exists():
             legacy_path.unlink()

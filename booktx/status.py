@@ -45,7 +45,7 @@ from booktx.config import (
 )
 from booktx.models import Chunk, StatusTotals, TranslatedRecord
 from booktx.progress import SourceRecordView, load_source_chunks, load_source_records
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import StoreFormat, detect_store_format, open_translation_store
 from booktx.validate import (
     Severity,
     load_effective_translated_chunks,
@@ -197,6 +197,7 @@ class ProfileOverview(BaseModel):
     path: str
     translated_records: int = 0
     total_records: int = 0
+    store_format: str = ""
 
 
 class ProfilesOverview(BaseModel):
@@ -535,7 +536,7 @@ def build_status_snapshot(
     )
 
     try:
-        repo = open_translation_store(proj, default_format=StoreFormat.V2)
+        repo = open_translation_store(proj)
         store_records = [stored for _record_id, stored in repo.iter_records()]
         ledger = load_translation_version_ledger(proj)
     except Exception:
@@ -669,6 +670,11 @@ def build_profiles_overview(project: Project) -> ProfilesOverview:
                 else "",
                 translated_records=translated_records,
                 total_records=shared_total_records,
+                store_format=(
+                    detect_store_format(profile_project).value
+                    if detect_store_format(profile_project) != StoreFormat.MISSING
+                    else "missing"
+                ),
             )
         )
     return ProfilesOverview(

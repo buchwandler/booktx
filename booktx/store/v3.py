@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import TypeVar
@@ -31,6 +33,7 @@ from .models import (
     V3TranslationCandidate,
     V3TranslationRecord,
     V3TranslationShard,
+    validate_v3_shard_consistency,
 )
 from .paths import (
     chunk_id_for_record,
@@ -46,6 +49,42 @@ from .transactions import commit_v3_transaction, recover_v3_transactions
 __all__ = ["V3TranslationStoreRepository"]
 
 T = TypeVar("T")
+
+_READ_RETRIES = 5
+_READ_RETRY_DELAY_SECONDS = 0.005
+
+
+def _evolve_manifest(
+    existing: V3Manifest,
+    *,
+    source_sha256: str,
+    chunk_ids: list[str],
+    changed: bool,
+) -> V3Manifest:
+    """Update mutable manifest fields without dropping historical metadata."""
+
+    payload = existing.model_dump(mode="python")
+    payload.update(
+        {
+            "source_sha256": source_sha256,
+            "chunk_ids": chunk_ids,
+            "created_at": existing.created_at or utc_timestamp(),
+            "updated_at": utc_timestamp() if changed else (
+                existing.updated_at or existing.created_at or utc_timestamp()
+            ),
+        }
+    )
+    return V3Manifest.model_validate(payload)
+
+
+@dataclass(frozen=True, slots=True)
+class V3ChunkSnapshot:
+    """One internally consistent read of the three shard envelopes."""
+
+    current: V3CurrentShard
+    translations: V3TranslationShard
+    reviews: V3ReviewShard
+    revision: int
 
 
 def _model_json_text(model: object) -> str:
@@ -154,12 +193,88 @@ class V3TranslationStoreRepository:
             return V3ReviewShard(chunk_id=f"{int(chunk_id):04d}")
         return V3ReviewShard.model_validate_json(path.read_text("utf-8"))
 
+    def _read_consistent_chunk(self, chunk_id: str) -> V3ChunkSnapshot:
+        """Read a chunk only when all shard files share one stable revision."""
+
+        normalized_chunk_id = f"{int(chunk_id):04d}"
+        root = store_root(self.project)
+        shard_paths = (
+            current_shard_path(self.project, normalized_chunk_id),
+            translation_candidates_shard_path(self.project, normalized_chunk_id),
+            review_candidates_shard_path(self.project, normalized_chunk_id),
+        )
+        last_error = "unknown concurrent update"
+        for _attempt in range(_READ_RETRIES):
+            # A reader never starts a snapshot while a writer is publishing.
+            # A pending transaction without a live lock is safe to recover
+            # before taking the revision boundary.
+            if (root / ".write-lock").exists():
+                time.sleep(_READ_RETRY_DELAY_SECONDS)
+                continue
+            self._recover_if_needed()
+            if (root / ".write-lock").exists():
+                time.sleep(_READ_RETRY_DELAY_SECONDS)
+                continue
+
+            present = [path.is_file() for path in shard_paths]
+            if any(present) and not all(present):
+                raise _err(
+                    "invalid_translation_store",
+                    f"v3 chunk {normalized_chunk_id} has an incomplete shard set",
+                )
+
+            before = tuple(_json_revision(path) for path in shard_paths)
+            if len(set(before)) > 1:
+                last_error = (
+                    f"v3 chunk {normalized_chunk_id} has mixed revisions {before!r}"
+                )
+                time.sleep(_READ_RETRY_DELAY_SECONDS)
+                continue
+            current = self._load_current_shard(normalized_chunk_id)
+            translations = self._load_translation_shard(normalized_chunk_id)
+            reviews = self._load_review_shard(normalized_chunk_id)
+            after = tuple(_json_revision(path) for path in shard_paths)
+            if before != after or (root / ".write-lock").exists():
+                last_error = (
+                    f"v3 chunk {normalized_chunk_id} changed during the read"
+                )
+                time.sleep(_READ_RETRY_DELAY_SECONDS)
+                continue
+            try:
+                validate_v3_shard_consistency(
+                    current=current,
+                    translations=translations,
+                    reviews=reviews,
+                    # Rejected or stale active selections are validation
+                    # findings, not unreadable shard topology. The validator
+                    # still performs the strict selection check via doctor.
+                    validate_active_selection=False,
+                )
+            except ValueError as exc:
+                raise _err(
+                    "invalid_translation_store",
+                    f"v3 chunk {normalized_chunk_id} failed consistency checks: {exc}",
+                ) from exc
+            revision = before[0] if before[0] is not None else 0
+            return V3ChunkSnapshot(
+                current=current,
+                translations=translations,
+                reviews=reviews,
+                revision=revision,
+            )
+        raise _err(
+            "store_concurrent_update",
+            f"could not obtain a consistent v3 chunk snapshot after {_READ_RETRIES} "
+            f"attempts: {last_error}",
+        )
+
     def _materialize_chunk(
         self, chunk_id: str
     ) -> list[tuple[str, StoredTranslationRecordV2]]:
-        current = self._load_current_shard(chunk_id)
-        translations = self._load_translation_shard(chunk_id)
-        reviews = self._load_review_shard(chunk_id)
+        snapshot = self._read_consistent_chunk(chunk_id)
+        current = snapshot.current
+        translations = snapshot.translations
+        reviews = snapshot.reviews
         source_by_id = self._source_record_map()
         record_ids = sorted(
             set(current.records) | set(translations.records) | set(reviews.records)
@@ -282,16 +397,11 @@ class V3TranslationStoreRepository:
             or existing_manifest.source_sha256 != store.source_sha256
             or not manifest_path(self.project).is_file()
         )
-        preserved_timestamp = (
-            existing_manifest.updated_at
-            or existing_manifest.created_at
-            or utc_timestamp()
-        )
-        manifest = V3Manifest(
+        manifest = _evolve_manifest(
+            existing_manifest,
             source_sha256=store.source_sha256,
             chunk_ids=chunk_ids,
-            created_at=existing_manifest.created_at or utc_timestamp(),
-            updated_at=utc_timestamp() if manifest_changed else preserved_timestamp,
+            changed=manifest_changed,
         )
         current: dict[str, V3CurrentShard] = {}
         translations: dict[str, V3TranslationShard] = {}
@@ -328,15 +438,27 @@ class V3TranslationStoreRepository:
                     source_sha256=record.source_sha256,
                     reviews=_v3_review_candidates(record.reviews),
                 )
+            revision = self._next_chunk_revision(chunk_id)
             current[chunk_id] = V3CurrentShard(
-                chunk_id=chunk_id, records=current_records
+                chunk_id=chunk_id, revision=revision, records=current_records
             )
             translations[chunk_id] = V3TranslationShard(
                 chunk_id=chunk_id,
+                revision=revision,
                 records=translation_records,
             )
-            reviews[chunk_id] = V3ReviewShard(chunk_id=chunk_id, records=review_records)
+            reviews[chunk_id] = V3ReviewShard(
+                chunk_id=chunk_id, revision=revision, records=review_records
+            )
         return manifest, current, translations, reviews
+
+    def _next_chunk_revision(self, chunk_id: str) -> int:
+        revisions = [
+            _json_revision(current_shard_path(self.project, chunk_id)),
+            _json_revision(translation_candidates_shard_path(self.project, chunk_id)),
+            _json_revision(review_candidates_shard_path(self.project, chunk_id)),
+        ]
+        return max((revision or 0) for revision in revisions) + 1
 
     def _chunk_records(
         self, store: TranslationStoreV2, chunk_id: str
@@ -380,10 +502,17 @@ class V3TranslationStoreRepository:
                 source_sha256=record.source_sha256,
                 reviews=_v3_review_candidates(record.reviews),
             )
+        revision = self._next_chunk_revision(chunk_id)
         return (
-            V3CurrentShard(chunk_id=chunk_id, records=current_records),
-            V3TranslationShard(chunk_id=chunk_id, records=translation_records),
-            V3ReviewShard(chunk_id=chunk_id, records=review_records),
+            V3CurrentShard(
+                chunk_id=chunk_id, revision=revision, records=current_records
+            ),
+            V3TranslationShard(
+                chunk_id=chunk_id, revision=revision, records=translation_records
+            ),
+            V3ReviewShard(
+                chunk_id=chunk_id, revision=revision, records=review_records
+            ),
         )
 
     def _commit_partial_store(
@@ -494,16 +623,11 @@ class V3TranslationStoreRepository:
             or existing_manifest.source_sha256 != after_store.source_sha256
             or not manifest_file.is_file()
         )
-        preserved_timestamp = (
-            existing_manifest.updated_at
-            or existing_manifest.created_at
-            or utc_timestamp()
-        )
-        manifest = V3Manifest(
+        manifest = _evolve_manifest(
+            existing_manifest,
             source_sha256=after_store.source_sha256,
             chunk_ids=sorted(next_chunk_ids),
-            created_at=existing_manifest.created_at or utc_timestamp(),
-            updated_at=utc_timestamp() if manifest_changed else preserved_timestamp,
+            changed=manifest_changed,
         )
         manifest_text = _model_json_text(manifest)
         previous_manifest_text = _model_json_text(existing_manifest)

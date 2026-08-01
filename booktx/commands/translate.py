@@ -13,6 +13,7 @@ from pathlib import Path
 
 import typer
 
+from booktx.workflows.store import translate_store_status_workflow
 from booktx.workflows.translate import (
     translate_audit_inline_workflow,
     translate_export_index_workflow,
@@ -44,6 +45,18 @@ from booktx.workflows.translate import (
 )
 
 translate_app = typer.Typer(help="Command-based translation workflow.")
+
+
+@translate_app.command(name="store-status")
+def translate_store_status(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """Show canonical store identity, health, and suggested recovery action."""
+    translate_store_status_workflow(project_dir, profile, as_json)
 
 
 @translate_app.command(name="next")

@@ -5,6 +5,8 @@ import re
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
 from booktx.config import (
     current_source_sha256,
     init_project,
@@ -12,6 +14,7 @@ from booktx.config import (
     translation_store_path,
     translation_store_v3_manifest_path,
 )
+from booktx.errors import BooktxError
 from booktx.io_utils import write_json_model_atomic
 from booktx.models import (
     Chunk,
@@ -23,7 +26,6 @@ from booktx.models import (
 from booktx.store import (
     StoreFormat,
     detect_store_format,
-    execute_store_migration,
     open_translation_store,
 )
 from booktx.store.paths import (
@@ -57,11 +59,11 @@ def _file_sha(path: Path) -> str | None:
     return sha256(path.read_bytes()).hexdigest()
 
 
-def test_new_profiles_default_to_v2_until_v3_is_opted_in(tmp_path: Path):
+def test_new_profiles_default_to_v3(tmp_path: Path):
     proj = _project_with_chunk(tmp_path)
-    assert detect_store_format(proj) == StoreFormat.V2
-    assert translation_store_path(proj).is_file()
-    assert not translation_store_v3_manifest_path(proj).is_file()
+    assert detect_store_format(proj) == StoreFormat.V3
+    assert translation_store_v3_manifest_path(proj).is_file()
+    assert not translation_store_path(proj).is_file()
 
     store = TranslationStoreV2(
         source_sha256=current_source_sha256(proj),
@@ -86,13 +88,8 @@ def test_new_profiles_default_to_v2_until_v3_is_opted_in(tmp_path: Path):
         },
     )
 
-    write_json_model_atomic(translation_store_path(proj), store)
-    execute_store_migration(proj, target_format=StoreFormat.V3, dry_run=False)
-
-    assert detect_store_format(proj) == StoreFormat.V3
-    assert translation_store_v3_manifest_path(proj).is_file()
-    assert not translation_store_path(proj).is_file()
-
+    repo = open_translation_store(proj, default_format=StoreFormat.V3)
+    repo.write_materialized_v2(store)
     repo = open_translation_store(proj, default_format=StoreFormat.V3)
     record = repo.get_record("0001-000001")
     assert record is not None
@@ -103,7 +100,6 @@ def test_new_profiles_default_to_v2_until_v3_is_opted_in(tmp_path: Path):
 
 def test_v3_manifest_does_not_change_for_ordinary_record_updates(tmp_path: Path):
     proj = _project_with_chunk(tmp_path)
-    translation_store_path(proj).unlink()
     repo = open_translation_store(proj, default_format=StoreFormat.V3)
     initial = TranslationStoreV2(
         source_sha256="src-sha",
@@ -183,7 +179,19 @@ def test_edit_records_updates_only_affected_chunk_shards(tmp_path: Path):
 
     assert after[affected_chunk]["current"] != before[affected_chunk]["current"]
     assert after[affected_chunk]["translation"] != before[affected_chunk]["translation"]
-    assert after[affected_chunk]["review"] == before[affected_chunk]["review"]
+    # All three envelopes advance together so readers can reject a mixed
+    # publication even when one payload is unchanged.
+    assert after[affected_chunk]["review"] != before[affected_chunk]["review"]
+
+    revisions = []
+    for kind in ("current", "translation", "review"):
+        path = {
+            "current": current_shard_path,
+            "translation": translation_candidates_shard_path,
+            "review": review_candidates_shard_path,
+        }[kind](fixture.project, affected_chunk)
+        revisions.append(json.loads(path.read_text("utf-8"))["revision"])
+    assert revisions[0] == revisions[1] == revisions[2]
 
     for chunk_id in chunk_ids:
         if chunk_id == affected_chunk:
@@ -193,6 +201,43 @@ def test_edit_records_updates_only_affected_chunk_shards(tmp_path: Path):
     assert manifest_after["chunk_ids"] == manifest_before["chunk_ids"]
     assert manifest_after["source_sha256"] == manifest_before["source_sha256"]
     assert manifest_after["updated_at"] == manifest_before["updated_at"]
+
+
+def test_v3_read_rejects_cross_shard_source_hash_conflict(tmp_path: Path):
+    fixture = create_rich_store_fixture(
+        tmp_path / "conflict", store_format=StoreFormat.V3
+    )
+    record_id = fixture.record_ids["mantis"]
+    path = translation_candidates_shard_path(
+        fixture.project, record_id.split("-", 1)[0]
+    )
+    payload = json.loads(path.read_text("utf-8"))
+    conflicting = "conflicting-source-hash"
+    payload["records"][record_id]["source_sha256"] = conflicting
+    for candidate in payload["records"][record_id]["versions"]:
+        candidate["source_sha256"] = conflicting
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    repo = open_translation_store(fixture.project, default_format=StoreFormat.V3)
+    with pytest.raises(BooktxError, match="failed consistency checks") as excinfo:
+        repo.get_record(record_id)
+    assert excinfo.value.code == "invalid_translation_store"
+
+
+def test_v3_read_rejects_mixed_shard_revisions(tmp_path: Path):
+    fixture = create_rich_store_fixture(
+        tmp_path / "mixed-revision", store_format=StoreFormat.V3
+    )
+    chunk_id = fixture.record_ids["mantis"].split("-", 1)[0]
+    path = current_shard_path(fixture.project, chunk_id)
+    payload = json.loads(path.read_text("utf-8"))
+    payload["revision"] += 1
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    repo = open_translation_store(fixture.project, default_format=StoreFormat.V3)
+    with pytest.raises(BooktxError, match="consistent v3 chunk snapshot") as excinfo:
+        repo.get_record(fixture.record_ids["mantis"])
+    assert excinfo.value.code == "store_concurrent_update"
 
 
 def test_production_code_uses_full_store_writer_only_in_allowed_modules():

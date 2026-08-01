@@ -51,6 +51,11 @@ def profile_create_cmd(
     output_filename: str | None = typer.Option(
         None, "--output-filename", help="Optional output filename override."
     ),
+    store_format: str = typer.Option(
+        "v3",
+        "--store-format",
+        help="Canonical store for this new profile: v3 (default) or v2.",
+    ),
 ) -> None:
     try:
         project = create_profile_workflow(
@@ -62,6 +67,7 @@ def profile_create_cmd(
             harness=harness,
             model=model,
             output_filename=output_filename,
+            store_format=store_format,
         )
     except BooktxError as exc:
         _handle_booktx_error(exc)
@@ -134,6 +140,7 @@ def profile_show_cmd(
     console.print(f"kind: {payload['kind']}")
     console.print(f"path: {payload['path']}")
     console.print(f"target: {payload['target_locale']}")
+    console.print(f"store: {payload['store_format'] or 'missing'}")
     console.print(f"model: {payload['model']}")
     console.print(f"context: {'ready' if payload['context_ready'] else 'not ready'}")
     console.print(f"active version: {payload['active_version'] or 'none'}")

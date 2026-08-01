@@ -19,6 +19,7 @@ translate through profile-local tasks, validate, and build output.
 - [Agent workflow](agent-workflow.md)
 - [Series workflows](series.md)
 - [Translation contract](translation-contract.md)
+- [Translation store](translation-store.md)
 
 ## Formats and maintenance
 
@@ -48,6 +49,7 @@ context
 series
 agent-workflow
 translation-contract
+translation-store
 markdown
 epub
 architecture

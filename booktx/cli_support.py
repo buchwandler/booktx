@@ -127,7 +127,8 @@ def _render_profiles_overview_human(overview: ProfilesOverview) -> None:
         console.print(
             f"  {item.profile}   kind={item.kind}  "
             f"target={item.target_locale or item.target_language}  "
-            f"model={item.model or 'human'}  {coverage}"
+            f"model={item.model or 'human'}  {coverage}  "
+            f"store={item.store_format or 'missing'}"
         )
 
 

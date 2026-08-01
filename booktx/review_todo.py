@@ -33,7 +33,7 @@ from booktx.models import (
     ReviewTodoPass,
 )
 from booktx.review_status import ReviewGapIndex, build_review_gap_index
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.versioning import canonical_json_sha256
 
 if TYPE_CHECKING:
@@ -95,7 +95,7 @@ def select_review_todo_chapters(
     # Load the store and compute the review-gap index once for the whole selection.
     # Subsequent per-(chapter, pass) lookups are O(1) dict reads.
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
     gap_index = build_review_gap_index(
         repo.iter_records(),
         quality_cfg,
@@ -499,7 +499,7 @@ def compute_review_todo_status(
 ) -> ReviewTodoStatus:
     """Build the live status snapshot for one review todo."""
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
 
     record_order: list[tuple[str, str]] = []
     for cid, rids in bundle.index.record_ids_by_chapter.items():
@@ -652,7 +652,7 @@ def resume_review_todo(  # type: ignore[no-untyped-def]  # Phase 0 baseline: ret
     for pass_number in current.pending_passes_now:
         # Count missing records for this pass+chapter
 
-        repo = open_translation_store(project, default_format=StoreFormat.V2)
+        repo = open_translation_store(project)
         rids = bundle.index.record_ids_by_chapter.get(current.chapter_id, [])
         pcfg = next(
             (p for p in quality_cfg.passes if p.pass_number == pass_number), None

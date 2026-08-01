@@ -93,7 +93,7 @@ def store_identity_payload(proj: Project) -> dict[str, Any]:
             "status": "missing",
         }
     try:
-        repo = open_translation_store(proj, default_format=StoreFormat.V2)
+        repo = open_translation_store(proj)
         store = repo.materialize_v2()
     except Exception:
         return {

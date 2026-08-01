@@ -1463,8 +1463,8 @@ def test_whoami_reports_active_version_and_scoped_identity(tmp_path: Path):
     assert payload["context"]["ready"] is True
     assert payload["context"]["sha256"]
     assert payload["store"]["exists"] is True
-    assert payload["store"]["version"] == 2
-    assert payload["store"]["format"] == "v2"
+    assert payload["store"]["version"] == 3
+    assert payload["store"]["format"] == "v3"
     assert payload["store"]["record_count"] >= 1
 
 

@@ -35,7 +35,6 @@ from booktx.config import (
     load_manifest,
     load_translation_version_ledger,
     resolve_stored_path,
-    translation_store_path,
 )
 from booktx.context import (
     TranslationContext,
@@ -70,7 +69,7 @@ from booktx.models import (
 from booktx.placeholders import TOKEN_RE, collect_tokens
 from booktx.progress import source_record_sha256
 from booktx.selection_mode import is_revision_selection_profile
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import StoreFormat, detect_store_format, open_translation_store
 from booktx.store.doctor import inspect_store
 from booktx.translation_store import (
     active_candidate,
@@ -1097,18 +1096,27 @@ def load_effective_translated_chunks(  # noqa: C901
             )
         )
 
-    raw_store_version = None
-    store_path = translation_store_path(project)
-    if store_path.is_file():
-        try:
-            raw_store = json.loads(store_path.read_text("utf-8"))
-            if isinstance(raw_store, dict):
-                raw_store_version = raw_store.get("version")
-        except Exception:  # noqa: BLE001
-            raw_store_version = None
+    # Ledger referential integrity is required for both current canonical
+    # backends.  Inferring the schema from translation-store.json makes v3
+    # look like an unversioned store because its canonical metadata lives in
+    # translation-store/manifest.json.
+    try:
+        store_format = detect_store_format(project)
+    except Exception:  # noqa: BLE001 - inspect_store/opening reports details
+        store_format = StoreFormat.MISSING
+    requires_version_ledger = store_format in {StoreFormat.V2, StoreFormat.V3}
 
     doctor_report = inspect_store(project)
     for store_finding in doctor_report.findings:
+        # An active review with a stale/rejected base is semantic validation
+        # state, not unreadable shard topology. Let the normal effective
+        # candidate checks report its stable rule (for example
+        # active_review_base_drift) instead of masking it as invalid storage.
+        if (
+            store_finding.code == "invalid_chunk_shards"
+            and "active review" in store_finding.message
+        ):
+            continue
         findings.append(
             Finding(
                 chunk_id="store",
@@ -1123,7 +1131,7 @@ def load_effective_translated_chunks(  # noqa: C901
         )
 
     try:
-        repo = open_translation_store(project, default_format=StoreFormat.V2)
+        repo = open_translation_store(project)
         store = dict(repo.iter_records())
     except Exception as exc:  # noqa: BLE001 - surface invalid store structure
         findings.append(
@@ -1264,7 +1272,7 @@ def load_effective_translated_chunks(  # noqa: C901
             # Review candidates are not registered in the translation version
             # ledger and are only returned when already accepted and valid.
             if not isinstance(candidate, TranslationReviewCandidate):
-                if ledger is not None and (raw_store_version == 2 or ledger.tracks):
+                if ledger is not None and (requires_version_ledger or ledger.tracks):
                     try:
                         lookup_version(ledger, candidate.version_ref)
                     except Exception:
@@ -1340,7 +1348,7 @@ def load_effective_translated_chunks(  # noqa: C901
                 # stored versions in every mode. A missing ledger entry is
                 # structural corruption, not a historical content warning, so
                 # it stays fatal regardless of include_inactive_versions.
-                if ledger is not None and (raw_store_version == 2 or ledger.tracks):
+                if ledger is not None and (requires_version_ledger or ledger.tracks):
                     try:
                         lookup_version(ledger, inactive.version_ref)
                     except Exception:

@@ -169,6 +169,35 @@ def main() -> int:
                     "tests/test_agents_md.py",
                 ],
             )
+            _run_stage(
+                "v3 readiness correctness and parity tests",
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/test_store_models_v3.py",
+                    "tests/test_store_backend_v3.py",
+                    "tests/test_store_backend_parity.py",
+                    "tests/test_store_doctor_v3.py",
+                    "tests/test_store_migration_v3.py",
+                    "tests/test_store_transactions.py",
+                    "tests/test_validate.py",
+                ],
+            )
+            _run_stage(
+                "v3 operational and documentation checks",
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/test_store_status.py",
+                    "tests/test_cli.py",
+                    "tests/test_cli_phase3_profile.py",
+                    "tests/test_docs_consistency.py",
+                ],
+            )
             _run_stage("full test suite", [sys.executable, "-m", "pytest", "-q"])
             _run_stage("Ruff", [*_python_tool("ruff", "ruff"), "check", "."])
             _run_stage("mypy", [*_python_tool("mypy", "mypy"), "booktx"])

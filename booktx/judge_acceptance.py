@@ -969,7 +969,7 @@ def accept_judge_submission(
     ledger = load_translation_selection_ledger(project)
     version_ledger = load_translation_version_ledger(project)
     from booktx.io_utils import utc_timestamp
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
     timestamp = utc_timestamp()
     accepted_versions: list[str] = []
@@ -1004,7 +1004,7 @@ def accept_judge_submission(
         raise SubmissionValidationError(errors)
     non_blocking_findings = [f for f in findings if f not in errors]
 
-    repo = open_translation_store(project, default_format=StoreFormat.V2)
+    repo = open_translation_store(project)
 
     def _mutate(store: TranslationStoreV2) -> None:
         store.source_sha256 = bundle.snapshot.source.source_sha256

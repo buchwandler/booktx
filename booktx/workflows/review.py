@@ -30,7 +30,7 @@ from booktx.errors import BooktxError
 from booktx.models import QualityReviewConfig, ReviewPassConfig, TranslationStoreV2
 from booktx.record_refs import parse_record_ref
 from booktx.review_status import compute_review_snapshot
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 
 if TYPE_CHECKING:
     from booktx.models import ReviewTodo, TranslationReviewTask
@@ -168,7 +168,7 @@ def build_review_status_snapshot(
     cfg = (
         proj.profile_config.quality_review if proj.profile_config is not None else None
     )
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
     record_order: list[tuple[str, str]] = []
     for chapter_id, rids in bundle.index.record_ids_by_chapter.items():
         record_order.extend((rid, chapter_id) for rid in rids)
@@ -254,7 +254,7 @@ def create_next_review_task_workflow(
         raise _err("review_unknown_chapter", f"unknown chapter id: {chapter}")
     if selected_chapter_obj is None:
         raise BooktxError("review_no_chapter", "No eligible records for review.")
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
     selected = select_review_records(
         bundle,
         repo.get_record,
@@ -343,11 +343,11 @@ def accept_review_submission_workflow(
 
 def activate_review_workflow(proj: Project, *, record_ref: str, review_ref: str) -> str:
     """Activate an existing review candidate for a single record."""
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
     from booktx.translation_store import find_review_candidate, review_chain_is_stale
 
     record_id = parse_record_ref(record_ref).canonical_id
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
     activated_ref: str | None = None
 
     def _mutate(store: TranslationStoreV2) -> None:
@@ -397,9 +397,9 @@ def deactivate_review_workflow(
     the recheck hint with the chapter id.
     """
     record_id = parse_record_ref(record_ref).canonical_id
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
     old_ref: str | None = None
 
     def _mutate(store: TranslationStoreV2) -> None:
@@ -447,9 +447,9 @@ def revise_review_record_workflow(
     from booktx.translation_store import find_review_candidate, review_chain_is_stale
 
     record_id = parse_record_ref(record_ref).canonical_id
-    from booktx.store import StoreFormat, open_translation_store
+    from booktx.store import open_translation_store
 
-    repo = open_translation_store(proj, default_format=StoreFormat.V2)
+    repo = open_translation_store(proj)
     new_ref: str | None = None
 
     def _mutate(store: TranslationStoreV2) -> None:

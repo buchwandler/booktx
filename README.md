@@ -69,9 +69,11 @@ ledgers, reports, and output belong under the selected profile. The canonical
 store is shard-based under `translation-store/`; do not edit shard files
 directly.
 
-New profiles stay on the v2 canonical store by default. The shard-based v3
-store remains an explicit opt-in migration target until its stabilization gate
-is completed.
+New profiles use the v3 canonical store by default. Existing profiles keep the
+backend detected on disk; ordinary commands never auto-migrate them. Use
+`--store-format v2` when creating a profile that must use the compatibility
+backend, or migrate explicitly with `booktx translate migrate-store`. Inspect
+health with `booktx translate store-status`.
 
 ## Quickstart
 

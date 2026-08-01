@@ -179,7 +179,7 @@ def test_whoami_json_is_stable_when_optional_state_is_missing(tmp_path: Path):
     assert payload["context"]["ready"] is None
     assert payload["context"]["sha256"] is None
     assert payload["store"]["exists"] is True
-    assert payload["store"]["version"] == 2
+    assert payload["store"]["version"] == 3
     assert payload["store"]["record_count"] == 0
 
 
@@ -1032,6 +1032,7 @@ def test_command_tree_group_snapshots():
             "list",
             "migrate-inline-xhtml",
             "migrate-store",
+            "store-status",
             "next",
             "review",
             "revise-block",

@@ -13,6 +13,7 @@ booktx init ./book --source-file ./book.epub --source-lang en
 booktx extract ./book
 booktx chapters ./book --audit
 booktx profile create ./book PROFILE --target de --target-locale de-DE --model MODEL
+booktx translate store-status ./book --profile PROFILE
 booktx guide ./book --profile PROFILE
 booktx status ./book --profile PROFILE
 booktx check ./book --profile PROFILE
@@ -116,6 +117,7 @@ booktx translate revise-block ./book --profile PROFILE --file ingest/fixes.block
 booktx translate search ./book --profile PROFILE --target "Wespen" --before 1 --after 1
 booktx translate concordance ./book --profile PROFILE --task-id TASK --auto --json
 booktx translate todo-doctor ./book --profile PROFILE --overlaps
+booktx translate store-status ./book --profile PROFILE --json
 ```
 
 The agent workflow requires approved context, bounded tasks, unchanged record

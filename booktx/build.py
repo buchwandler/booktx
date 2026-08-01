@@ -23,7 +23,7 @@ from booktx.models import Chunk, TranslatedChunk
 from booktx.placeholders import restore
 from booktx.progress import count_words
 from booktx.selection_mode import is_revision_selection_profile
-from booktx.store import StoreFormat, open_translation_store
+from booktx.store import open_translation_store
 from booktx.validate import (
     EffectiveTranslations,
     Finding,
@@ -86,7 +86,7 @@ def _required_review_errors(
         return []
     quality_cfg = cfg.quality_review
     try:
-        repo = open_translation_store(project, default_format=StoreFormat.V2)
+        repo = open_translation_store(project)
     except Exception:  # noqa: BLE001 - store problems are reported by validation
         return []
     errors: list[Finding] = []
