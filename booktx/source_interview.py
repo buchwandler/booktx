@@ -397,7 +397,8 @@ def render_interview_report(payload: dict[str, Any]) -> str:
                 "",
                 f"- Bucket: `{row['bucket']}`",
                 f"- Status: `{row['status']}`",
-                f"- Coverage: `{row['coverage']['state']}` ({row['coverage']['confidence']})",
+                f"- Coverage: `{row['coverage']['state']}` "
+                f"({row['coverage']['confidence']})",
                 f"- Evidence: {', '.join(row['coverage']['evidence']) or '(none)'}",
                 f"- Suggested action: `{row['suggested_action']}`",
                 f"- Reason: {row['reason'] or '(none recorded)'}",

@@ -25,7 +25,7 @@ body_format: markdown
 
 - (+) Simple to inspect, backup, and version-control
 - (+) Full provenance per record: source SHA, active version, active review, candidate history
-- (-) Large stores may become unwieldy; V3 shard store addresses this as an opt-in migration
+- (-) Large stores still require materialization at some compatibility boundaries; v3 bounded edits and readiness benchmarks track this tradeoff
 
 ### ADR-2: Typer with Command Catalog Fallback
 

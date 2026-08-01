@@ -3,13 +3,15 @@ schema_version: 4
 id: constraint-0023
 kind: constraint
 type: constraint
-title: Single-File Translation Stores (V2)
+title: Detected translation stores
 status: accepted
 section: architecture_constraints
 order: 20
-version: 2
+version: 4
 category: technical
-impact: Single JSON file per profile; V3 shard store available as opt-in migration
+impact:
+  New profiles use v3 per-chunk shards; existing profiles retain detected v1/v2/v3
+  storage, with TranslationStoreV2 as the compatibility model
 body_format: markdown
 ---
 

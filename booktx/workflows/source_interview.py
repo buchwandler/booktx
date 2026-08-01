@@ -137,7 +137,8 @@ def interview_report(
     ):
         raise _err(
             "source_interview_stale",
-            "source interview ledger is stale; regenerate with `booktx source interview-plan BOOK --profile PROFILE --write`",
+            "source interview ledger is stale; regenerate with "
+            "`booktx source interview-plan BOOK --profile PROFILE --write`",
         )
     payload = interview_report_payload(
         ledger,
@@ -266,7 +267,8 @@ def _validate_manifest(
         elif decision.disposition not in {"reviewed", "ignored"}:
             raise _err(
                 "source_interview_manifest_disposition",
-                f"skip requires reviewed or ignored disposition: {decision.candidate_id}",
+                f"skip requires reviewed or ignored disposition: "
+                f"{decision.candidate_id}",
             )
         if already:
             unchanged += 1

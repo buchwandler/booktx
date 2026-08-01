@@ -428,8 +428,11 @@ def _series_pack_path(options: SeriesPrepareOptions) -> Path:
 def _build_next_commands(options: SeriesPrepareOptions) -> list[str]:
     book_arg = options.book.as_posix()
     return [
-        f"booktx source interview-report {book_arg} --profile {options.profile} --write",
-        f"booktx source interview-apply {book_arg} --profile {options.profile} --file .booktx/reports/source-interview-decisions.json --write",
+        f"booktx source interview-report {book_arg}"
+        f" --profile {options.profile} --write",
+        f"booktx source interview-apply {book_arg}"
+        f" --profile {options.profile}"
+        " --file .booktx/reports/source-interview-decisions.json --write",
         f"booktx series finalize {book_arg} --profile {options.profile} --write",
     ]
 
@@ -1090,7 +1093,8 @@ def prepare_series_book(request: SeriesPrepareRequest) -> SeriesPrepareResult:
             name="source-interview",
             status="written",
             message=(
-                f"wrote interview ledger and review artifacts ({len(interview_plan_result.ledger.items)} emitted candidates)"
+                f"wrote interview ledger and review artifacts "
+                f"({len(interview_plan_result.ledger.items)} emitted candidates)"
             ),
             path=interview_report_result.report_markdown,
         )

@@ -56,7 +56,9 @@ def _termbase_terms(project: Project) -> tuple[set[str], set[str]]:
     for entry in payload.get("entries", []):
         if entry.get("source"):
             exact.add(str(entry["source"]).casefold())
-        variants.update(str(value).casefold() for value in entry.get("source_variants", []))
+        variants.update(
+            str(value).casefold() for value in entry.get("source_variants", [])
+        )
     return exact, variants
 
 
@@ -69,33 +71,85 @@ def classify_candidate(
     normalized = candidate.normalized.casefold()
     exact, variants = _term_sets(context)
     if normalized in exact or candidate.text.casefold() in exact:
-        return CandidateCoverage("exact_context_glossary", "exact", ("approved context glossary",), "suppress")
+        return CandidateCoverage(
+            "exact_context_glossary",
+            "exact",
+            ("approved context glossary",),
+            "suppress",
+        )
     if normalized in variants or candidate.text.casefold() in variants:
-        return CandidateCoverage("context_source_variant", "exact", ("approved context source variant",), "suppress")
+        return CandidateCoverage(
+            "context_source_variant",
+            "exact",
+            ("approved context source variant",),
+            "suppress",
+        )
     tb_exact, tb_variants = _termbase_terms(project)
     if normalized in tb_exact or candidate.text.casefold() in tb_exact:
-        return CandidateCoverage("exact_termbase", "exact", ("effective termbase source",), "suppress")
-    if normalized in tb_variants or candidate.text.casefold() in tb_variants:
-        return CandidateCoverage("termbase_source_variant", "exact", ("effective termbase source variant",), "suppress")
-    if candidate.already_protected:
-        return CandidateCoverage("protected_name", "exact", ("protected source name",), "suppress")
-    if any(d.candidate_id == candidate.id for d in decisions.promotions):
-        return CandidateCoverage("imported_candidate_policy", "exact", ("candidate already promoted",), "suppress")
-    if any(d.candidate_id == candidate.id for d in decisions.dispositions):
-        disposition = next(d.disposition for d in decisions.dispositions if d.candidate_id == candidate.id)
         return CandidateCoverage(
-            "imported_candidate_policy", "exact", (f"existing disposition: {disposition}",),
+            "exact_termbase", "exact", ("effective termbase source",), "suppress"
+        )
+    if normalized in tb_variants or candidate.text.casefold() in tb_variants:
+        return CandidateCoverage(
+            "termbase_source_variant",
+            "exact",
+            ("effective termbase source variant",),
+            "suppress",
+        )
+    if candidate.already_protected:
+        return CandidateCoverage(
+            "protected_name", "exact", ("protected source name",), "suppress"
+        )
+    if any(d.candidate_id == candidate.id for d in decisions.promotions):
+        return CandidateCoverage(
+            "imported_candidate_policy",
+            "exact",
+            ("candidate already promoted",),
+            "suppress",
+        )
+    if any(d.candidate_id == candidate.id for d in decisions.dispositions):
+        disposition = next(
+            d.disposition
+            for d in decisions.dispositions
+            if d.candidate_id == candidate.id
+        )
+        return CandidateCoverage(
+            "imported_candidate_policy",
+            "exact",
+            (f"existing disposition: {disposition}",),
             "ignored" if disposition == "ignored" else "reviewed",
         )
     reason_codes = {value.casefold() for value in candidate.reason_codes}
     detectors = {value.casefold() for value in candidate.detectors}
-    if candidate.suppression_reason or {"metadata", "front_matter", "copyright"} & reason_codes:
-        return CandidateCoverage("metadata_artifact", "high", (candidate.suppression_reason or candidate.reason,), "ignored")
+    if (
+        candidate.suppression_reason
+        or {"metadata", "front_matter", "copyright"} & reason_codes
+    ):
+        return CandidateCoverage(
+            "metadata_artifact",
+            "high",
+            (candidate.suppression_reason or candidate.reason,),
+            "ignored",
+        )
     if {"parser", "noun_chunk", "sentence_initial"} & (reason_codes | detectors):
-        return CandidateCoverage("parser_artifact", "suggested", tuple(candidate.reason_codes or [candidate.reason]), "none")
-    if normalized.endswith("-kinden") and any(term.endswith("-kinden") for term in exact | variants):
-        return CandidateCoverage("family_policy", "suggested", ("approved X-kinden family policy",), "reviewed")
-    return CandidateCoverage("uncovered", "suggested", (candidate.reason or "no approved coverage",), "none")
+        return CandidateCoverage(
+            "parser_artifact",
+            "suggested",
+            tuple(candidate.reason_codes or [candidate.reason]),
+            "none",
+        )
+    if normalized.endswith("-kinden") and any(
+        term.endswith("-kinden") for term in exact | variants
+    ):
+        return CandidateCoverage(
+            "family_policy",
+            "suggested",
+            ("approved X-kinden family policy",),
+            "reviewed",
+        )
+    return CandidateCoverage(
+        "uncovered", "suggested", (candidate.reason or "no approved coverage",), "none"
+    )
 
 
 __all__ = ["CandidateCoverage", "CoverageState", "classify_candidate"]

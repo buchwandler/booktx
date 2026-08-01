@@ -19,7 +19,7 @@ body_format: markdown
 
 Large books (100k+ records) produce multi-megabyte `translation-store.json` files. The single-file V2 store loads entirely into memory.
 
-**Mitigation:** V3 shard-based store is implemented and under stabilization. Migration path exists (`booktx store migrate-v3`). Parity tests validate V2↔V3 equivalence.
+**Mitigation:** V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends.
 
 ### RISK-2: Agent Context Window Overflow
 

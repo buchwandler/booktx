@@ -404,15 +404,23 @@ SUMMARY_OVERRIDES: dict[str, str] = {
     "profile compare": "Compare one source record across multiple profiles.",
     "profile migrate-current": "Migrate a legacy single-layout project into a profile.",
     "series prepare": "Prepare the next book in a series from a recipe or prior book.",
-    "series review": "Create or refresh all source-interview review artifacts for an existing book.",
+    "series review": "Create or refresh source-interview review artifacts for a book.",
     "series status": "Show unified source-interview, context, and isolation readiness.",
-    "series finalize": "Finalize approved series context and isolated translation instructions.",
+    "series finalize": (
+        "Finalize approved series context and isolated translation instructions."
+    ),
     "series recipe": "Create reusable series setup recipes.",
     "series recipe write": "Write a reusable series recipe from an existing profile.",
     "source analysis": "Read canonical or profile-local source-analysis evidence.",
-    "source interview-report": "Render the stable source-interview report and decision template.",
-    "source interview-template": "Create a hash-bound source-interview decision manifest.",
-    "source interview-apply": "Validate and apply a batch of source-interview decisions.",
+    "source interview-report": (
+        "Render the stable source-interview report and decision template."
+    ),
+    "source interview-template": (
+        "Create a hash-bound source-interview decision manifest."
+    ),
+    "source interview-apply": (
+        "Validate and apply a batch of source-interview decisions."
+    ),
     "judge create-profile": "Create a compare or revision profile for judge workflows.",
     "judge sync-sources": "Refresh judge source snapshots from translation profiles.",
     "judge prepare-isolation": "Prepare the isolated judge workspace and snapshots.",

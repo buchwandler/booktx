@@ -1,7 +1,7 @@
 ---
 title: "Architecture Documentation"
-version: 1
-generator: "archledger 0.3.3.dev8+g146038bb3"
+version: 2
+generator: "archledger 0.4.0"
 arc42_template_version: "9.0-EN"
 ---
 
@@ -91,8 +91,8 @@ booktx is a deterministic, source-first CLI tool that prepares Markdown and EPUB
 - **Python >= 3.10**
   - Impact: Must support the oldest non-EOL Python with full typing support
   - Notes: Describe the rationale and consequences of this constraint.
-- **Single-File Translation Stores (V2)**
-  - Impact: Single JSON file per profile; V3 shard store available as opt-in migration
+- **Detected translation stores**
+  - Impact: New profiles use v3 per-chunk shards; existing profiles retain detected v1/v2/v3 storage, with TranslationStoreV2 as the compatibility model
   - Notes: Describe the rationale and consequences of this constraint.
 - **Typer CLI Framework**
   - Impact: All commands registered via Typer; command catalog provides optional metadata
@@ -340,7 +340,7 @@ Maps source document headings to chapters, producing chapter-map.json. Each chap
 **Interfaces:** block-0051, block-0052
 **Location:**
 
-Persists and queries versioned translation and review candidates. V2 store is a single translation-store.json with nested candidates per record. V3 store (opt-in) is shard-based under translation-store/ with per-record directories. Supports candidate upsert, activation, effective resolution, and chain validation.
+Persists and queries versioned translation and review candidates. V2 is a single `translation-store.json` compatibility backend with nested candidates per record. V3 is the default for new profiles and uses a manifest plus three per-chunk files (`current/<chunk>.json`, `translation-candidates/<chunk>.json`, and `review-candidates/<chunk>.json`). Each changed chunk advances one shared revision across its three shard envelopes; readers retry around publication and validate cross-shard invariants. Existing profiles remain on their detected backend.
 
 #### Context Engine (context.py)
 
@@ -680,7 +680,7 @@ Optional submission-time checks: placeholder integrity, suspicious length ratios
 
 - (+) Simple to inspect, backup, and version-control
 - (+) Full provenance per record: source SHA, active version, active review, candidate history
-- (-) Large stores may become unwieldy; V3 shard store addresses this as an opt-in migration
+- (-) Large stores still require materialization at some compatibility boundaries; v3 bounded edits and readiness benchmarks track this tradeoff
 
 ### ADR-2: Typer with Command Catalog Fallback
 
@@ -740,7 +740,7 @@ Optional submission-time checks: placeholder integrity, suspicious length ratios
 
 ## Single-File V2 Store as Default
 
-**Document version:** 1
+**Document version:** 2
 
 ## Context
 
@@ -754,11 +754,11 @@ TranslationStoreV2 nests TranslationCandidate versions and TranslationReviewCand
 
 - (+) Simple to inspect, backup, and version-control
 - (+) Full provenance per record: source SHA, active version, active review, candidate history
-- (-) Large stores may become unwieldy; V3 shard store addresses this as an opt-in migration
+- (-) Large stores still require materialization at some compatibility boundaries; v3 bounded edits and readiness benchmarks track this tradeoff
 
 ## Typer with Command Catalog Fallback
 
-**Document version:** 1
+**Document version:** 2
 
 ## Context
 
@@ -776,7 +776,7 @@ command_catalog.py defines SUMMARY_OVERRIDES and panel metadata as typed dicts. 
 
 ## Lazy Bootstrap Entry Point
 
-**Document version:** 1
+**Document version:** 2
 
 ## Context
 
@@ -794,7 +794,7 @@ pyproject.toml console script points to booktx.bootstrap:main, which wraps bookt
 
 ## Review Pass Order as Lexicographic DAG
 
-**Document version:** 1
+**Document version:** 2
 
 ## Context
 
@@ -812,7 +812,7 @@ Review refs use R<pass>.<run> format. The total order is lexicographic on (pass_
 
 ## Profile Root Markers for Agent Isolation
 
-**Document version:** 1
+**Document version:** 2
 
 ## Context
 
@@ -900,7 +900,7 @@ Code must pass Ruff linting with project configuration (`.ruff.toml`).
 
 Large books (100k+ records) produce multi-megabyte `translation-store.json` files. The single-file V2 store loads entirely into memory.
 
-**Mitigation:** V3 shard-based store is implemented and under stabilization. Migration path exists (`booktx store migrate-v3`). Parity tests validate V2↔V3 equivalence.
+**Mitigation:** V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends.
 
 ### RISK-2: Agent Context Window Overflow
 
@@ -937,12 +937,12 @@ EPUB or Markdown parsing libraries may change behavior across versions, affectin
 
 ## Risk Overview
 
-| Title                         | Severity | Probability | Mitigation                                                                                                                                                      | Notes                                                                                                                                                                                                               |
-| ----------------------------- | -------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V2 Store Scalability          | medium   | medium      | V3 shard-based store implemented and under stabilization; migration path exists; parity tests validate V2-V3 equivalence                                        | Large books (100k+ records) produce multi-megabyte translation-store.json files. The single-file V2 store loads entirely into memory. Severity: Medium                                                              | Probability: Medium Mitigation: V3 shard-based store is implemented and under stabilization. Migration path exists (booktx store migrate-v3). Parity tests validate V2-V3 equivalence.        |
-| Agent Context Window Overflow | medium   | medium      | batch_words and before_records/after_records config options; include_untranslated_neighbors toggle; todo max_run_words cap                                      | Large chapters with many context records may exceed LLM context windows. Task word budgets and context window sizes are configurable but not automatically enforced against external model limits. Severity: Medium | Probability: Medium Mitigation: batch_words and before_records/after_records config options. include_untranslated_neighbors toggle for review tasks. Todo max_run_words cap.                  |
-| Placeholder Collision         | low      | low         | Placeholder tokens use distinct pattern unlikely in natural text; custom patterns configurable via SourceAnalysisPatternsConfig                                 | If source text contains literal **NAME_NNN**-like strings, extraction may produce false placeholder matches. Severity: Low                                                                                          | Probability: Low Mitigation: Placeholder tokens use a distinct pattern unlikely in natural text. Custom patterns configurable via SourceAnalysisPatternsConfig.                               |
-| Source Format Drift           | medium   | low         | Pinned dependency versions in pyproject.toml; manifest records source SHA-256; extraction checks for source drift; test suite covers format-specific edge cases | EPUB or Markdown parsing libraries may change behavior across versions, affecting extraction output. Severity: Medium                                                                                               | Probability: Low Mitigation: Pinned dependency versions in pyproject.toml. Manifest records source SHA-256; extraction checks for source drift. Test suite covers format-specific edge cases. |
+| Title                         | Severity | Probability | Mitigation                                                                                                                                                                                                                    | Notes                                                                                                                                                                                                               |
+| ----------------------------- | -------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V2 Store Scalability          | medium   | medium      | V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends. | Large books (100k+ records) produce multi-megabyte translation-store.json files. The single-file V2 store loads entirely into memory. Severity: Medium                                                              | Probability: Medium Mitigation: V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends. |
+| Agent Context Window Overflow | medium   | medium      | batch_words and before_records/after_records config options; include_untranslated_neighbors toggle; todo max_run_words cap                                                                                                    | Large chapters with many context records may exceed LLM context windows. Task word budgets and context window sizes are configurable but not automatically enforced against external model limits. Severity: Medium | Probability: Medium Mitigation: batch_words and before_records/after_records config options. include_untranslated_neighbors toggle for review tasks. Todo max_run_words cap.                                                                                  |
+| Placeholder Collision         | low      | low         | Placeholder tokens use distinct pattern unlikely in natural text; custom patterns configurable via SourceAnalysisPatternsConfig                                                                                               | If source text contains literal **NAME_NNN**-like strings, extraction may produce false placeholder matches. Severity: Low                                                                                          | Probability: Low Mitigation: Placeholder tokens use a distinct pattern unlikely in natural text. Custom patterns configurable via SourceAnalysisPatternsConfig.                                                                                               |
+| Source Format Drift           | medium   | low         | Pinned dependency versions in pyproject.toml; manifest records source SHA-256; extraction checks for source drift; test suite covers format-specific edge cases                                                               | EPUB or Markdown parsing libraries may change behavior across versions, affecting extraction output. Severity: Medium                                                                                               | Probability: Low Mitigation: Pinned dependency versions in pyproject.toml. Manifest records source SHA-256; extraction checks for source drift. Test suite covers format-specific edge cases.                                                                 |
 
 # Glossary
 
