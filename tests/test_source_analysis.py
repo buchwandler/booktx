@@ -121,12 +121,12 @@ class TestCandidateIdentity:
 
     def test_identity_excludes_score_rank_kind_settings(self):
         # Identity depends only on ruleset/language/normalized/tokens/bucket.
-        base = dict(
-            source_language="en",
-            normalized="new york",
-            tokens=["new", "york"],
-            case_bucket_value="title",
-        )
+        base = {
+            "source_language": "en",
+            "normalized": "new york",
+            "tokens": ["new", "york"],
+            "case_bucket_value": "title",
+        }
         stable = candidate_id_from_identity(**base)
         # Re-computing yields the same id (no hidden state).
         assert candidate_id_from_identity(**base) == stable
@@ -260,15 +260,15 @@ class TestExtractedInputFingerprint:
                 }
             ]
         )
-        kwargs = dict(
-            source_language="en",
-            source_sha256="s",
-            record_id_scheme="chunk-local:v1",
-            chapter_map=cmap,
-            chapter_by_record={
+        kwargs = {
+            "source_language": "en",
+            "source_sha256": "s",
+            "record_id_scheme": "chunk-local:v1",
+            "chapter_map": cmap,
+            "chapter_by_record": {
                 "0001-000001": {"chapter_id": "0001", "chapter_title": "One"}
             },
-        )
+        }
         assert extracted_input_sha256(
             [_chunk("0001", [rec_a])], **kwargs
         ) != extracted_input_sha256([_chunk("0001", [rec_b])], **kwargs)
