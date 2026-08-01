@@ -1,0 +1,201 @@
+schema_version = 3
+migration_id = "41b931d3-f884-4346-b943-f8dab336d407"
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+phase = "complete"
+mode = "copy"
+verify = "sha256"
+project_root = "/data/data/com.termux/files/home/src/booktx"
+requires_staged_validation = true
+requires_activated_validation = true
+requires_finalization = true
+quiescence_completed = true
+staged_validated = [0, 1, 2]
+activated_validated = [0, 1, 2]
+finalized = true
+plan_digest = "d0d449f1ff74f79f801543e435e6c9590f67a01f27cebfefcf2946201ba326e8"
+created_at = "2026-08-01T17:08:57Z"
+updated_at = "2026-08-01T17:08:59Z"
+
+[lock_identity]
+migration_id = "41b931d3-f884-4346-b943-f8dab336d407"
+owner = "ledgercore"
+pid = 19793
+
+[items.0]
+item_index = 0
+component = "mount"
+tool_name = "releaseledger"
+mount_name = "indexes"
+source = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/.migration/41b931d3-f884-4346-b943-f8dab336d407/data"
+destination = "/data/data/com.termux/files/home/.cache/ledgerwerk/releaseledger/816e173a-3ffa-4a95-80bd-6da6f6e3a54e/booktx-c9aa68070f43/indexes"
+strategy = "rebuild"
+destination_policy = "create-only"
+state = "complete"
+expected_before_state = "absent"
+stage_path = "/data/data/com.termux/files/home/.cache/ledgerwerk/releaseledger/816e173a-3ffa-4a95-80bd-6da6f6e3a54e/booktx-c9aa68070f43/.indexes.migrating-41b931d3-f884-4346-b943-f8dab336d407-0"
+backup_path = "/data/data/com.termux/files/home/.cache/ledgerwerk/releaseledger/816e173a-3ffa-4a95-80bd-6da6f6e3a54e/booktx-c9aa68070f43/.indexes.backup-41b931d3-f884-4346-b943-f8dab336d407-0"
+
+[items.0.source_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+tool = "releaseledger"
+mount = "data"
+storage = "project"
+project_name = "booktx"
+
+[items.0.destination_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+tool = "releaseledger"
+mount = "indexes"
+storage = "cache"
+project_name = "booktx"
+
+[items.0.staged_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "c58040862991f91be1cbf34999488a6e14170226d429610f081fb25d61d35cf6"
+file_count = 80
+total_bytes = 112019
+
+[items.0.activated_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "c58040862991f91be1cbf34999488a6e14170226d429610f081fb25d61d35cf6"
+file_count = 80
+total_bytes = 112019
+
+[items.1]
+item_index = 1
+component = "mount"
+tool_name = "releaseledger"
+mount_name = "data"
+source = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/.migration/41b931d3-f884-4346-b943-f8dab336d407/data"
+destination = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/data"
+strategy = "copy"
+destination_policy = "create-only"
+state = "complete"
+expected_before_state = "absent"
+stage_path = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/.data.migrating-41b931d3-f884-4346-b943-f8dab336d407-1"
+backup_path = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/.data.backup-41b931d3-f884-4346-b943-f8dab336d407-1"
+
+[items.1.source_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+tool = "releaseledger"
+mount = "data"
+storage = "project"
+project_name = "booktx"
+
+[items.1.destination_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+tool = "releaseledger"
+mount = "data"
+storage = "project"
+project_name = "booktx"
+
+[items.1.source_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "c58040862991f91be1cbf34999488a6e14170226d429610f081fb25d61d35cf6"
+file_count = 80
+total_bytes = 112019
+
+[items.1.expected_target_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "c58040862991f91be1cbf34999488a6e14170226d429610f081fb25d61d35cf6"
+file_count = 80
+total_bytes = 112019
+
+[items.1.staged_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "c58040862991f91be1cbf34999488a6e14170226d429610f081fb25d61d35cf6"
+file_count = 80
+total_bytes = 112019
+
+[items.1.activated_fingerprint]
+algorithm = "sha256-tree-v1"
+digest = "c58040862991f91be1cbf34999488a6e14170226d429610f081fb25d61d35cf6"
+file_count = 80
+total_bytes = 112019
+
+[items.2]
+item_index = 2
+component = "config"
+tool_name = "releaseledger"
+mount_name = "config"
+source = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/.migration/41b931d3-f884-4346-b943-f8dab336d407/config.toml"
+destination = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/config.toml"
+strategy = "copy"
+destination_policy = "create-only"
+state = "complete"
+expected_before_state = "absent"
+stage_path = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/.config.toml.migrating-41b931d3-f884-4346-b943-f8dab336d407-2"
+backup_path = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/.config.toml.backup-41b931d3-f884-4346-b943-f8dab336d407-2"
+
+[items.2.source_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+tool = "releaseledger"
+mount = "config"
+storage = "project"
+project_name = "booktx"
+
+[items.2.destination_binding]
+schema_version = 1
+layout_version = 3
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+tool = "releaseledger"
+mount = "config"
+storage = "project"
+project_name = "booktx"
+
+[items.2.source_fingerprint]
+algorithm = "sha256-file-v1"
+digest = "47469a018e9a0a94265210f7ee06204b97b1890b8b7155834f7d05010874e48d"
+file_count = 1
+total_bytes = 1392
+
+[items.2.expected_target_fingerprint]
+algorithm = "sha256-file-v1"
+digest = "47469a018e9a0a94265210f7ee06204b97b1890b8b7155834f7d05010874e48d"
+file_count = 1
+total_bytes = 1392
+
+[items.2.staged_fingerprint]
+algorithm = "sha256-file-v1"
+digest = "47469a018e9a0a94265210f7ee06204b97b1890b8b7155834f7d05010874e48d"
+file_count = 1
+total_bytes = 1392
+
+[items.2.activated_fingerprint]
+algorithm = "sha256-file-v1"
+digest = "47469a018e9a0a94265210f7ee06204b97b1890b8b7155834f7d05010874e48d"
+file_count = 1
+total_bytes = 1392
+
+[config_switches.0]
+kind = "manifest"
+destination = "/data/data/com.termux/files/home/src/booktx/.ledger/ledger.toml"
+state = "activated"
+backup_path = "/data/data/com.termux/files/home/src/booktx/.ledger/.ledger.toml.backup-41b931d3-f884-4346-b943-f8dab336d407"
+intent_written = true
+applied = true
+verified = true
+previous_content = "schema_version = 3\n\n[project]\nuuid = \"816e173a-3ffa-4a95-80bd-6da6f6e3a54e\"\nname = \"booktx\"\n\n[ledgers.taskledger.mounts.data]\nstorage = \"external\"\nroot = \"../ledger\"\n\n[ledgers.taskledger.mounts.indexes]\nstorage = \"cache\"\n\n[ledgers.archledger.mounts.data]\nstorage = \"project\"\n"
+target_content = "schema_version = 3\n\n[project]\nuuid = \"816e173a-3ffa-4a95-80bd-6da6f6e3a54e\"\nname = \"booktx\"\n\n[ledgers.taskledger.mounts.data]\nstorage = \"external\"\nroot = \"../ledger\"\n\n[ledgers.taskledger.mounts.indexes]\nstorage = \"cache\"\n\n[ledgers.archledger.mounts.data]\nstorage = \"project\"\n\n[ledgers.releaseledger.mounts.data]\nstorage = \"project\"\n\n[ledgers.releaseledger.mounts.indexes]\nstorage = \"cache\"\n"
+
+[config_switches.0.expected_before_fingerprint]
+algorithm = "sha256-file-v1"
+digest = "5ef47e4c3390f9de4a576286e65393dbb3ebf0804655c42aad449c3db0f817dc"
+file_count = 1
+total_bytes = 275
+
+[config_switches.0.target_fingerprint]
+algorithm = "sha256-file-v1"
+digest = "63d84de9e3e191bb5cc06a4a3f5c8f04f76b941e40bf7e85cfcd91b30de62f95"
+file_count = 1
+total_bytes = 390

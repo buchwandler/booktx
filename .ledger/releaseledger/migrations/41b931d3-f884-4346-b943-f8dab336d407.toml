@@ -1,0 +1,12 @@
+schema_version = 1
+migration_id = "41b931d3-f884-4346-b943-f8dab336d407"
+project_uuid = "816e173a-3ffa-4a95-80bd-6da6f6e3a54e"
+plan_hash = "sha256:8ac2ccd2e47710a4e0a80f27d4fd13dd4ebea2d2e6aef4b384c9e3f3a8a90a2b"
+source_root = "/data/data/com.termux/files/home/src/booktx/.releaseledger"
+source_fingerprint = "sha256:d313360643e3e3307670cbe315bff8f886b1cb7bcf61bea4f206dff9a3215a33"
+target_data_root = "/data/data/com.termux/files/home/src/booktx/.ledger/releaseledger/data"
+target_fingerprint = "sha256:b018f03dab2f5ceee15027812960c934b2687fef19ee035497a888ad13e54f6b"
+config_before_sha256 = ""
+config_after_sha256 = ""
+completed = true
+legacy_cleanup_permitted = true
