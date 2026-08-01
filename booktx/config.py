@@ -1337,9 +1337,7 @@ def identity_path(project: Project) -> Path:
 def load_translation_store(project: Project) -> TranslationStoreV2:
     from booktx.store import open_translation_store
 
-    return open_translation_store(
-        project
-    ).materialize_v2()
+    return open_translation_store(project).materialize_v2()
 
 
 def load_translation_version_ledger(project: Project) -> TranslationVersionLedger:

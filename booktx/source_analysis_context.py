@@ -239,8 +239,63 @@ def _partition_bucket_candidates(
         if candidate_term in imported_terms:
             imported_policy_covered.append(candidate_id)
             continue
+        if family_match and "-" in candidate_term:
+            suffix = candidate_term.rsplit("-", 1)[1]
+            if suffix in {
+                value
+                for question in imported_questions
+                for value in _question_hyphen_suffixes(question)
+            }:
+                imported_policy_covered.append(candidate_id)
+                continue
         needs_review.append(candidate_id)
     return glossary_covered, imported_policy_covered, needs_review
+
+
+def reconcile_source_analysis_questions(
+    context: TranslationContext,
+    report: SourceAnalysisReport,
+    decisions: SourceAnalysisDecisions,
+    interview_ledger: object,
+) -> bool:
+    """Conservatively reconcile generated summary questions with decisions."""
+    disposition_ids = {item.candidate_id for item in decisions.dispositions}
+    promoted_ids = {item.candidate_id for item in decisions.promotions}
+    changed = False
+    for question in context.questions:
+        if (
+            question.origin != "source_analysis"
+            or not question.source_analysis_candidate_ids
+        ):
+            continue
+        ids = set(question.source_analysis_candidate_ids)
+        resolved = ids & (disposition_ids | promoted_ids)
+        remaining = ids - resolved
+        if remaining:
+            preview = ", ".join(sorted(remaining)[:8])
+            if question.status == "recommended" and question.recommendation_reason:
+                question.recommendation_reason = (
+                    question.recommendation_reason.split(" Remaining candidates:", 1)[0]
+                    + f" Remaining candidates: {preview}."
+                )
+            continue
+        # Never overwrite a human-authored answer.
+        if question.answer_source == "user":
+            continue
+        if promoted_ids & ids:
+            question.status = "answered"
+            question.answer = (
+                "Resolved through approved source-interview policy decisions."
+            )
+            question.answer_source = "agent"
+        else:
+            question.status = "skipped"
+            question.answer = "Resolved through reviewed source-interview dispositions."
+            question.answer_source = "agent"
+        question.recommendation = None
+        question.recommendation_reason = ""
+        changed = True
+    return changed
 
 
 def _consolidated_reason(

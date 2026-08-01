@@ -446,9 +446,7 @@ def test_missing_ledger_version_is_an_error_for_v3_store(tmp_path: Path):
     fixture = create_rich_store_fixture(tmp_path / "v3", store_format="v3")
     translation_version_ledger_path(fixture.project).unlink()
 
-    report = validate_project(
-        load_project(fixture.project.root, profile="de_default")
-    )
+    report = validate_project(load_project(fixture.project.root, profile="de_default"))
 
     missing = [
         finding

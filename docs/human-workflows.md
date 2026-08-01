@@ -52,10 +52,15 @@ after lint passes.
 booktx series prepare ./book5 --source-file ./book5.epub \
   --from-book ./book4 --profile PROFILE --series-id series-id \
   --title "Series policy" --target de --target-locale de-DE --model MODEL --write
-booktx context questionnaire ./book5 --profile PROFILE --stdout
+booktx source interview-report ./book5 --profile PROFILE --write
+# Review/edit .booktx/reports/source-interview-decisions.json.
+booktx source interview-apply ./book5 --profile PROFILE \
+  --file .booktx/reports/source-interview-decisions.json --write
+booktx series finalize ./book5 --profile PROFILE --write
 ```
 
-Review the generated policy before running `context mark-ready`.
+For an existing book use `booktx series review ./book5 --profile PROFILE --write`;
+`booktx series finalize` performs the final readiness and isolation checks.
 
 ## Quality workflows
 

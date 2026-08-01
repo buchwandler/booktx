@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -13,7 +14,10 @@ from booktx.workflows.series import (
     SeriesPrepareResult,
     SeriesRecipeWriteOptions,
     build_series_recipe,
+    finalize_series_book,
     prepare_series_book,
+    review_series_book,
+    series_status,
 )
 
 series_app = typer.Typer(help="Prepare the next book in a translated series.")
@@ -232,6 +236,70 @@ def series_recipe_write_cmd(
         _handle_booktx_error(exc)
         return
     console.print(f"wrote series recipe: {result.path}")
+
+
+@series_app.command(name="review")
+def series_review_cmd(
+    book: Path = typer.Argument(..., help="Existing booktx project directory."),
+    profile: str = typer.Option(..., "--profile", help="Translation profile."),
+    refresh_source_analysis: bool = typer.Option(
+        True, "--refresh-source-analysis/--no-refresh-source-analysis"
+    ),
+    include_advisory: bool = typer.Option(False, "--include-advisory"),
+    write: bool = typer.Option(False, "--write", help="Write review artifacts."),
+) -> None:
+    """Create/reconcile all series source-interview review artifacts."""
+    try:
+        result = review_series_book(
+            book,
+            profile=profile,
+            write=write,
+            refresh_source_analysis=refresh_source_analysis,
+            include_advisory=include_advisory,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print_json(json.dumps(result, ensure_ascii=False))
+
+
+@series_app.command(name="status")
+def series_status_cmd(
+    book: Path = typer.Argument(..., help="Booktx project directory."),
+    profile: str = typer.Option(..., "--profile", help="Translation profile."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON output."),
+) -> None:
+    """Show unified series preparation/readiness checks."""
+    try:
+        result = series_status(book, profile=profile)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if as_json:
+        console.print_json(json.dumps(result, ensure_ascii=False))
+        return
+    console.print(f"profile: {profile}")
+    console.print(f"stage: {result['stage']}")
+    console.print(f"ready: {str(result['ready']).lower()}")
+    for name, check in result["checks"].items():
+        console.print(f"- {name}: {'ok' if check.get('ok') else 'blocked'}")
+
+
+@series_app.command(name="finalize")
+def series_finalize_cmd(
+    book: Path = typer.Argument(..., help="Booktx project directory."),
+    profile: str = typer.Option(..., "--profile", help="Translation profile."),
+    write: bool = typer.Option(False, "--write", help="Perform finalization writes."),
+) -> None:
+    """Complete approved series context preparation and isolated instructions."""
+    try:
+        result = finalize_series_book(book, profile=profile, write=write)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print_json(json.dumps(result, ensure_ascii=False))
+    if not write:
+        console.print("Dry run. Re-run with --write to finalize.")
 
 
 __all__ = ["series_app"]

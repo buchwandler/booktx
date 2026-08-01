@@ -26,9 +26,7 @@ def translate_store_status_workflow(
     console.print(f"canonical: {payload['canonical_format'] or 'missing'}")
     console.print(f"path: {payload['canonical_path'] or 'none'}")
     console.print(f"schema version: {payload['schema_version'] or 'unknown'}")
-    console.print(
-        f"records/chunks: {payload['record_count']}/{payload['chunk_count']}"
-    )
+    console.print(f"records/chunks: {payload['record_count']}/{payload['chunk_count']}")
     console.print(f"source hash: {payload['source_hash_status']}")
     console.print(
         f"pending transaction: {'yes' if payload['pending_transaction'] else 'no'}"

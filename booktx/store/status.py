@@ -100,9 +100,7 @@ def build_store_status(project: Project) -> dict[str, Any]:
         "canonical_format": (
             None if store_format == StoreFormat.MISSING else store_format.value
         ),
-        "canonical_path": (
-            str(canonical_path) if canonical_path is not None else None
-        ),
+        "canonical_path": (str(canonical_path) if canonical_path is not None else None),
         "schema_version": schema_version,
         "record_count": report.record_count,
         "chunk_count": len(report.chunk_ids),

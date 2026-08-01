@@ -155,20 +155,17 @@ def test_v3_migration_provenance_survives_manifest_mutations(tmp_path: Path):
     store.records["0002-000001"] = added
     repo.write_materialized_v2(store)
     assert (
-        json.loads(manifest_path.read_text("utf-8"))["migrated_from"]
-        == migrated_from
+        json.loads(manifest_path.read_text("utf-8"))["migrated_from"] == migrated_from
     )
 
     repo.update_source_sha256("new-source-sha")
     assert (
-        json.loads(manifest_path.read_text("utf-8"))["migrated_from"]
-        == migrated_from
+        json.loads(manifest_path.read_text("utf-8"))["migrated_from"] == migrated_from
     )
 
     repo.clear_all(source_sha256="")
     assert (
-        json.loads(manifest_path.read_text("utf-8"))["migrated_from"]
-        == migrated_from
+        json.loads(manifest_path.read_text("utf-8"))["migrated_from"] == migrated_from
     )
 
 

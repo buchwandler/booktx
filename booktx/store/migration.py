@@ -339,9 +339,7 @@ def _preflight(
         StoreFormat.V3,
     }:
         try:
-            store = open_translation_store(
-                project
-            ).materialize_v2()
+            store = open_translation_store(project).materialize_v2()
         except Exception as exc:  # noqa: BLE001
             findings.append(_finding("error", "invalid_source_store", str(exc)))
         if store is not None:
@@ -544,9 +542,7 @@ def execute_store_migration(
     with _migration_lock(project, stale_lock_policy):
         # Recheck the source after taking the lock so a concurrent writer cannot
         # invalidate the preflight while the temporary store is being built.
-        latest = open_translation_store(
-            project
-        ).materialize_v2()
+        latest = open_translation_store(project).materialize_v2()
         if store is None:
             store = latest
         elif _canonical_store(latest) != _canonical_store(store):

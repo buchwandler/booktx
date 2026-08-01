@@ -75,6 +75,5 @@ def test_v3_doctor_reports_unexpected_store_files(tmp_path: Path):
     report = inspect_store(fixture.project)
 
     assert (
-        sum(finding.code == "unexpected_store_file" for finding in report.findings)
-        == 2
+        sum(finding.code == "unexpected_store_file" for finding in report.findings) == 2
     )

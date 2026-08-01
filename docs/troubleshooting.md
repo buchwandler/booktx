@@ -87,8 +87,11 @@ configuration rather than renaming generated files by hand.
 ## Context and series preparation
 
 `booktx series prepare` is a project-root workflow. Provide exactly one policy
-source, either `--from-book` or `--pack`, then review the generated questionnaire
-before `context mark-ready`. Do not run series preparation from a profile root.
+source, either `--from-book` or `--pack`, then review the generated interview
+report and decision manifest. Apply reviewed decisions with
+`source interview-apply`, then use `series finalize`. For an existing book,
+`series review` is idempotent. Do not run series preparation from a profile root
+or inspect parent paths from isolated mode.
 
 ## EPUB output policy
 

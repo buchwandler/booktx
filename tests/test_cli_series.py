@@ -234,8 +234,8 @@ def test_series_prepare_write_creates_expected_artifacts(tmp_path: Path) -> None
     assert (book5 / "translations" / "de_glm_5_2" / "source-analysis.json").is_file()
     assert (book5 / ".booktx" / "reports" / "series-prepare.json").is_file()
     assert "Context is NOT READY because review is required." in result.output
-    assert "booktx context mark-ready" in result.output
-    assert "booktx agents write" in result.output
+    assert "booktx source interview-apply" in result.output
+    assert "booktx series finalize" in result.output
 
 
 def test_series_prepare_dry_run_writes_nothing(tmp_path: Path) -> None:

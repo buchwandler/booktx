@@ -20,6 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover
 from booktx.cli_support import _isolated_mode_error
 from booktx.config import (
     BooktxError,
+    current_source_sha256,
     find_source_file,
     init_source_project,
     load_profile_config,
@@ -28,7 +29,13 @@ from booktx.config import (
     profile_dir,
     source_config_path,
 )
-from booktx.context import context_markdown_path, load_context, write_context
+from booktx.context import (
+    context_markdown_path,
+    load_context,
+    unapproved_required_questions,
+    unresolved_required_questions,
+    write_context,
+)
 from booktx.epub_manifest import sha256_path
 from booktx.errors import _err
 from booktx.io_utils import write_json_text_atomic, write_text_atomic
@@ -421,11 +428,9 @@ def _series_pack_path(options: SeriesPrepareOptions) -> Path:
 def _build_next_commands(options: SeriesPrepareOptions) -> list[str]:
     book_arg = options.book.as_posix()
     return [
-        f"booktx context questionnaire {book_arg} --profile {options.profile} --stdout",
-        f"booktx context status {book_arg} --profile {options.profile}",
-        f"booktx context render {book_arg} --profile {options.profile} --write",
-        f"booktx context mark-ready {book_arg} --profile {options.profile}",
-        f"booktx agents write {book_arg} --mode isolated --profile {options.profile}",
+        f"booktx source interview-report {book_arg} --profile {options.profile} --write",
+        f"booktx source interview-apply {book_arg} --profile {options.profile} --file .booktx/reports/source-interview-decisions.json --write",
+        f"booktx series finalize {book_arg} --profile {options.profile} --write",
     ]
 
 
@@ -438,6 +443,7 @@ def _write_prepare_reports(
     previous_context: str | None,
     termbase_imported: str,
     chapter_audit_blocked: bool,
+    source_interview: dict[str, Any] | None = None,
 ) -> tuple[Path, Path]:
     reports_dir = options.book / ".booktx" / "reports"
     report_json = reports_dir / "series-prepare.json"
@@ -458,6 +464,7 @@ def _write_prepare_reports(
         "review_required": True,
         "chapter_audit_blocked": chapter_audit_blocked,
         "termbase_imported": termbase_imported,
+        "source_interview": source_interview,
         "steps": [
             {
                 "name": step.name,
@@ -504,19 +511,17 @@ def _write_prepare_reports(
             "",
             "## New review work",
             "",
-            "Run:",
+            "Run the source interview review:",
             "",
             "```bash",
             next_commands[0],
-            next_commands[1],
             "```",
             "",
-            "After approving/answering new questions:",
+            "After editing and applying the decision manifest:",
             "",
             "```bash",
+            next_commands[1],
             next_commands[2],
-            next_commands[3],
-            next_commands[4],
             "```",
             "",
         ]
@@ -1073,6 +1078,24 @@ def prepare_series_book(request: SeriesPrepareRequest) -> SeriesPrepareResult:
         )
     )
 
+    from booktx.workflows.source_interview import interview_plan, interview_report
+
+    interview_plan_result = interview_plan(project, profile=options.profile, write=True)
+    interview_report_result = interview_report(
+        project, profile=options.profile, write=True
+    )
+    interview_payload = interview_report_result.payload
+    steps.append(
+        SeriesStepResult(
+            name="source-interview",
+            status="written",
+            message=(
+                f"wrote interview ledger and review artifacts ({len(interview_plan_result.ledger.items)} emitted candidates)"
+            ),
+            path=interview_report_result.report_markdown,
+        )
+    )
+
     report_json, report_md = _write_prepare_reports(
         options,
         steps=steps,
@@ -1081,6 +1104,15 @@ def prepare_series_book(request: SeriesPrepareRequest) -> SeriesPrepareResult:
         previous_context=previous_context,
         termbase_imported=termbase_imported,
         chapter_audit_blocked=False,
+        source_interview={
+            "path": str(interview_plan_result.path),
+            "report": interview_report_result.report_markdown,
+            "decision_template": interview_report_result.template_path,
+            "missing": False,
+            "stale": False,
+            "open": interview_payload["summary"]["open"],
+            "counts_by_bucket": interview_payload["summary"]["by_bucket"],
+        },
     )
     steps.append(
         SeriesStepResult(
@@ -1108,6 +1140,230 @@ def prepare_series_book(request: SeriesPrepareRequest) -> SeriesPrepareResult:
     )
 
 
+def _load_series_profile(book: Path, profile: str) -> tuple[Project, Project, Any]:
+    source_project = load_source_project(book)
+    profile_project = load_profile_project(book, profile)
+    context = load_context(profile_project)
+    if context is None:
+        raise _err(
+            "series_profile_context_missing", f"profile {profile!r} has no context"
+        )
+    return source_project, profile_project, context
+
+
+def series_status(book: Path, *, profile: str) -> dict[str, Any]:
+    """Return one structured readiness view used by guide and finalize."""
+    source_project, profile_project, context = _load_series_profile(book, profile)
+    from booktx.source_analysis import read_canonical_report
+    from booktx.workflows.source_interview import interview_status
+
+    report = read_canonical_report(source_project)
+    source_ok = report is not None and report.source_sha256 == current_source_sha256(
+        source_project
+    )
+    if report is None:
+        interview = {"missing": True, "stale": False, "open": 0, "counts": {}}
+    else:
+        interview = interview_status(source_project, profile=profile)
+    required = unresolved_required_questions(context)
+    unapproved = unapproved_required_questions(context)
+    from booktx.runtime import RuntimeContext, RuntimeMode
+    from booktx.workflows.context import context_doctor_workflow
+
+    runtime = RuntimeContext(
+        project=profile_project,
+        mode=RuntimeMode(
+            kind="project-root",
+            project_root=source_project.root,
+            profile_root=None,
+            profile_name=profile,
+            isolated_output=False,
+        ),
+    )
+    issues = context_doctor_workflow(runtime, compare_profiles=False)
+    agent_entries = __import__(
+        "booktx.workflows.agents", fromlist=["agents_status_workflow"]
+    ).agents_status_workflow(source_project.root)
+    agent = next(
+        (
+            entry
+            for entry in agent_entries
+            if entry.scope == "profile" and entry.profile == profile
+        ),
+        None,
+    )
+    agents_ok = (
+        agent is not None
+        and agent.inspection.state == "managed-valid"
+        and not agent.stale
+    )
+    checks = {
+        "source_extracted": {"ok": bool(source_project.chunks())},
+        "source_analysis": {
+            "ok": source_ok,
+            "stale": report is not None and not source_ok,
+        },
+        "source_interview": {
+            "ok": not interview["missing"]
+            and not interview["stale"]
+            and int(interview["open"]) == 0,
+            **interview,
+        },
+        "context_required_questions": {
+            "ok": not required and not unapproved,
+            "unanswered": len(required),
+            "unapproved": len(unapproved),
+        },
+        "context_doctor": {
+            "ok": not any(issue.severity == "error" for issue in issues),
+            "errors": sum(issue.severity == "error" for issue in issues),
+            "warnings": sum(issue.severity == "warning" for issue in issues),
+        },
+        "context_ready": {"ok": context.ready},
+        "agents": {"ok": agents_ok, "stale": bool(agent and agent.stale)},
+    }
+    ready = all(bool(value.get("ok")) for value in checks.values())
+    stage = (
+        "translating"
+        if ready
+        else next(
+            (name for name, value in checks.items() if not value.get("ok")), "review"
+        )
+    )
+    return {
+        "schema": "booktx.series-readiness.v1",
+        "profile": profile,
+        "ready": ready,
+        "stage": stage,
+        "checks": checks,
+    }
+
+
+def review_series_book(
+    book: Path,
+    *,
+    profile: str,
+    write: bool,
+    refresh_source_analysis: bool = True,
+    include_advisory: bool = False,
+) -> dict[str, Any]:
+    """Prepare review artifacts for an existing book without marking it ready."""
+    _reject_if_invoked_from_isolated_mode(book)
+    source_project = load_source_project(book)
+    report = __import__(
+        "booktx.source_analysis", fromlist=["read_canonical_report"]
+    ).read_canonical_report(source_project)
+    current = current_source_sha256(source_project)
+    if report is None or report.source_sha256 != current:
+        if not refresh_source_analysis:
+            raise _err(
+                "series_review_source_analysis_stale",
+                "canonical source analysis is missing or stale",
+            )
+        analysis = analyze_source(
+            source_project,
+            engine_requested="auto",
+            min_count=2,
+            ngram_max=4,
+            top=200,
+            write=write,
+            sync_profiles=write,
+        )
+        report = analysis.report
+    from booktx.source_analysis_context import prefill_contexts
+
+    if write:
+        prefill_contexts(
+            source_project,
+            report,
+            profiles=[profile],
+            write=True,
+            include_advisory=include_advisory,
+            gate_readiness=False,
+            consolidate_imported_policy=True,
+        )
+    profile_project = load_profile_project(book, profile)
+    context = load_context(profile_project)
+    if context is None:
+        raise _err(
+            "series_profile_context_missing", f"profile {profile!r} has no context"
+        )
+    if write:
+        render_context_command(
+            profile_project,
+            context,
+            write=True,
+            stdout=False,
+            force_discard_md_only=False,
+        )
+    from booktx.workflows.source_interview import interview_plan, interview_report
+
+    if write:
+        plan = interview_plan(source_project, profile=profile, write=True)
+        rendered = interview_report(source_project, profile=profile, write=True)
+    else:
+        plan = interview_plan(source_project, profile=profile, write=False)
+        rendered = interview_report(source_project, profile=profile, write=False)
+    return {
+        "profile": profile,
+        "write": write,
+        "ledger": plan.path,
+        "report": rendered.report_markdown,
+        "report_json": rendered.report_json,
+        "decision_template": rendered.template_path,
+        "summary": rendered.payload["summary"],
+        "readiness": series_status(book, profile=profile),
+    }
+
+
+def finalize_series_book(book: Path, *, profile: str, write: bool) -> dict[str, Any]:
+    """Perform approved mechanical readiness work and verify isolation."""
+    _reject_if_invoked_from_isolated_mode(book)
+    status = series_status(book, profile=profile)
+    blockers = [
+        name
+        for name, check in status["checks"].items()
+        if not check.get("ok") and name not in {"context_ready", "agents"}
+    ]
+    if blockers:
+        raise _err(
+            "series_finalize_blocked", "finalization blocked by: " + ", ".join(blockers)
+        )
+    source_project, profile_project, context = _load_series_profile(book, profile)
+    if write:
+        from booktx.workflows.context import mark_ready_workflow
+
+        mark_ready_workflow(profile_project, context, force=False, reason="")
+        from booktx.workflows.agents import write_agents_workflow
+
+        write_agents_workflow(book, mode="isolated", profile=profile)
+    result = series_status(book, profile=profile)
+    reports = book / ".booktx" / "reports"
+    payload = {
+        "schema": "booktx.series-finalize-report.v1",
+        "profile": profile,
+        "write": write,
+        "readiness": result,
+    }
+    report_json = reports / "series-finalize.json"
+    report_md = reports / "series-finalize.md"
+    if write:
+        write_json_text_atomic(
+            report_json, json.dumps(payload, ensure_ascii=False, indent=2)
+        )
+        write_text_atomic(
+            report_md,
+            "# Series finalize\n\n"
+            + json.dumps(result, ensure_ascii=False, indent=2)
+            + "\n",
+        )
+    return {
+        "payload": payload,
+        "report_json": str(report_json),
+        "report_md": str(report_md),
+    }
+
+
 __all__ = [
     "SERIES_RECIPE_SCHEMA",
     "SeriesPrepareRequest",
@@ -1116,4 +1372,7 @@ __all__ = [
     "SeriesRecipeWriteResult",
     "build_series_recipe",
     "prepare_series_book",
+    "review_series_book",
+    "series_status",
+    "finalize_series_book",
 ]

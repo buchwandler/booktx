@@ -30,18 +30,24 @@ The command:
 5. Imports the previous book's reusable context policy.
 6. Runs source analysis and refreshes profile snapshots.
 7. Prefills context review work and renders `context.md`.
-8. Writes `.booktx/reports/series-prepare.json` and `.md`.
-9. Stops before translation and before automatic `context mark-ready`.
+8. Builds the profile-local source-interview ledger, Markdown/JSON report, and
+   hash-bound decision template.
+9. Writes `.booktx/reports/series-prepare.json` and `.md`.
+10. Stops before translation and before automatic readiness mutation.
 
-Review handoff:
+Review and finalize handoff:
 
 ```bash
-booktx context questionnaire ./book5 --profile de_glm_5_2 --stdout
-booktx context status ./book5 --profile de_glm_5_2
-booktx context render ./book5 --profile de_glm_5_2 --write
-booktx context mark-ready ./book5 --profile de_glm_5_2
-booktx agents write ./book5 --mode isolated --profile de_glm_5_2
+booktx source interview-report ./book5 --profile de_glm_5_2 --write
+# Review/edit .booktx/reports/source-interview-decisions.json.
+booktx source interview-apply ./book5 --profile de_glm_5_2 \
+  --file .booktx/reports/source-interview-decisions.json --write
+booktx series finalize ./book5 --profile de_glm_5_2 --write
 ```
+
+For an existing or partially prepared book, use the idempotent project-root
+workflow `booktx series review ./book5 --profile PROFILE --write` and inspect
+`booktx series status ./book5 --profile PROFILE`.
 
 ## Pack mode
 

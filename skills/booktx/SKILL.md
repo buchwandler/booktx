@@ -129,6 +129,26 @@ booktx context approve ./book --profile PROFILE Q001 \
 booktx context mark-ready ./book --profile PROFILE
 ```
 
+### Series preparation dispatch
+
+When preparing the next book in an existing translated series, prefer the
+project-root high-level workflow:
+
+```bash
+booktx series prepare BOOK ... --write
+# Existing/partially prepared book:
+booktx series review BOOK --profile PROFILE --write
+booktx source interview-report BOOK --profile PROFILE --write
+# Review/edit .booktx/reports/source-interview-decisions.json.
+booktx source interview-apply BOOK --profile PROFILE --file DECISIONS.json --write
+booktx series finalize BOOK --profile PROFILE --write
+```
+
+Do not inspect `source-interview.json` with Python or shell tools, loop over
+`interview-skip`, or rely on ledger schema details. Use the report and one
+hash-bound decision manifest. Series/context administration is project-root
+work; isolated profile mode must not inspect or mutate parent state.
+
 Use the canonical human terminology surface:
 
 ```bash

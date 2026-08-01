@@ -133,13 +133,18 @@ Use the generic interview commands when source-analysis candidates need user-app
 booktx source analyze BOOK --write --sync-profiles
 booktx source interview-plan BOOK --profile PROFILE --write
 booktx source interview-next BOOK --profile PROFILE --format markdown
+booktx source interview-report BOOK --profile PROFILE --format both --write
+booktx source interview-template BOOK --profile PROFILE --write
+booktx source interview-apply BOOK --profile PROFILE --file DECISIONS.json --write
 booktx source interview-answer BOOK CAND-... --profile PROFILE --target TARGET --write
 booktx source interview-skip BOOK CAND-... --profile PROFILE --disposition ignored --reason "REASON" --write
 booktx source interview-status BOOK --profile PROFILE --fail-if-open
 booktx context prefill BOOK --profile PROFILE --from-source-analysis --gate-readiness --write
 ```
 
-Run `interview-status --fail-if-open` before marking context ready when the workflow requires all source-policy questions to be resolved.
+The report is the stable human review surface; do not inspect
+`source-interview.json` directly or loop over one-candidate commands. Run
+`interview-status --fail-if-open` (or `series status`) before finalization.
 
 ## Typical workflow
 

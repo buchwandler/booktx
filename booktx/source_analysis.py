@@ -1778,6 +1778,41 @@ def _classify_review_bucket(
 ]:
     suppression_reason: str | None = None
 
+    # Conservative artifact guards: these are deterministic signals from the
+    # observed corpus classes, not terminology decisions. Keep the candidate
+    # in the analysis report with an auditable suppression reason.
+    artifact_text = " ".join(
+        [accum.text, *(occurrence.visible_text for occurrence in accum.examples)]
+    ).casefold()
+    leading_connector = accum.text.casefold().split(maxsplit=1)[0] if accum.text else ""
+    if accum.kind in {
+        "proper_name",
+        "place_name",
+        "title_candidate",
+    } and leading_connector in {
+        "unlike",
+        "even",
+        "although",
+        "when",
+        "while",
+        "after",
+        "before",
+    }:
+        return "no_action", "none", "sentence_initial_artifact"
+    if "’s" in accum.text or "'s" in accum.text:
+        return "no_action", "none", "possessive_artifact"
+    if any(
+        marker in artifact_text
+        for marker in (
+            "copyright",
+            "all rights reserved",
+            "published by",
+            "dramatis personae",
+            "publisher",
+        )
+    ):
+        return "no_action", "none", "metadata_artifact"
+
     if features.matches_exclude_pattern:
         review_bucket = "no_action"
         suppression_reason = "excluded_by_pattern"

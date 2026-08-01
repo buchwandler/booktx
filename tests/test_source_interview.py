@@ -9,7 +9,13 @@ from booktx.source_analysis import (
     SourceStyleMetrics,
 )
 from booktx.source_analysis_context import SourceAnalysisDecisions
-from booktx.source_interview import INTERVIEW_SCHEMA, build_ledger, render_card
+from booktx.source_interview import (
+    INTERVIEW_SCHEMA,
+    build_ledger,
+    context_fingerprint,
+    ledger_is_stale,
+    render_card,
+)
 
 
 def _report(candidates):
@@ -129,3 +135,39 @@ def test_ledger_suppresses_no_action_and_ignored(tmp_path):
     )
     ledger = build_ledger("p", report, _context(), decisions, _project(tmp_path))
     assert [item.candidate_id for item in ledger.items] == ["C3"]
+
+
+def test_readiness_is_not_part_of_interview_freshness(tmp_path):
+    report = _report([_candidate("C1", "binding", "binding_glossary")])
+    context = _context()
+    project = _project(tmp_path)
+    decisions = SourceAnalysisDecisions()
+    ledger = build_ledger("p", report, context, decisions, project)
+
+    context.ready = True
+
+    assert context_fingerprint(context) == ledger.context_fingerprint
+    assert not ledger_is_stale(ledger, report, context, project, decisions)
+
+
+def test_decision_change_makes_interview_stale(tmp_path):
+    report = _report([_candidate("C1", "binding", "binding_glossary")])
+    context = _context()
+    project = _project(tmp_path)
+    decisions = SourceAnalysisDecisions()
+    ledger = build_ledger("p", report, context, decisions, project)
+    changed = SourceAnalysisDecisions.model_validate(
+        {
+            "dispositions": [
+                {
+                    "candidate_id": "C1",
+                    "normalized": "binding",
+                    "disposition": "ignored",
+                    "decided_by": "test",
+                    "decided_at": "now",
+                }
+            ]
+        }
+    )
+
+    assert ledger_is_stale(ledger, report, context, project, changed)

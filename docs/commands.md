@@ -27,11 +27,23 @@ surface.
 
 ## Human decisions
 
+Series preparation commands:
+
+```bash
+booktx series review ./book --profile PROFILE --write
+booktx series status ./book --profile PROFILE
+booktx series finalize ./book --profile PROFILE --write
+```
+
 ```bash
 booktx context init ./book --profile PROFILE --non-interactive
 booktx source analyze ./book --write --sync-profiles
 booktx source interview-plan ./book --profile PROFILE --write
 booktx source interview-next ./book --profile PROFILE --format markdown
+booktx source interview-report ./book --profile PROFILE --format both --write
+booktx source interview-template ./book --profile PROFILE --write
+booktx source interview-apply ./book --profile PROFILE \
+  --file .booktx/reports/source-interview-decisions.json --write
 booktx context questionnaire ./book --profile PROFILE --stdout
 booktx context approve ./book --profile PROFILE Q001 --text "..." --approved-by "user:NAME"
 booktx context mark-ready ./book --profile PROFILE

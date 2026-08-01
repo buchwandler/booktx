@@ -26,7 +26,19 @@ booktx profile list .
 
 If multiple profiles exist, pass `--profile` on all translation-state commands.
 
-Before starting isolated translation, run the generic source-policy interview when source analysis is available:
+For the normal next-book workflow, use the high-level project-root commands:
+
+```bash
+booktx series prepare BOOK ... --write
+# or, for an existing prepared book:
+booktx series review BOOK --profile PROFILE --write
+booktx source interview-report BOOK --profile PROFILE --write
+# Review/edit the generated decision manifest, then:
+booktx source interview-apply BOOK --profile PROFILE --file DECISIONS.json --write
+booktx series finalize BOOK --profile PROFILE --write
+```
+
+Before starting isolated translation, the lower-level source-policy interview is available when source analysis exists:
 
 ```bash
 booktx source analyze BOOK --write --sync-profiles
@@ -35,7 +47,7 @@ booktx source interview-next BOOK --profile PROFILE --format markdown
 booktx source interview-status BOOK --profile PROFILE --fail-if-open
 ```
 
-Persist only user-approved answers with `booktx source interview-answer BOOK CAND-... --profile PROFILE --target TARGET --write`, or record explicit skips with `booktx source interview-skip`.
+Persist batches through `source interview-apply`; keep one-candidate answer/skip commands for interactive debugging only. Never use Python, `jq`, shell loops, or direct ledger JSON reads for normal preparation.
 
 ### Isolated evaluation workflow
 

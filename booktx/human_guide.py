@@ -280,9 +280,9 @@ def _handle_source_analysis_and_interview(
             profile=profile,
             human_blockers=("The source-policy interview ledger is missing or stale.",),
             human_next=GuideAction(
-                summary="Regenerate the source-policy interview ledger.",
+                summary="Generate the source-policy interview report and ledger.",
                 command=_project_command(
-                    runtime, project_arg, "source interview-plan", suffix=" --write"
+                    runtime, project_arg, "source interview-report", suffix=" --write"
                 ),
             ),
             agent_next=None,
@@ -295,13 +295,13 @@ def _handle_source_analysis_and_interview(
             human_blockers=("Source-policy interview items are still open.",),
             human_next=GuideAction(
                 summary=(
-                    "Review the next open source-policy interview item"
+                    "Review the source-policy interview report"
                     f" ({interview['open']} remaining)."
                 ),
                 command=_project_command(
                     runtime,
                     project_arg,
-                    "source interview-next",
+                    "source interview-report",
                     suffix=" --format markdown",
                 ),
             ),

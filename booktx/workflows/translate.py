@@ -1695,9 +1695,7 @@ def translate_migrate_store_workflow(
             "cannot migrate store with missing source records: "
             + ", ".join(migration.missing_source_ids)
         )
-    open_translation_store(proj).write_materialized_v2(
-        migration.store
-    )
+    open_translation_store(proj).write_materialized_v2(migration.store)
     console.print(
         f"migrated: {migration.migrated_records} record(s) to store v2 at "
         f"{_project_relative(path, proj.root)}"

@@ -38,8 +38,6 @@ def test_store_status_reports_new_profile_v3_and_profile_details(tmp_path: Path)
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["canonical_format"] == "v3"
 
-    profile = runner.invoke(
-        app, ["profile", "show", str(project_dir), "de", "--json"]
-    )
+    profile = runner.invoke(app, ["profile", "show", str(project_dir), "de", "--json"])
     assert profile.exit_code == 0, profile.output
     assert json.loads(profile.output)["store_format"] == "v3"

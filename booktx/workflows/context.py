@@ -940,6 +940,31 @@ def mark_ready_workflow(
                 "mark_ready_unapproved",
                 f"required questions have unapproved answers: {ids}",
             )
+        # Source-policy interviews are a readiness gate whenever this profile
+        # has canonical source analysis. Legacy contexts without analysis keep
+        # the historic context-only workflow.
+        if proj.profile is not None:
+            from booktx.config import current_source_sha256
+            from booktx.source_analysis import read_canonical_report
+            from booktx.workflows.source_interview import interview_status
+
+            report = read_canonical_report(proj)
+            if report is not None and report.source_sha256 == current_source_sha256(
+                proj
+            ):
+                interview = interview_status(proj, profile=proj.profile)
+                if bool(interview["missing"]) or bool(interview["stale"]):
+                    raise _err(
+                        "mark_ready_source_interview",
+                        "source-policy interview is missing or stale; run "
+                        "`booktx source interview-plan BOOK --profile PROFILE --write`",
+                    )
+                if int(interview["open"]) > 0:
+                    raise _err(
+                        "mark_ready_source_interview_open",
+                        "source-policy interview has open items; resolve them "
+                        "before marking context ready",
+                    )
     ctx.ready = True
     ctx.ready_forced = force
     ctx.ready_reason = reason

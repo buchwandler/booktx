@@ -69,9 +69,9 @@ def _evolve_manifest(
             "source_sha256": source_sha256,
             "chunk_ids": chunk_ids,
             "created_at": existing.created_at or utc_timestamp(),
-            "updated_at": utc_timestamp() if changed else (
-                existing.updated_at or existing.created_at or utc_timestamp()
-            ),
+            "updated_at": utc_timestamp()
+            if changed
+            else (existing.updated_at or existing.created_at or utc_timestamp()),
         }
     )
     return V3Manifest.model_validate(payload)
@@ -235,9 +235,7 @@ class V3TranslationStoreRepository:
             reviews = self._load_review_shard(normalized_chunk_id)
             after = tuple(_json_revision(path) for path in shard_paths)
             if before != after or (root / ".write-lock").exists():
-                last_error = (
-                    f"v3 chunk {normalized_chunk_id} changed during the read"
-                )
+                last_error = f"v3 chunk {normalized_chunk_id} changed during the read"
                 time.sleep(_READ_RETRY_DELAY_SECONDS)
                 continue
             try:
@@ -510,9 +508,7 @@ class V3TranslationStoreRepository:
             V3TranslationShard(
                 chunk_id=chunk_id, revision=revision, records=translation_records
             ),
-            V3ReviewShard(
-                chunk_id=chunk_id, revision=revision, records=review_records
-            ),
+            V3ReviewShard(chunk_id=chunk_id, revision=revision, records=review_records),
         )
 
     def _commit_partial_store(

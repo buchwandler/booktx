@@ -416,6 +416,130 @@ def source_interview_plan_cmd(
         console.print("Dry run. Re-run with --write to apply.")
 
 
+@source_app.command(name="interview-report")
+def source_interview_report_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    output_format: str = typer.Option(
+        "markdown", "--format", help="markdown, json, or both."
+    ),
+    output: Path | None = typer.Option(
+        None, "--output", help="Optional report output path."
+    ),
+    stdout: bool = typer.Option(False, "--stdout", help="Print the selected report."),
+    include_snippets: bool = typer.Option(
+        True, "--include-snippets/--no-include-snippets"
+    ),
+    status: str = typer.Option(
+        "all", "--status", help="all, open, queued, asked, stored, ignored, deferred."
+    ),
+    bucket: str | None = typer.Option(
+        None, "--bucket", help="Filter by review bucket."
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Write report and decision template artifacts."
+    ),
+) -> None:
+    """Render a stable human/agent source-policy interview report."""
+    if output_format not in {"markdown", "json", "both"}:
+        _die("--format must be markdown, json, or both")
+    runtime = _load_project_root_runtime(project_dir, "interview-report")
+    from booktx.workflows.source_interview import interview_report
+
+    try:
+        result = interview_report(
+            runtime.project,
+            profile=profile,
+            write=write,
+            include_snippets=include_snippets,
+            status=status,
+            bucket=bucket,
+        )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    if output is not None:
+        from booktx.io_utils import write_json_text_atomic, write_text_atomic
+
+        if output_format in {"markdown", "both"}:
+            write_text_atomic(output, result.markdown)
+        if output_format == "json":
+            write_json_text_atomic(
+                output, json.dumps(result.payload, ensure_ascii=False, indent=2)
+            )
+    if stdout or not write:
+        if output_format in {"markdown", "both"}:
+            console.print(result.markdown)
+        if output_format == "json":
+            console.print_json(json.dumps(result.payload, ensure_ascii=False))
+    else:
+        console.print(f"wrote report: {result.report_markdown}")
+        console.print(f"wrote report json: {result.report_json}")
+        console.print(f"wrote decision template: {result.template_path}")
+
+
+@source_app.command(name="interview-template")
+def source_interview_template_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    write: bool = typer.Option(False, "--write", help="Write the decision template."),
+) -> None:
+    """Create or preview the hash-bound source-interview decision manifest."""
+    runtime = _load_project_root_runtime(project_dir, "interview-template")
+    from booktx.workflows.source_interview import interview_report
+
+    try:
+        result = interview_report(runtime.project, profile=profile, write=write)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    payload = (
+        json.loads(Path(result.template_path).read_text("utf-8"))
+        if write
+        else {
+            "schema": "booktx.source-interview-decisions.v1",
+            "profile": profile,
+            "source_analysis_sha256": result.payload["source_analysis_sha256"],
+            "basis_fingerprint": result.payload.get("basis_fingerprint"),
+            "decisions": [],
+        }
+    )
+    console.print_json(json.dumps(payload, ensure_ascii=False))
+    if not write:
+        console.print("Dry run. Re-run with --write to write the template.")
+
+
+@source_app.command(name="interview-apply")
+def source_interview_apply_cmd(
+    project_dir: Path = typer.Argument(..., help="Project root."),
+    profile: str = typer.Option(..., "--profile", help="Target profile."),
+    file: Path = typer.Option(..., "--file", help="Decision manifest JSON."),
+    write: bool = typer.Option(False, "--write", help="Apply the validated manifest."),
+) -> None:
+    """Validate and apply many reviewed source-interview decisions in one pass."""
+    runtime = _load_project_root_runtime(project_dir, "interview-apply")
+    from booktx.source_interview import SourceInterviewDecisions
+    from booktx.workflows.source_interview import interview_apply
+
+    try:
+        manifest = SourceInterviewDecisions.model_validate_json(file.read_text("utf-8"))
+        result = interview_apply(
+            runtime.project, profile=profile, manifest=manifest, write=write
+        )
+    except (OSError, ValueError) as exc:
+        _die(f"invalid decision manifest: {exc}")
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    console.print(
+        f"{'applied' if write else 'planned'} {result.total} decisions: "
+        f"promoted={result.promoted} reviewed={result.reviewed} "
+        f"ignored={result.ignored} unchanged={result.unchanged} open={result.open}"
+    )
+    if not write:
+        console.print("Dry run. Re-run with --write to apply.")
+
+
 @source_app.command(name="interview-status")
 def source_interview_status_cmd(
     project_dir: Path = typer.Argument(..., help="Project root."),
