@@ -29,6 +29,7 @@ translate through profile-local tasks, validate, and build output.
 - [Maintenance](maintenance.md)
 - [Development](development.md)
 - [Releasing](releasing.md)
+- [Changelog](changelog.md)
 
 ## Reference
 
@@ -59,4 +60,5 @@ releasing
 mypy-baseline
 maintenance
 troubleshooting
+changelog
 ```
