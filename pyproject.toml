@@ -47,7 +47,7 @@ analysis = [
 dev = [
     "build",
     "pytest",
-    "ruff",
+    "ruff==0.15.12",
     "ebooklib",
     "mypy",
 ]
