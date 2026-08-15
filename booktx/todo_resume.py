@@ -139,6 +139,9 @@ def resume_translation_todo(
         selected_chapter,
         unit="batch",
         max_words=todo.batch_words,
+        max_records=todo.batch_records,
+        max_sentences=todo.batch_sentences,
+        max_rendered_lines=todo.batch_rendered_lines,
     )
     if not record_ids:
         resume_command = translate_todo_resume_command(project, todo_id=todo.todo_id)
@@ -158,6 +161,9 @@ def resume_translation_todo(
         unit=actual_unit,
         record_ids=record_ids,
         requested_max_words=todo.batch_words,
+        requested_max_records=todo.batch_records,
+        requested_max_sentences=todo.batch_sentences,
+        requested_max_rendered_lines=todo.batch_rendered_lines,
         todo_id=todo.todo_id,
     )
 

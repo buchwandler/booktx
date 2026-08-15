@@ -78,3 +78,19 @@ Glossary enforcement uses the longest non-shadowed source span. If a shorter
 term occurs inside a longer configured phrase, add the longer phrase or use
 natural apposition rather than forcing an unnatural target token. A standalone
 shorter occurrence remains subject to its own rule.
+
+## First-pass quality contract
+
+Translation profiles may configure `[submission_quality]` with a required
+same-call self-review and a built-in or explicitly configured local grammar
+backend. The self-review is an internal generation protocol: translate,
+reread the target sentence without following source syntax, check the
+target-language checklist, recheck omissions and terminology against SOURCE,
+then commit only final prose. A completed batch receives one additional
+target-only sequential reread in the same model call.
+
+The deterministic linguistic audit is intentionally limited to high-confidence
+mechanical and regression checks. It does not establish complete grammar,
+style, semantic fidelity, or literary quality. `strict` quality combines the
+model's required self-review with blocking configured linguistic findings; the
+optional grammar judge is a separate diagnostic or repair workflow.

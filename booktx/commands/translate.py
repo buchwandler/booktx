@@ -261,6 +261,18 @@ def translate_todo_next(
     batch_words: int = typer.Option(
         800, "--batch-words", min=1, help="Source-word budget per translate next batch."
     ),
+    batch_records: int | None = typer.Option(
+        None, "--batch-records", min=1, help="Optional record ceiling per batch."
+    ),
+    batch_sentences: int | None = typer.Option(
+        None, "--batch-sentences", min=1, help="Optional sentence ceiling per batch."
+    ),
+    batch_rendered_lines: int | None = typer.Option(
+        None,
+        "--batch-rendered-lines",
+        min=1,
+        help="Optional rendered-line ceiling per batch.",
+    ),
     max_run_words: int | None = typer.Option(
         None,
         "--max-run-words",
@@ -305,6 +317,9 @@ def translate_todo_next(
         profile,
         chapters,
         batch_words,
+        batch_records,
+        batch_sentences,
+        batch_rendered_lines,
         max_run_words,
         start_chapter,
         skip_current,

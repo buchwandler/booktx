@@ -812,6 +812,9 @@ class TranslationTask(BaseModel):
     source_words: int = 0
     record_count: int = 0
     requested_max_words: int | None = None
+    requested_max_records: int | None = None
+    requested_max_sentences: int | None = None
+    requested_max_rendered_lines: int | None = None
     todo_id: str | None = None
     records: list[TranslationTaskRecord] = Field(default_factory=list)
     before_records: list[TranslationTaskContextRecord] = Field(default_factory=list)
@@ -974,6 +977,9 @@ class TranslationTodo(BaseModel):
     target_locale: str = ""
     chapters_requested: int
     batch_words: int
+    batch_records: int | None = Field(default=None, ge=1)
+    batch_sentences: int | None = Field(default=None, ge=1)
+    batch_rendered_lines: int | None = Field(default=None, ge=1)
     max_run_words: int | None = None
     include_current: bool = True
     created_at: str
@@ -1020,13 +1026,24 @@ class AgentNextAction(BaseModel):
 
 
 class SubmissionQualityConfig(BaseModel):
-    """Policy for optional deterministic linguistic submission audits."""
+    """Profile policy for first-pass translation quality enforcement.
+
+    The table is optional for backward compatibility. When present, it
+    controls prompt self-review, built-in linguistic rules, and an explicitly
+    configured local grammar backend.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     linguistic_audit: Literal["off", "warn", "error"] = "warn"
     target_language_rules: bool = True
     suspicious_length_ratio: Literal["off", "warn", "error"] = "warn"
+    self_review: Literal["off", "optional", "required"] = "optional"
+    grammar_backend: Literal["builtin", "languagetool-local"] = "builtin"
+    grammar_backend_command: str | None = None
+    grammar_backend_version: str | None = None
+    grammar_backend_timeout_seconds: float = Field(default=10.0, gt=0)
+    grammar_backend_ignored_categories: list[str] = Field(default_factory=list)
 
 
 class NamesFile(BaseModel):

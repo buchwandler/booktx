@@ -378,3 +378,22 @@ as `translate import-legacy`, `translate migrate-store`, and
 - Do not skip user approval or mark context ready from agent judgment.
 - Do not mix profile or judge files.
 - Record and report validation warnings; do not hide existing failures.
+
+## First-pass target-language quality
+
+When the selected profile enables submission quality, translate each source
+record, reread the target sentence as target-language prose, check the complete
+target-language checklist, recheck source fidelity, and commit only corrected
+final prose. Reread the completed batch once in order for agreement, pronoun
+reference, punctuation, tense, and continuity defects. Do not emit drafts,
+checklist answers, or reasoning in the ingest block.
+
+The profile-driven quality gate is shared by `translate lint-block`,
+`translate insert`, and `translate todo-submit`. `protocol` is structural;
+`basic` blocks configured linguistic errors; `strict` blocks warnings and
+errors. The built-in linguistic audit is conservative and cannot prove full
+German grammar or literary quality. A local LanguageTool backend is optional,
+explicitly configured, pinned, and offline; it must fail clearly when
+unavailable and must not silently fall back or download dependencies. The
+grammar judge remains an optional diagnostic/repair workflow, not a required
+second production pass.

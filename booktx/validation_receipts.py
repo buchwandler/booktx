@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from booktx.config import Project, translation_validation_receipt_path
 from booktx.io_utils import write_json_text_atomic
+from booktx.translation_quality import resolve_submission_quality_policy
 from booktx.versioning import canonical_json_sha256
 
 if TYPE_CHECKING:
@@ -27,8 +28,15 @@ def _input_sha256(path: Path) -> str:
 
 
 def _receipt_identity(
-    task: TranslationTask, input_sha256: str
+    project: Project,
+    task: TranslationTask,
+    input_sha256: str,
+    requested_quality: str | None = None,
 ) -> dict[str, str | None]:
+    policy = resolve_submission_quality_policy(
+        getattr(project.profile_config, "submission_quality", None),
+        requested_quality=requested_quality,
+    )
     return {
         "task_id": task.task_id,
         "input_sha256": input_sha256,
@@ -36,11 +44,34 @@ def _receipt_identity(
         "context_view_sha256": task.context_view_sha256,
         "mandatory_glossary_sha256": task.mandatory_glossary_sha256,
         "translation_version": task.translation_version,
+        "quality_policy_fingerprint": policy.fingerprint,
+        "quality_mode": policy.mode,
+        "grammar_backend_identity": policy.backend_identity,
     }
 
 
-def validation_receipt_key(task: TranslationTask, input_path: Path) -> str:
-    return canonical_json_sha256(_receipt_identity(task, _input_sha256(input_path)))
+def validation_receipt_key(
+    task: TranslationTask,
+    input_path: Path,
+    project: Project | None = None,
+    requested_quality: str | None = None,
+) -> str:
+    """Return a receipt key bound to content, task, and quality policy."""
+    if project is None:
+        # Compatibility for callers that only have the old task/key contract.
+        return canonical_json_sha256(
+            {
+                "task_id": task.task_id,
+                "input_sha256": _input_sha256(input_path),
+                "source_sha256": task.source_sha256,
+                "context_view_sha256": task.context_view_sha256,
+                "mandatory_glossary_sha256": task.mandatory_glossary_sha256,
+                "translation_version": task.translation_version,
+            }
+        )
+    return canonical_json_sha256(
+        _receipt_identity(project, task, _input_sha256(input_path), requested_quality)
+    )
 
 
 def write_validation_receipt(
@@ -49,9 +80,10 @@ def write_validation_receipt(
     input_path: Path,
     *,
     passed: bool,
+    requested_quality: str | None = None,
 ) -> Path:
     input_sha256 = _input_sha256(input_path)
-    identity = _receipt_identity(task, input_sha256)
+    identity = _receipt_identity(project, task, input_sha256, requested_quality)
     key = canonical_json_sha256(identity)
     payload = {
         "version": 1,
@@ -66,9 +98,14 @@ def write_validation_receipt(
 
 
 def load_matching_validation_receipt(
-    project: Project, task: TranslationTask, input_path: Path
+    project: Project,
+    task: TranslationTask,
+    input_path: Path,
+    requested_quality: str | None = None,
 ) -> dict[str, object] | None:
-    key = validation_receipt_key(task, input_path)
+    key = validation_receipt_key(
+        task, input_path, project, requested_quality=requested_quality
+    )
     path = translation_validation_receipt_path(project, key)
     if not path.is_file():
         return None

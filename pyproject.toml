@@ -93,5 +93,5 @@ disallow_untyped_calls = false
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["epub2text.*", "spacy", "spacy.*", "text2epub.*", "tomli"]
+module = ["epub2text.*", "phrasplit", "spacy", "spacy.*", "text2epub.*", "tomli"]
 ignore_missing_imports = true

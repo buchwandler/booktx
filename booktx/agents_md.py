@@ -295,7 +295,10 @@ def _startup_failure_rule() -> str:
     )
 
 
-def _render_isolated_body(*, profile: str, target_locale: str) -> str:
+def _render_isolated_body(
+    *, profile: str, target_locale: str, quality_mode: str = "basic"
+) -> str:
+    quality_option = "" if quality_mode == "basic" else f" --quality {quality_mode}"
     return (
         "\n\n"
         "# booktx isolated profile instructions\n"
@@ -340,6 +343,14 @@ def _render_isolated_body(*, profile: str, target_locale: str) -> str:
         "2. `tasks/TASK.source.block.txt`\n"
         "3. `ingest/TASK.block.txt`\n"
         "\n"
+        "Target-language self-review:\n"
+        "- Translate each record, reread the target sentence as target-language "
+        "prose, check the complete checklist in the task brief, then commit only "
+        "the corrected final prose.\n"
+        "- After the batch is drafted, reread target records in order for clear "
+        "agreement, reference, punctuation, and continuity defects.\n"
+        "- Do not emit intermediate drafts, explanations, or checklist answers.\n"
+        "\n"
         "Historical consistency lookup:\n"
         "- use `booktx translate search` or `booktx translate concordance`;\n"
         "- do not Grep/Search translation stores, context history, or editor indexes;\n"
@@ -365,7 +376,7 @@ def _render_isolated_body(*, profile: str, target_locale: str) -> str:
         "6. Translate only the generated ingest block.\n"
         "7. Always lint the completed block before the first insert with "
         "`booktx translate lint-block . --task-id TASK --file ingest/TASK.block.txt "
-        "--format block`. Lint is read-only.\n"
+        f"--format block{quality_option}`. Lint is read-only.\n"
         "8. If lint fails, repair the same ingest file and rerun lint once.\n"
         "9. Submit it with the exact `booktx translate insert . ...` "
         "command printed by booktx.\n"
@@ -788,6 +799,7 @@ def render_agents_md(
     profile_kind: str | None = None,
     selection_purpose: str | None = None,
     revision_focus: str | None = None,
+    quality_mode: str = "basic",
 ) -> str:
     """Render a complete managed ``AGENTS.md`` document for ``mode``.
 
@@ -823,7 +835,11 @@ def render_agents_md(
                     profile=profile, target_locale=target_locale
                 )
         else:
-            body = _render_isolated_body(profile=profile, target_locale=target_locale)
+            body = _render_isolated_body(
+                profile=profile,
+                target_locale=target_locale,
+                quality_mode=quality_mode,
+            )
     else:
         body = _render_collaborative_body()
     return _ensure_single_trailing_newline(header + body)

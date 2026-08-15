@@ -114,6 +114,7 @@ from booktx.progress import (
     load_source_records,
     source_record_sha256,
 )
+from booktx.quality_backends.languagetool import LanguageToolUnavailable
 from booktx.record_refs import parse_record_ref, resolve_record_range
 from booktx.status import build_status_snapshot
 from booktx.submissions import resolve_submission
@@ -139,6 +140,7 @@ from booktx.translation_concordance import (
     render_concordance_human,
     render_concordance_markdown,
 )
+from booktx.translation_quality import finding_blocks, resolve_submission_quality_policy
 from booktx.translation_store import (
     active_candidate,
     active_review_candidate,
@@ -797,7 +799,15 @@ def _render_lint_block_human(
     errors = [finding for finding in findings if finding.severity == Severity.ERROR]
     warnings = [finding for finding in findings if finding.severity == Severity.WARN]
     advisories = list(linguistic_findings or [])
-    linguistic_blocking = quality == "strict" and bool(advisories)
+    linguistic_blocking = any(
+        finding_blocks(
+            getattr(finding, "severity", "warn"),
+            mode=resolve_submission_quality_policy(
+                None, requested_quality=quality
+            ).mode,
+        )
+        for finding in advisories
+    )
     ok = (
         not missing_record_ids
         and not extra_record_ids
@@ -813,7 +823,18 @@ def _render_lint_block_human(
     else:
         console.print(f"linguistic advisories: {len(advisories)}")
         console.print(
-            f"linguistic blocking findings: {len(advisories) if linguistic_blocking else 0}"
+            "linguistic blocking findings: "
+            + str(
+                sum(
+                    finding_blocks(
+                        getattr(finding, "severity", "warn"),
+                        mode=resolve_submission_quality_policy(
+                            None, requested_quality=quality
+                        ).mode,
+                    )
+                    for finding in advisories
+                )
+            )
         )
     console.print("semantic/literary quality: not checked")
     console.print(f"submitted records: {submitted_count} / {expected_count}")
@@ -956,26 +977,42 @@ def translate_lint_block_workflow(
     linguistic_findings: list[LinguisticAuditFinding] = []
     if quality != "protocol":
         configured = getattr(proj.profile_config, "submission_quality", None)
-        if configured is None or configured.linguistic_audit != "off":
-            strict = quality == "strict" or (
-                configured is not None and configured.linguistic_audit == "error"
-            )
+        policy = resolve_submission_quality_policy(
+            configured, requested_quality=quality
+        )
+        if policy.run_linguistic_audit:
             submitted_by_id = {record.id: record.target for record in submitted_records}
-            linguistic_findings = audit_records(
-                [
-                    (record.id, record.source, submitted_by_id[record.id])
-                    for record in task.records
-                    if record.id in submitted_by_id
-                ],
-                locale=(task.target_locale or task.target_language),
-                strict=strict,
-            )
-    linguistic_blocking = quality == "strict" and bool(linguistic_findings)
+            try:
+                linguistic_findings = audit_records(
+                    [
+                        (record.id, record.source, submitted_by_id[record.id])
+                        for record in task.records
+                        if record.id in submitted_by_id
+                    ],
+                    locale=(task.target_locale or task.target_language),
+                    config=configured,
+                    requested_quality=quality,
+                )
+            except (LanguageToolUnavailable, ValueError) as exc:
+                _die(f"configured submission-quality backend unavailable: {exc}")
+                return
+    policy = resolve_submission_quality_policy(
+        getattr(proj.profile_config, "submission_quality", None),
+        requested_quality=quality,
+    )
+    linguistic_blocking = any(
+        finding_blocks(finding.severity, mode=policy.mode)
+        for finding in linguistic_findings
+    )
     ok = protocol_ok and not linguistic_blocking
     receipt_path: Path | None = None
     if ok and receipt_input_path is not None:
         receipt_path = write_validation_receipt(
-            proj, task, receipt_input_path, passed=True
+            proj,
+            task,
+            receipt_input_path,
+            passed=True,
+            requested_quality=quality,
         )
 
     if as_json:
@@ -989,9 +1026,10 @@ def translate_lint_block_workflow(
             "errors": len(errors),
             "warnings": len(warnings),
             "linguistic_advisory_count": len(linguistic_findings),
-            "linguistic_blocking_count": len(linguistic_findings)
-            if quality == "strict"
-            else 0,
+            "linguistic_blocking_count": sum(
+                finding_blocks(finding.severity, mode=policy.mode)
+                for finding in linguistic_findings
+            ),
             "findings": [finding.as_dict() for finding in findings],
             "quality": quality,
             "protocol_ok": protocol_ok,
@@ -1023,6 +1061,9 @@ def translate_todo_next_workflow(
     profile: str | None = None,
     chapters: int = 3,
     batch_words: int = 800,
+    batch_records: int | None = None,
+    batch_sentences: int | None = None,
+    batch_rendered_lines: int | None = None,
     max_run_words: int | None = None,
     start_chapter: str | None = None,
     skip_current: bool = False,
@@ -1063,6 +1104,9 @@ def translate_todo_next_workflow(
             bundle,
             chapters=chapters,
             batch_words=batch_words,
+            batch_records=batch_records,
+            batch_sentences=batch_sentences,
+            batch_rendered_lines=batch_rendered_lines,
             max_run_words=max_run_words,
             skip_current=skip_current,
             start_chapter=start_chapter,
@@ -1181,6 +1225,12 @@ def translate_todo_next_workflow(
                 for c in todo.chapters
             ],
         }
+        if todo.batch_records is not None:
+            payload["batch_records"] = todo.batch_records
+        if todo.batch_sentences is not None:
+            payload["batch_sentences"] = todo.batch_sentences
+        if todo.batch_rendered_lines is not None:
+            payload["batch_rendered_lines"] = todo.batch_rendered_lines
         if json_path is not None:
             payload["json_path"] = display_path(json_path, runtime.mode)
         if md_path is not None:
@@ -1199,6 +1249,12 @@ def translate_todo_next_workflow(
     else:
         console.print(f"goal: complete {todo.chapters_requested} incomplete chapter(s)")
     console.print(f"batch words: {todo.batch_words}")
+    if todo.batch_records is not None:
+        console.print(f"batch records: {todo.batch_records}")
+    if todo.batch_sentences is not None:
+        console.print(f"batch sentences: {todo.batch_sentences}")
+    if todo.batch_rendered_lines is not None:
+        console.print(f"batch rendered lines: {todo.batch_rendered_lines}")
     console.print("chapters: " + ", ".join(c.chapter_id for c in todo.chapters))
     if md_path is not None:
         console.print(

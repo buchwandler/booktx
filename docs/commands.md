@@ -264,3 +264,21 @@ booktx translate
 booktx termbase
 booktx pass-through
 ```
+
+### Translation quality gates
+
+The generated lint command follows the profile's effective quality policy. The
+manual form is:
+
+```bash
+booktx translate lint-block . --task-id TASK \
+  --file translations/PROFILE/ingest/TASK.block.txt \
+  --format block --quality strict
+```
+
+Use `protocol` for structural checks only, `basic` for configured linguistic
+errors with advisory warnings, and `strict` to block warnings as well. The
+acceptance path enforces the same policy, so lint is a read-only preview rather
+than a security boundary. A local LanguageTool backend is opt-in and must be
+configured with an explicit pinned command/version; booktx never downloads or
+uses a public grammar service automatically.

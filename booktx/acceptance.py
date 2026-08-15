@@ -39,10 +39,13 @@ from booktx.config import (
 )
 from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import utc_timestamp
+from booktx.linguistic_audit import audit_records
 from booktx.models import TranslatedRecord
 from booktx.profile_protocol import require_translation_protocol
 from booktx.progress import count_words
+from booktx.quality_backends.languagetool import LanguageToolUnavailable
 from booktx.termbase_tasking import applicable_termbase_sha256_for_record_sources
+from booktx.translation_quality import finding_blocks, resolve_submission_quality_policy
 from booktx.translation_store import ensure_store_record, upsert_translation_version
 from booktx.validate import Severity, load_validation_context, validate_record_pair
 from booktx.versioning import resolve_current_version
@@ -104,6 +107,77 @@ class SubmissionValidationError(Exception):
 
 def _error_findings(findings: list[Finding]) -> list[Finding]:
     return [f for f in findings if f.severity == Severity.ERROR]
+
+
+def _submission_quality_findings(
+    proj: Project,
+    bundle: StatusBundle,
+    submitted: list[SubmittedRecord],
+    *,
+    task: TranslationTask | None,
+    requested_quality: str | None = None,
+) -> list[Finding]:
+    """Run the configured linguistic gate used by every acceptance path."""
+    config = getattr(proj.profile_config, "submission_quality", None)
+    policy = resolve_submission_quality_policy(
+        config, requested_quality=requested_quality
+    )
+    if policy.mode == "protocol":
+        return []
+    submitted_by_id = {item.id: item.target for item in submitted}
+    task_by_id = {record.id: record for record in task.records} if task else {}
+    records = []
+    ignored_terms_by_id: dict[str, tuple[str, ...]] = {}
+    for record_id, target in submitted_by_id.items():
+        source_view = bundle.index.source_by_id[record_id]
+        records.append((record_id, source_view.source, target))
+        task_record = task_by_id.get(record_id)
+        if task_record is not None:
+            terms = list(task_record.protected_terms)
+            terms.extend(
+                snapshot.target
+                for snapshot in task_record.applicable_glossary
+                if snapshot.target
+            )
+            terms.extend(
+                target
+                for snapshot in task_record.applicable_termbase
+                for target in snapshot.target_preferred
+            )
+            ignored_terms_by_id[record_id] = tuple(terms)
+    try:
+        linguistic = audit_records(
+            records,
+        locale=str(
+            task.target_locale or task.target_language
+            if task is not None
+            else getattr(proj.profile_config, "target_locale", None)
+            or getattr(proj.profile_config, "target_language", "")
+        ),
+            config=config,
+            requested_quality=requested_quality,
+            ignored_terms_by_id=ignored_terms_by_id,
+        )
+    except (LanguageToolUnavailable, ValueError) as exc:
+        raise _err("submission_quality_backend_unavailable", str(exc)) from exc
+    task_chunks = {record.id: record.chunk_id for record in task.records} if task else {}
+    source_by_id = bundle.index.source_by_id
+    return [
+        Finding(
+            chunk_id=task_chunks.get(item.record_id, source_by_id[item.record_id].chunk_id),
+            severity=(
+                Severity.ERROR
+                if finding_blocks(item.severity, mode=policy.mode)
+                else item.severity
+            ),
+            rule=item.rule,
+            message=item.message,
+            record_id=item.record_id,
+            source=source_by_id[item.record_id].source,
+            target=item.excerpt,
+        )
+        for item in linguistic
+    ]
 
 
 def _resolved_submission_version(
@@ -327,6 +401,7 @@ def accept_translation_records(
     submission_translation_version: str | None = None,
     submission_profile: str | None = None,
     enforce_task_version: bool = False,
+    requested_quality: str | None = None,
 ) -> AcceptResult:
     """Validate and atomically persist a batch of accepted records.
 
@@ -354,6 +429,15 @@ def accept_translation_records(
     else:
         version_ref = resolve_current_version(proj).version_ref
     findings = validate_submitted_records(proj, bundle, submitted, task=task)
+    findings.extend(
+        _submission_quality_findings(
+            proj,
+            bundle,
+            submitted,
+            task=task,
+            requested_quality=requested_quality,
+        )
+    )
     errors = _error_findings(findings)
     if errors:
         raise SubmissionValidationError(errors)
@@ -402,6 +486,7 @@ def accept_one_record(
     submission_translation_version: str | None = None,
     submission_profile: str | None = None,
     enforce_task_version: bool = False,
+    requested_quality: str | None = None,
 ) -> AcceptResult:
     """Validate and persist a single accepted record.
 
@@ -419,4 +504,5 @@ def accept_one_record(
         submission_translation_version=submission_translation_version,
         submission_profile=submission_profile,
         enforce_task_version=enforce_task_version,
+        requested_quality=requested_quality,
     )

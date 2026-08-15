@@ -20,6 +20,7 @@ from booktx.judge_policy import (
     DEFAULT_JUDGE_BATCH_SENTENCES,
     DEFAULT_JUDGE_BATCH_WORDS,
 )
+from booktx.translation_quality import resolve_submission_quality_policy
 
 __all__ = [
     "profile_option_fragment",
@@ -122,10 +123,15 @@ def translate_lint_block_command(
     file_path: str,
 ) -> str:
     """Build a ``booktx translate lint-block`` command string."""
-    return (
+    command = (
         f"booktx translate lint-block .{profile_option_fragment(project, mode)}"
         f" --task-id {task_id} --file {file_path} --format block"
     )
+    configured = getattr(project.profile_config, "submission_quality", None)
+    quality = resolve_submission_quality_policy(configured).mode
+    if quality != "basic":
+        command += f" --quality {quality}"
+    return command
 
 
 def translate_todo_next_command(
@@ -134,6 +140,9 @@ def translate_todo_next_command(
     mode: RuntimeMode | None = None,
     chapters: int,
     batch_words: int,
+    batch_records: int | None = None,
+    batch_sentences: int | None = None,
+    batch_rendered_lines: int | None = None,
     max_run_words: int | None = None,
     start_chapter: str | None = None,
     skip_current: bool = False,
@@ -147,6 +156,12 @@ def translate_todo_next_command(
         f"--chapters {chapters}",
         f"--batch-words {batch_words}",
     ]
+    if batch_records is not None:
+        parts.append(f"--batch-records {batch_records}")
+    if batch_sentences is not None:
+        parts.append(f"--batch-sentences {batch_sentences}")
+    if batch_rendered_lines is not None:
+        parts.append(f"--batch-rendered-lines {batch_rendered_lines}")
     if max_run_words is not None:
         parts.append(f"--max-run-words {max_run_words}")
     if start_chapter:

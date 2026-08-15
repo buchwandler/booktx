@@ -39,6 +39,7 @@ from booktx.selection_mode import revision_focus, selection_purpose
 from booktx.status import selected_chapter
 from booktx.tasks import limit_records_by_words
 from booktx.termbase_tasking import collect_applicable_termbase_for_record_sources
+from booktx.translation_quality import render_target_language_checklist
 from booktx.validate import load_validation_context
 from booktx.versioning import canonical_json_sha256, resolve_current_version
 
@@ -154,6 +155,16 @@ def _judge_task_block_header(task: JudgeTask, *, revise: bool) -> list[str]:
             f"profile: {task.profile}",
             f"sources: {','.join(task.source_profiles)}",
         ]
+    if task.revision_focus == "grammar":
+        lines.extend(
+            [
+                "# Canonical target-language grammar checklist:",
+                *[
+                    f"# - {item}"
+                    for item in render_target_language_checklist(task.target_locale)
+                ],
+            ]
+        )
     if task.source_access == "snapshot":
         lines.append(f"source_access: {task.source_access}")
         lines.append(

@@ -389,3 +389,25 @@ or a documented blocker exists, otherwise run `booktx judge todo-resume . --late
 A successful insert is not a stop condition. Before reporting progress, use the
 persisted status counts; never estimate from attempted tasks. If an unavoidable
 harness limit interrupts the loop, report the exact status and resume command.
+
+## First-pass translation quality
+
+When a profile enables `[submission_quality]`, each generated translation task
+contains a same-call target-language quality gate. The agent drafts each
+sentence, rereads the target as target-language prose, checks the complete
+language checklist, rechecks source fidelity, and writes only the final target
+prose. After drafting a batch it performs one sequential target-only reread for
+agreement, reference, punctuation, and continuity. Checklist answers and
+intermediate drafts are never part of the ingest block.
+
+`translate lint-block`, `translate insert`, and `translate todo-submit` share
+the same configured quality policy. `protocol` runs structural checks only;
+`basic` blocks configured linguistic errors while showing warnings; `strict`
+blocks warnings and errors. Direct insertion is therefore safe even when an
+agent skipped lint. The built-in audit is a conservative regression gate, not
+proof of grammatically perfect literary German. An explicitly configured local
+LanguageTool backend can broaden coverage without sending book text to a
+public service or making a second LLM call.
+
+The grammar judge remains available for diagnostics, old-book repair, and
+benchmarking, but it is not a routine production stage.

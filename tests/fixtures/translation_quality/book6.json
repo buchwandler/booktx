@@ -1,0 +1,68 @@
+[
+  {
+    "id": "book6-grammar-0001",
+    "locale": "de-DE",
+    "source": "She has killed my son.",
+    "bad_target": "Sie hat meinen Sohn.",
+    "corrected_target": "Sie hat meinen Sohn getötet.",
+    "category": "missing_lexical_predicate",
+    "should_builtin_detect": true,
+    "should_external_detect": true,
+    "expectation": "deterministic"
+  },
+  {
+    "id": "book6-grammar-0002",
+    "locale": "de-DE",
+    "source": "He came back.",
+    "bad_target": "Er zurückbin gekommen.",
+    "corrected_target": "Er ist zurückgekommen.",
+    "category": "separable_verb_spacing",
+    "should_builtin_detect": true,
+    "should_external_detect": true,
+    "expectation": "deterministic"
+  },
+  {
+    "id": "book6-grammar-0003",
+    "locale": "de-DE",
+    "source": "The coat was made of durable material.",
+    "bad_target": "In robustem Stoff gekleidet, strapazierfähiges Zeug.",
+    "corrected_target": "In robustem Stoff gekleidet, strapazierfähiges Zeug.",
+    "category": "apposition_case",
+    "should_builtin_detect": true,
+    "should_external_detect": true,
+    "expectation": "deterministic"
+  },
+  {
+    "id": "book6-grammar-0004",
+    "locale": "de-DE",
+    "source": "The sentence is intentionally awkward dialogue.",
+    "bad_target": "Das ist ist absichtlich holpriger Dialog.",
+    "corrected_target": "Das ist absichtlich holpriger Dialog.",
+    "category": "repeated_word",
+    "should_builtin_detect": true,
+    "should_external_detect": true,
+    "expectation": "deterministic"
+  },
+  {
+    "id": "book6-grammar-0005",
+    "locale": "de-DE",
+    "source": "She was frightened by the noise.",
+    "bad_target": "Gehemmt von dem Lärm, würde es weitergehen.",
+    "corrected_target": "Vom Lärm erschreckt, würde sie weitergehen.",
+    "category": "dangling_participial_phrase",
+    "should_builtin_detect": true,
+    "should_external_detect": false,
+    "expectation": "deterministic_warning"
+  },
+  {
+    "id": "book6-grammar-0006",
+    "locale": "de-DE",
+    "source": "The invented term is binding terminology.",
+    "bad_target": "Der Begriff Xylar ist ein geschützter Eigenname.",
+    "corrected_target": "Der Begriff Xylar ist ein geschützter Eigenname.",
+    "category": "protected_terminology",
+    "should_builtin_detect": false,
+    "should_external_detect": false,
+    "expectation": "filter_or_ignore"
+  }
+]

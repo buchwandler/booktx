@@ -54,6 +54,7 @@ from booktx.config import (
 from booktx.errors import BooktxError, _err
 from booktx.judge_sources import validate_judge_sources_snapshot
 from booktx.runtime import RuntimeContext, resolve_runtime
+from booktx.translation_quality import resolve_submission_quality_policy
 
 __all__ = [
     "agents_status_workflow",
@@ -254,6 +255,9 @@ def _write_project_root(
         profile_kind=_profile_kind(root, target_profile),
         selection_purpose=_selection_purpose(root, target_profile),
         revision_focus=_revision_focus(root, target_profile),
+        quality_mode=resolve_submission_quality_policy(
+            profile_cfg.submission_quality
+        ).mode,
     )
     write_managed_agents_md(target, text, replace_unmanaged=replace_unmanaged)
 

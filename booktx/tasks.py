@@ -68,6 +68,10 @@ from booktx.translation_concordance import (
     build_concordance,
     render_concordance_markdown,
 )
+from booktx.translation_quality import (
+    render_target_quality_prompt,
+    resolve_submission_quality_policy,
+)
 from booktx.validate import load_validation_context
 from booktx.versioning import canonical_json_sha256, resolve_current_version
 
@@ -601,6 +605,12 @@ def _render_task_agent_brief(
     lines.extend(_render_global_policy_section(context))
     lines.extend(_render_terminology_section(glossary, termbase, protected_terms))
     lines.extend(_render_continuity_section(context, task))
+    quality_config = getattr(project.profile_config, "submission_quality", None)
+    quality_policy = resolve_submission_quality_policy(quality_config)
+    if quality_policy.self_review != "off":
+        lines.extend(
+            render_target_quality_prompt(task.target_locale or task.target_language)
+        )
     lines.extend(_render_source_records_section(task))
     return "\n".join(lines).rstrip() + "\n"
 
@@ -839,12 +849,61 @@ def limit_records_by_words(
     return selected
 
 
+def limit_records_by_budget(
+    record_ids: list[str],
+    source_by_id: Mapping[str, SourceRecordView],
+    *,
+    max_words: int,
+    max_records: int | None = None,
+    max_sentences: int | None = None,
+    max_rendered_lines: int | None = None,
+) -> list[str]:
+    """Apply word, record, sentence, and rendered-line ceilings.
+
+    Source extraction is sentence-oriented, so a record counts as one source
+    sentence. The first record is always retained to guarantee progress.
+    """
+    if max_words < 1:
+        raise ValueError("max_words must be >= 1")
+    selected: list[str] = []
+    words = 0
+    rendered_lines = 0
+    for record_id in record_ids:
+        source = source_by_id[record_id].source
+        next_words = words + source_by_id[record_id].source_words
+        next_lines = rendered_lines + source.count("\n") + 1
+        next_records = len(selected) + 1
+        next_sentences = next_records
+        over_budget = (
+            bool(selected)
+            and next_words > max_words
+            or bool(selected)
+            and max_records is not None
+            and next_records > max_records
+            or bool(selected)
+            and max_sentences is not None
+            and next_sentences > max_sentences
+            or bool(selected)
+            and max_rendered_lines is not None
+            and next_lines > max_rendered_lines
+        )
+        if over_budget:
+            break
+        selected.append(record_id)
+        words = next_words
+        rendered_lines = next_lines
+    return selected
+
+
 def select_translation_record_ids(
     bundle: StatusBundle,
     chapter: ChapterProgress,
     *,
     unit: str,
     max_words: int,
+    max_records: int | None = None,
+    max_sentences: int | None = None,
+    max_rendered_lines: int | None = None,
 ) -> tuple[str, list[str]]:
     """Select the record ids for the next translation task within ``chapter``."""
     source_by_id = bundle.index.source_by_id
@@ -856,16 +915,33 @@ def select_translation_record_ids(
     if not pending:
         return (unit, [])
     if unit == "chapter":
-        return (unit, pending)
+        return (
+            unit,
+            limit_records_by_budget(
+                pending,
+                source_by_id,
+                max_words=max_words,
+                max_records=max_records,
+                max_sentences=max_sentences,
+                max_rendered_lines=max_rendered_lines,
+            ),
+        )
     if unit == "chunk":
         first_chunk_id = source_by_id[pending[0]].chunk_id
         return (
             unit,
-            [
-                record_id
-                for record_id in pending
-                if source_by_id[record_id].chunk_id == first_chunk_id
-            ],
+            limit_records_by_budget(
+                [
+                    record_id
+                    for record_id in pending
+                    if source_by_id[record_id].chunk_id == first_chunk_id
+                ],
+                source_by_id,
+                max_words=max_words,
+                max_records=max_records,
+                max_sentences=max_sentences,
+                max_rendered_lines=max_rendered_lines,
+            ),
         )
     if unit == "paragraph":
         first_record = source_by_id[pending[0]]
@@ -877,8 +953,28 @@ def select_translation_record_ids(
                 for record_id in pending
                 if source_by_id[record_id].span_index == first_record.span_index
             ]
-            return (unit, limit_records_by_words(same_span, source_by_id, max_words))
-    return (unit, limit_records_by_words(pending, source_by_id, max_words))
+            return (
+                unit,
+                limit_records_by_budget(
+                    same_span,
+                    source_by_id,
+                    max_words=max_words,
+                    max_records=max_records,
+                    max_sentences=max_sentences,
+                    max_rendered_lines=max_rendered_lines,
+                ),
+            )
+    return (
+        unit,
+        limit_records_by_budget(
+            pending,
+            source_by_id,
+            max_words=max_words,
+            max_records=max_records,
+            max_sentences=max_sentences,
+            max_rendered_lines=max_rendered_lines,
+        ),
+    )
 
 
 def create_translation_task(
@@ -890,6 +986,9 @@ def create_translation_task(
     unit: str,
     record_ids: list[str],
     requested_max_words: int | None = None,
+    requested_max_records: int | None = None,
+    requested_max_sentences: int | None = None,
+    requested_max_rendered_lines: int | None = None,
     todo_id: str | None = None,
 ) -> TranslationTask:
     """Build, persist, and render durable files for one translation task."""
@@ -990,6 +1089,9 @@ def create_translation_task(
         ),
         record_count=len(record_ids),
         requested_max_words=requested_max_words,
+        requested_max_records=requested_max_records,
+        requested_max_sentences=requested_max_sentences,
+        requested_max_rendered_lines=requested_max_rendered_lines,
         todo_id=todo_id,
         before_records=[_neighbor(record_id, "before") for record_id in before_ids],
         after_records=[_neighbor(record_id, "after") for record_id in after_ids],

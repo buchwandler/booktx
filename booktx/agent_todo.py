@@ -125,6 +125,9 @@ def build_translation_todo(
     *,
     chapters: int,
     batch_words: int,
+    batch_records: int | None = None,
+    batch_sentences: int | None = None,
+    batch_rendered_lines: int | None = None,
     max_run_words: int | None = None,
     skip_current: bool = False,
     start_chapter: str | None = None,
@@ -196,6 +199,9 @@ def build_translation_todo(
         target_locale=target_locale,
         chapters_requested=chapters,
         batch_words=batch_words,
+        batch_records=batch_records,
+        batch_sentences=batch_sentences,
+        batch_rendered_lines=batch_rendered_lines,
         max_run_words=max_run_words,
         include_current=not skip_current,
         created_at=datetime.now(timezone.utc)
@@ -245,6 +251,14 @@ def render_translation_todo_markdown(
         else f"Goal: complete {todo.chapters_requested} incomplete chapter(s)"
     )
     lines.append(f"Per-task budget: {todo.batch_words} source words")
+    if todo.batch_records is not None:
+        lines.append(f"Per-task record ceiling: {todo.batch_records}")
+    if todo.batch_sentences is not None:
+        lines.append(f"Per-task sentence ceiling: {todo.batch_sentences}")
+    if todo.batch_rendered_lines is not None:
+        lines.append(
+            f"Per-task rendered-line ceiling: {todo.batch_rendered_lines}"
+        )
     lines.append(f"Advisory run budget: {max_run_label} source words")
     lines.append(f"Profile: {todo.profile}")
     if project.context_md_path is not None:
