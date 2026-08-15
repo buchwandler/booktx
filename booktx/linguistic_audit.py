@@ -103,9 +103,7 @@ def audit_text(
                 )
             )
 
-    length_severity = _finding_severity(
-        suspicious_length_ratio, strict=strict
-    )
+    length_severity = _finding_severity(suspicious_length_ratio, strict=strict)
     if (
         length_severity is not None
         and len(source_visible) >= 80
@@ -178,18 +176,14 @@ def audit_records(
     if config is not None and policy.mode == "protocol":
         return []
     configured_rules = config is None or policy.linguistic_audit != "off"
-    configured_length = (
-        None if config is None else policy.suspicious_length_ratio
-    )
+    configured_length = None if config is None else policy.suspicious_length_ratio
     if (
         config is not None
         and backend is None
         and policy.grammar_backend == "languagetool-local"
     ):
         if not policy.grammar_backend_command:
-            raise ValueError(
-                "languagetool-local requires grammar_backend_command"
-            )
+            raise ValueError("languagetool-local requires grammar_backend_command")
         backend = LocalLanguageToolBackend(
             command=policy.grammar_backend_command,
             expected_version=policy.grammar_backend_version,
@@ -220,9 +214,7 @@ def audit_records(
                 target=target,
                 ignored_terms=terms,
                 ignored_categories=ignored_categories
-                or tuple(
-                    getattr(config, "grammar_backend_ignored_categories", [])
-                ),
+                or tuple(getattr(config, "grammar_backend_ignored_categories", [])),
             )
             backend_severity: Literal["warn", "error"] = (
                 "error"

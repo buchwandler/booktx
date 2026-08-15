@@ -256,9 +256,7 @@ def render_translation_todo_markdown(
     if todo.batch_sentences is not None:
         lines.append(f"Per-task sentence ceiling: {todo.batch_sentences}")
     if todo.batch_rendered_lines is not None:
-        lines.append(
-            f"Per-task rendered-line ceiling: {todo.batch_rendered_lines}"
-        )
+        lines.append(f"Per-task rendered-line ceiling: {todo.batch_rendered_lines}")
     lines.append(f"Advisory run budget: {max_run_label} source words")
     lines.append(f"Profile: {todo.profile}")
     if project.context_md_path is not None:

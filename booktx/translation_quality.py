@@ -130,17 +130,11 @@ def resolve_submission_quality_policy(
         mode=requested_quality,
         linguistic_audit=config.linguistic_audit if config else "warn",
         target_language_rules=config.target_language_rules if config else True,
-        suspicious_length_ratio=(
-            config.suspicious_length_ratio if config else "warn"
-        ),
+        suspicious_length_ratio=(config.suspicious_length_ratio if config else "warn"),
         self_review=config.self_review if config else "optional",
         grammar_backend=config.grammar_backend if config else "builtin",
-        grammar_backend_command=(
-            config.grammar_backend_command if config else None
-        ),
-        grammar_backend_version=(
-            config.grammar_backend_version if config else None
-        ),
+        grammar_backend_command=(config.grammar_backend_command if config else None),
+        grammar_backend_version=(config.grammar_backend_version if config else None),
         grammar_backend_timeout_seconds=(
             config.grammar_backend_timeout_seconds if config else 10.0
         ),
@@ -171,8 +165,10 @@ def finding_blocks(
     severity: Literal["info", "warn", "error"], *, mode: QualityMode
 ) -> bool:
     """Return whether a linguistic finding blocks the resolved mode."""
-    return mode == "strict" and severity in {"warn", "error"} or (
-        mode == "basic" and severity == "error"
+    return (
+        mode == "strict"
+        and severity in {"warn", "error"}
+        or (mode == "basic" and severity == "error")
     )
 
 

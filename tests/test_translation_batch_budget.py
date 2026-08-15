@@ -24,6 +24,4 @@ def test_translation_budget_honors_records_sentences_and_rendered_lines() -> Non
 
 def test_translation_budget_keeps_one_oversized_record_for_progress() -> None:
     source = {"r1": SimpleNamespace(source="long", source_words=100)}
-    assert limit_records_by_budget(
-        ["r1"], source, max_words=1, max_records=1
-    ) == ["r1"]
+    assert limit_records_by_budget(["r1"], source, max_words=1, max_records=1) == ["r1"]

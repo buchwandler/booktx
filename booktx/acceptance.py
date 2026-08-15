@@ -148,23 +148,27 @@ def _submission_quality_findings(
     try:
         linguistic = audit_records(
             records,
-        locale=str(
-            task.target_locale or task.target_language
-            if task is not None
-            else getattr(proj.profile_config, "target_locale", None)
-            or getattr(proj.profile_config, "target_language", "")
-        ),
+            locale=str(
+                task.target_locale or task.target_language
+                if task is not None
+                else getattr(proj.profile_config, "target_locale", None)
+                or getattr(proj.profile_config, "target_language", "")
+            ),
             config=config,
             requested_quality=requested_quality,
             ignored_terms_by_id=ignored_terms_by_id,
         )
     except (LanguageToolUnavailable, ValueError) as exc:
         raise _err("submission_quality_backend_unavailable", str(exc)) from exc
-    task_chunks = {record.id: record.chunk_id for record in task.records} if task else {}
+    task_chunks = (
+        {record.id: record.chunk_id for record in task.records} if task else {}
+    )
     source_by_id = bundle.index.source_by_id
     return [
         Finding(
-            chunk_id=task_chunks.get(item.record_id, source_by_id[item.record_id].chunk_id),
+            chunk_id=task_chunks.get(
+                item.record_id, source_by_id[item.record_id].chunk_id
+            ),
             severity=(
                 Severity.ERROR
                 if finding_blocks(item.severity, mode=policy.mode)
