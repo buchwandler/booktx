@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 
 from booktx.acceptance import (
     AcceptResult,
+    SubmissionValidationError,
     SubmittedRecord,
     accept_one_record,
     accept_translation_records,
@@ -29,8 +30,10 @@ from booktx.config import (
     write_identity,
 )
 from booktx.context import GlossaryEntry, default_context, load_context, write_context
+from booktx.linguistic_audit import LinguisticAuditFinding
 from booktx.models import TranslationIdentity
 from booktx.status import build_status_snapshot
+from booktx.validate import Severity
 
 runner = CliRunner()
 
@@ -149,6 +152,71 @@ def test_accept_one_record_persists_and_reports_chapter(tmp_path: Path):
     store = load_translation_store(proj).model_dump(mode="json")
     assert store["records"][rid]["active_version"] == "1.1"
     assert store["records"][rid]["versions"][0]["target"] == "Alice traf Bob."
+
+
+def test_basic_linguistic_advisory_is_accepted(tmp_path: Path, monkeypatch) -> None:
+    project_dir = _make_project(tmp_path)
+    proj = load_project(project_dir, profile="de_default")
+    rid = _first_record_id(project_dir)
+    bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
+
+    monkeypatch.setattr(
+        "booktx.acceptance.audit_records",
+        lambda *args, **kwargs: [
+            LinguisticAuditFinding(
+                record_id=rid,
+                severity="warn",
+                rule="de_repeated_word",
+                message="word 'sie' is repeated consecutively.",
+                excerpt="dass sie sie kannte",
+            )
+        ],
+    )
+
+    result = accept_one_record(
+        proj,
+        rid,
+        "Alice traf Bob.",
+        bundle=bundle,
+        requested_quality="basic",
+    )
+
+    assert result.accepted_records == 1
+    assert rid in load_translation_store(proj).records
+
+
+def test_strict_linguistic_advisory_blocks_without_store_write(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_dir = _make_project(tmp_path)
+    proj = load_project(project_dir, profile="de_default")
+    rid = _first_record_id(project_dir)
+    bundle = build_status_snapshot(proj, context_exists=True, context_ready=True)
+
+    monkeypatch.setattr(
+        "booktx.acceptance.audit_records",
+        lambda *args, **kwargs: [
+            LinguisticAuditFinding(
+                record_id=rid,
+                severity="warn",
+                rule="de_repeated_word",
+                message="word 'sie' is repeated consecutively.",
+                excerpt="dass sie sie kannte",
+            )
+        ],
+    )
+
+    with pytest.raises(SubmissionValidationError) as exc_info:
+        accept_one_record(
+            proj,
+            rid,
+            "Alice traf Bob.",
+            bundle=bundle,
+            requested_quality="strict",
+        )
+
+    assert exc_info.value.findings[0].severity == Severity.ERROR
+    assert rid not in load_translation_store(proj).records
 
 
 def test_translate_insert_respects_longer_glossary_shadow(tmp_path: Path) -> None:

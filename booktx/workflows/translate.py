@@ -34,6 +34,8 @@ from booktx.acceptance import (
     SubmittedRecord,
     accept_one_record,
     accept_translation_records,
+    audit_submission_quality,
+    submission_quality_findings,
     validate_submitted_records,
 )
 from booktx.agent_todo import build_translation_todo, write_translation_todo
@@ -94,7 +96,6 @@ from booktx.context import ensure_context_view_snapshot, load_context
 from booktx.editor_indexes import EditorIndexError, export_editor_indexes
 from booktx.errors import BooktxError, _err
 from booktx.io_utils import write_json_text_atomic
-from booktx.linguistic_audit import LinguisticAuditFinding, audit_records
 from booktx.models import (
     AgentNextAction,
     StoredTranslationRecordV2,
@@ -114,7 +115,6 @@ from booktx.progress import (
     load_source_records,
     source_record_sha256,
 )
-from booktx.quality_backends.languagetool import LanguageToolUnavailable
 from booktx.record_refs import parse_record_ref, resolve_record_range
 from booktx.status import build_status_snapshot
 from booktx.submissions import resolve_submission
@@ -644,6 +644,20 @@ def translate_todo_submit_workflow(
             if extra_record_ids:
                 console.print("extra task records: " + ", ".join(extra_record_ids))
             raise typer.Exit(code=1)
+        quality_findings = submission_quality_findings(
+            proj,
+            bundle,
+            submitted_records,
+            task=task,
+        )
+        quality_errors = [
+            finding
+            for finding in quality_findings
+            if finding.severity == Severity.ERROR
+        ]
+        if quality_errors:
+            _render_submission_failures(quality_errors)
+            raise typer.Exit(code=1)
         submitted_id_set = {record.id for record in submitted_records}
         if load_matching_validation_receipt(proj, task, input_file) is None:
             _staged_preflight_check(proj, submitted_records, submitted_id_set)
@@ -656,6 +670,7 @@ def translate_todo_submit_workflow(
             submission_translation_version=parsed.translation_version,
             submission_profile=parsed.profile,
             enforce_task_version=True,
+            precomputed_quality_findings=quality_findings,
         )
     except SubmissionValidationError as exc:
         _render_submission_failures(exc.findings)
@@ -974,32 +989,19 @@ def translate_lint_block_workflow(
     protocol_ok = (
         not missing_record_ids and not extra_record_ids and not errors and not warnings
     )
-    linguistic_findings: list[LinguisticAuditFinding] = []
-    if quality != "protocol":
-        configured = getattr(proj.profile_config, "submission_quality", None)
-        policy = resolve_submission_quality_policy(
-            configured, requested_quality=quality
+    try:
+        quality_audit = audit_submission_quality(
+            proj,
+            summary,
+            submitted_records,
+            task=task,
+            requested_quality=quality,
         )
-        if policy.run_linguistic_audit:
-            submitted_by_id = {record.id: record.target for record in submitted_records}
-            try:
-                linguistic_findings = audit_records(
-                    [
-                        (record.id, record.source, submitted_by_id[record.id])
-                        for record in task.records
-                        if record.id in submitted_by_id
-                    ],
-                    locale=(task.target_locale or task.target_language),
-                    config=configured,
-                    requested_quality=quality,
-                )
-            except (LanguageToolUnavailable, ValueError) as exc:
-                _die(f"configured submission-quality backend unavailable: {exc}")
-                return
-    policy = resolve_submission_quality_policy(
-        getattr(proj.profile_config, "submission_quality", None),
-        requested_quality=quality,
-    )
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return
+    linguistic_findings = quality_audit.findings
+    policy = quality_audit.policy
     linguistic_blocking = any(
         finding_blocks(finding.severity, mode=policy.mode)
         for finding in linguistic_findings

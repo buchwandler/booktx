@@ -39,6 +39,17 @@ def test_configured_length_rule_can_be_disabled() -> None:
     )
 
 
+def test_german_repeated_word_is_an_advisory_in_basic_mode() -> None:
+    findings = audit_records(
+        [("0001-000001", "She knew her.", "Sie wusste, dass sie sie kannte.")],
+        locale="de-DE",
+    )
+
+    repeated = [finding for finding in findings if finding.rule == "de_repeated_word"]
+    assert len(repeated) == 1
+    assert repeated[0].severity == "warn"
+
+
 def test_local_languagetool_adapter_is_pinned_and_parses_json(monkeypatch) -> None:
     calls: list[list[str]] = []
 

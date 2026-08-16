@@ -39,28 +39,39 @@ from booktx.config import (
 )
 from booktx.glossary_match import live_mandatory_glossary_sha256
 from booktx.io_utils import utc_timestamp
-from booktx.linguistic_audit import audit_records
+from booktx.linguistic_audit import LinguisticAuditFinding, audit_records
 from booktx.models import TranslatedRecord
 from booktx.profile_protocol import require_translation_protocol
 from booktx.progress import count_words
 from booktx.quality_backends.languagetool import LanguageToolUnavailable
 from booktx.termbase_tasking import applicable_termbase_sha256_for_record_sources
-from booktx.translation_quality import finding_blocks, resolve_submission_quality_policy
+from booktx.translation_quality import (
+    ResolvedSubmissionQualityPolicy,
+    finding_blocks,
+    resolve_submission_quality_policy,
+)
 from booktx.translation_store import ensure_store_record, upsert_translation_version
-from booktx.validate import Severity, load_validation_context, validate_record_pair
+from booktx.validate import (
+    Finding,
+    Severity,
+    load_validation_context,
+    validate_record_pair,
+)
 from booktx.versioning import resolve_current_version
 
 if TYPE_CHECKING:
     from booktx.models import TranslationStoreV2, TranslationTask
     from booktx.status import StatusBundle
-    from booktx.validate import Finding
 
 
 __all__ = [
     "SubmittedRecord",
     "AcceptResult",
+    "SubmissionQualityAuditResult",
     "SubmissionValidationError",
     "validate_submitted_records",
+    "audit_submission_quality",
+    "submission_quality_findings",
     "accept_translation_records",
     "accept_one_record",
 ]
@@ -92,6 +103,14 @@ class AcceptResult:
     records_remaining: int = 0
 
 
+@dataclass(slots=True)
+class SubmissionQualityAuditResult:
+    """Raw quality findings and the policy used to produce them."""
+
+    policy: ResolvedSubmissionQualityPolicy
+    findings: list[LinguisticAuditFinding]
+
+
 class SubmissionValidationError(Exception):
     """Raised when one or more submitted records failed ERROR-level validation.
 
@@ -109,26 +128,29 @@ def _error_findings(findings: list[Finding]) -> list[Finding]:
     return [f for f in findings if f.severity == Severity.ERROR]
 
 
-def _submission_quality_findings(
+def audit_submission_quality(
     proj: Project,
     bundle: StatusBundle,
     submitted: list[SubmittedRecord],
     *,
     task: TranslationTask | None,
     requested_quality: str | None = None,
-) -> list[Finding]:
-    """Run the configured linguistic gate used by every acceptance path."""
+) -> SubmissionQualityAuditResult:
+    """Run the authoritative quality audit shared by lint and acceptance."""
     config = getattr(proj.profile_config, "submission_quality", None)
     policy = resolve_submission_quality_policy(
         config, requested_quality=requested_quality
     )
-    if policy.mode == "protocol":
-        return []
-    submitted_by_id = {item.id: item.target for item in submitted}
+    if not policy.run_linguistic_audit:
+        return SubmissionQualityAuditResult(policy=policy, findings=[])
     task_by_id = {record.id: record for record in task.records} if task else {}
     records = []
     ignored_terms_by_id: dict[str, tuple[str, ...]] = {}
-    for record_id, target in submitted_by_id.items():
+    for item in submitted:
+        record_id = item.id
+        target = item.target
+        if task is not None and record_id not in task_by_id:
+            continue
         source_view = bundle.index.source_by_id[record_id]
         records.append((record_id, source_view.source, target))
         task_record = task_by_id.get(record_id)
@@ -160,6 +182,25 @@ def _submission_quality_findings(
         )
     except (LanguageToolUnavailable, ValueError) as exc:
         raise _err("submission_quality_backend_unavailable", str(exc)) from exc
+    return SubmissionQualityAuditResult(policy=policy, findings=linguistic)
+
+
+def submission_quality_findings(
+    proj: Project,
+    bundle: StatusBundle,
+    submitted: list[SubmittedRecord],
+    *,
+    task: TranslationTask | None,
+    requested_quality: str | None = None,
+) -> list[Finding]:
+    """Convert shared raw quality findings to validation findings."""
+    result = audit_submission_quality(
+        proj,
+        bundle,
+        submitted,
+        task=task,
+        requested_quality=requested_quality,
+    )
     task_chunks = (
         {record.id: record.chunk_id for record in task.records} if task else {}
     )
@@ -171,7 +212,7 @@ def _submission_quality_findings(
             ),
             severity=(
                 Severity.ERROR
-                if finding_blocks(item.severity, mode=policy.mode)
+                if finding_blocks(item.severity, mode=result.policy.mode)
                 else item.severity
             ),
             rule=item.rule,
@@ -180,7 +221,7 @@ def _submission_quality_findings(
             source=source_by_id[item.record_id].source,
             target=item.excerpt,
         )
-        for item in linguistic
+        for item in result.findings
     ]
 
 
@@ -406,6 +447,7 @@ def accept_translation_records(
     submission_profile: str | None = None,
     enforce_task_version: bool = False,
     requested_quality: str | None = None,
+    precomputed_quality_findings: list[Finding] | None = None,
 ) -> AcceptResult:
     """Validate and atomically persist a batch of accepted records.
 
@@ -433,8 +475,10 @@ def accept_translation_records(
     else:
         version_ref = resolve_current_version(proj).version_ref
     findings = validate_submitted_records(proj, bundle, submitted, task=task)
-    findings.extend(
-        _submission_quality_findings(
+    quality_findings = (
+        precomputed_quality_findings
+        if precomputed_quality_findings is not None
+        else submission_quality_findings(
             proj,
             bundle,
             submitted,
@@ -442,6 +486,7 @@ def accept_translation_records(
             requested_quality=requested_quality,
         )
     )
+    findings.extend(quality_findings)
     errors = _error_findings(findings)
     if errors:
         raise SubmissionValidationError(errors)

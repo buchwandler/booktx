@@ -27,6 +27,7 @@ from booktx.config import (
     load_translation_task,
     translation_store_path,
     translation_todo_lifecycle_path,
+    write_profile_config,
     write_translation_store,
 )
 from booktx.context import (
@@ -35,6 +36,9 @@ from booktx.context import (
     write_context,
     write_context_markdown,
 )
+from booktx.linguistic_audit import LinguisticAuditFinding
+from booktx.models import SubmissionQualityConfig
+from booktx.validation_receipts import load_matching_validation_receipt
 
 runner = CliRunner()
 
@@ -1521,6 +1525,75 @@ def test_todo_submit_does_not_advance_after_failed_lint(tmp_path: Path):
         "unknown source record" in submit_res.output or "missing" in submit_res.output
     )
     assert "next_task_id" not in submit_res.output
+
+
+def test_todo_submit_quality_failure_does_not_write_pass_receipt(
+    tmp_path: Path, monkeypatch
+):
+    project_dir = _make_three_chapter_project(tmp_path)
+    proj = _proj(project_dir)
+    proj.profile_config.submission_quality = SubmissionQualityConfig(
+        linguistic_audit="error"
+    )
+    write_profile_config(proj, proj.profile_config)
+    todo = _create_todo(project_dir, chapters=1, batch_words=1)
+    task_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-resume",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--todo-id",
+            todo["todo_id"],
+            "--format",
+            "text",
+            "--json",
+        ],
+    )
+    assert task_res.exit_code == 0, task_res.output
+    task_payload = json.loads(task_res.output)
+    task = load_translation_task(_proj(project_dir), task_payload["task_id"])
+    assert task is not None
+    block_path = project_dir / task_payload["block_ingest_path"]
+    block_path.write_text(
+        f">>> {task.records[0].id}\nSie wusste, dass sie sie kannte.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "booktx.acceptance.audit_records",
+        lambda *args, **kwargs: [
+            LinguisticAuditFinding(
+                record_id=task.records[0].id,
+                severity="warn",
+                rule="de_repeated_word",
+                message="word 'sie' is repeated consecutively.",
+                excerpt="dass sie sie kannte",
+            )
+        ],
+    )
+
+    submit_res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-submit",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--task-id",
+            task.task_id,
+            "--file",
+            str(block_path),
+        ],
+    )
+
+    assert submit_res.exit_code == 1
+    assert "NameError" not in submit_res.output
+    assert (
+        load_matching_validation_receipt(_proj(project_dir), task, block_path) is None
+    )
 
 
 def test_todo_resume_blocks_source_drift(tmp_path: Path):
