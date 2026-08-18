@@ -35,7 +35,6 @@ from booktx.command_hints import (
 from booktx.config import (
     Project,
     load_profile_project,
-    load_translation_store,
     load_translation_task,
     load_translation_version_ledger,
     project_storage_root,
@@ -67,6 +66,7 @@ from booktx.status import (
     coverage_status,
     selected_chapter,
 )
+from booktx.store import open_translation_store
 from booktx.tasks import (
     create_translation_task,
     limit_records_by_words,
@@ -94,6 +94,23 @@ if TYPE_CHECKING:
 
 # Shared console instance for all CLI output.
 console = Console()
+
+
+class _StoreRecordReader:
+    """Lazy chunk-scoped store reader for ordinary record lookups."""
+
+    def __init__(self, project: Project) -> None:
+        self.repo = open_translation_store(project)
+        self._chunk_cache: dict[str, dict[str, Any]] = {}
+
+    def get(self, record_id: str) -> Any | None:
+        canonical_id = parse_record_ref(record_id).canonical_id
+        chunk_id = canonical_id.split("-", 1)[0]
+        chunk = self._chunk_cache.get(chunk_id)
+        if chunk is None:
+            chunk = dict(self.repo.iter_chunk_records(chunk_id))
+            self._chunk_cache[chunk_id] = chunk
+        return chunk.get(canonical_id)
 
 
 def _isolated_mode_error() -> str:
@@ -965,8 +982,8 @@ def _store_record_payload(
     source_record = by_id.get(canonical_id)
     if source_record is None:
         raise _err("unknown_record_id", f"unknown source record id: {record_id}")
-    store = load_translation_store(proj)
-    stored = store.records.get(canonical_id)
+    store_reader = _StoreRecordReader(proj)
+    stored = store_reader.get(canonical_id)
     versions: list[dict[str, Any]] = []
     active_version = None
     if stored is not None:
@@ -993,4 +1010,9 @@ def _store_record_payload(
         "source_sha256": source_record.source_sha256,
         "active_version": active_version,
     }
-    return selected, {"versions": versions, "store": store, "ordered": ordered}
+    return selected, {
+        "ordered": ordered,
+        "store_reader": store_reader,
+        "stored": stored,
+        "versions": versions,
+    }

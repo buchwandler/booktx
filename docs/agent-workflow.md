@@ -314,10 +314,11 @@ of the source candidate stores:
 booktx judge prepare-isolation ./book --profile JUDGE_PROFILE --write
 ```
 
-This copies source `translation-store.json`, `translation-version-ledger.json`,
-`identity.json`, and `profile-config.json` into an immutable
-`judge-sources/snapshots/<SNAPSHOT_ID>/` directory and writes judge-specific
-`AGENTS.md` instructions. Then start the judge agent inside the profile root:
+This materializes the source profiles' canonical store state into a portable
+snapshot (`translation-store.json` plus matching ledger/identity/config
+evidence) under `judge-sources/snapshots/<SNAPSHOT_ID>/` and writes
+judge-specific `AGENTS.md` instructions. Then start the judge agent inside the
+profile root:
 
 ```bash
 cd translations/JUDGE_PROFILE

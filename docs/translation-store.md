@@ -60,10 +60,10 @@ not record content.
 
 ## Compatibility and promotion gate
 
-`TranslationStoreV2` remains the compatibility in-memory model used for
-migration, export, and APIs that need the legacy shape. The executable
-readiness gate covers v2/v3 validation parity, consistent reads, revisions,
-provenance, doctor inventory, workflow parity, recovery, store-status, default
-policy, documentation, and available scalability checks. The quality gate runs
-the focused store suite, parity suite, operational checks, full tests, and
-packaging checks.
+The backend-neutral materialized translation store remains the compatibility
+in-memory model used for migration, export, judge snapshots, and APIs that need
+the legacy shape. The executable readiness gate covers v2/v3 validation parity,
+consistent reads, revisions, provenance, doctor inventory, workflow parity,
+recovery, store-status, default policy, documentation, and available
+scalability checks. The quality gate runs the focused store suite, parity
+suite, operational checks, full tests, and packaging checks.

@@ -24,6 +24,7 @@ from .paths import canonical_chunk_id, validate_relative_store_path
 
 __all__ = [
     "CURRENT_SHARD_SCHEMA",
+    "MaterializedTranslationStore",
     "REVIEW_CANDIDATE_SHARD_SCHEMA",
     "StoreFormat",
     "StoreCommitResult",
@@ -32,10 +33,12 @@ __all__ = [
     "StoreMutationBatch",
     "STORE_MIGRATION_PLAN_SCHEMA",
     "STORE_V3_SCHEMA",
+    "StoredTranslationRecord",
     "StoreTransactionJournal",
     "StoreTransactionWrite",
     "TRANSLATION_CANDIDATE_SHARD_SCHEMA",
     "TranslationStoreRepository",
+    "edit_materialized_store",
     "V3CurrentRecord",
     "V3CurrentShard",
     "V3Manifest",
@@ -56,6 +59,9 @@ CURRENT_SHARD_SCHEMA = "booktx.translation-current-shard.v1"
 TRANSLATION_CANDIDATE_SHARD_SCHEMA = "booktx.translation-candidate-shard.v1"
 REVIEW_CANDIDATE_SHARD_SCHEMA = "booktx.review-candidate-shard.v1"
 STORE_MIGRATION_PLAN_SCHEMA = "booktx.store-migration-plan.v1"
+
+MaterializedTranslationStore = TranslationStoreV2
+StoredTranslationRecord = StoredTranslationRecordV2
 
 
 def _sha256_text(text: str) -> str:
@@ -495,6 +501,7 @@ class StoreTransactionJournal(BaseModel):
     transaction_id: str
     created_at: str
     status: Literal["prepared", "committed"] = "prepared"
+    summary: str = ""
     writes: list[StoreTransactionWrite] = Field(default_factory=list)
     deletes: list[str] = Field(default_factory=list)
 
@@ -618,36 +625,38 @@ class TranslationStoreRepository(Protocol):
 
     format: StoreFormat
 
-    def materialize_v2(self) -> TranslationStoreV2:
+    def materialize_v2(self) -> MaterializedTranslationStore:
         """Return the canonical store as the legacy-compatible v2 model."""
 
-    def write_materialized_v2(self, store: TranslationStoreV2) -> StoreCommitResult:
+    def write_materialized_v2(
+        self, store: MaterializedTranslationStore
+    ) -> StoreCommitResult:
         """Persist a materialized v2 store into this backend."""
 
     def edit_v2(
-        self, mutator: Callable[[TranslationStoreV2], T], *, summary: str = ""
+        self, mutator: Callable[[MaterializedTranslationStore], T], *, summary: str = ""
     ) -> T:
         """Load, mutate, and persist the store atomically for this backend."""
 
     def edit_records(
         self,
         record_ids: Iterable[str],
-        mutator: Callable[[TranslationStoreV2], T],
+        mutator: Callable[[MaterializedTranslationStore], T],
         *,
         summary: str = "",
         source_sha256: str | None = None,
     ) -> T:
         """Load, mutate, and persist only the affected records or chunks."""
 
-    def get_record(self, record_id: str) -> StoredTranslationRecordV2 | None:
+    def get_record(self, record_id: str) -> StoredTranslationRecord | None:
         """Return one record if present."""
 
-    def iter_records(self) -> Iterator[tuple[str, StoredTranslationRecordV2]]:
+    def iter_records(self) -> Iterator[tuple[str, StoredTranslationRecord]]:
         """Iterate all records in canonical-id order."""
 
     def iter_chunk_records(
         self, chunk_id: int | str
-    ) -> Iterator[tuple[str, StoredTranslationRecordV2]]:
+    ) -> Iterator[tuple[str, StoredTranslationRecord]]:
         """Iterate all records for one chunk."""
 
     def is_empty(self) -> bool:
@@ -658,3 +667,16 @@ class TranslationStoreRepository(Protocol):
 
     def update_source_sha256(self, source_sha256: str) -> StoreCommitResult:
         """Persist a new store-level source identity without changing records."""
+
+
+def edit_materialized_store(
+    load_store: Callable[[], MaterializedTranslationStore],
+    write_store: Callable[[MaterializedTranslationStore], StoreCommitResult],
+    mutator: Callable[[MaterializedTranslationStore], T],
+) -> T:
+    """Load, mutate, and persist the compatibility materialized store once."""
+
+    store = load_store()
+    result = mutator(store)
+    write_store(store)
+    return result

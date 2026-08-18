@@ -145,9 +145,10 @@ for an example.
 
 ## Durable model import contracts
 
-Persisted JSON boundary models (`TranslationTask`, `TranslationTodo`,
-`TranslationStoreV2`, `TranslationVersionLedger`, context JSON models,
-manifest/config models) must validate without hidden import-order requirements.
+Persisted JSON boundary models (`TranslationTask`, `TranslationTodo`, the
+materialized translation-store model / compatibility alias `TranslationStoreV2`,
+`TranslationVersionLedger`, context JSON models, manifest/config models) must
+validate without hidden import-order requirements.
 
 Rules:
 

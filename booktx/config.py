@@ -1374,12 +1374,7 @@ def load_translation_selection_ledger(project: Project) -> TranslationSelectionL
 def write_translation_store(
     project: Project, store: TranslationStore | TranslationStoreV2
 ) -> None:
-    from booktx.store import (
-        StoreFormat,
-        create_translation_store,
-        detect_store_format,
-        open_translation_store,
-    )
+    from booktx.store import open_translation_store
     from booktx.translation_store import legacy_store_to_v2
 
     if isinstance(store, TranslationStore):
@@ -1392,10 +1387,7 @@ def write_translation_store(
     else:
         store_v2 = store
 
-    if detect_store_format(project) == StoreFormat.MISSING:
-        repository = create_translation_store(project, format=StoreFormat.V2)
-    else:
-        repository = open_translation_store(project)
+    repository = open_translation_store(project)
     repository.write_materialized_v2(store_v2)
 
 

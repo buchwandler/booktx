@@ -11,7 +11,6 @@ from booktx import __version__
 from booktx.config import (
     _err,
     canonical_language_key,
-    load_translation_store,
     termbase_language_keys,
 )
 from booktx.context import load_context
@@ -21,6 +20,7 @@ from booktx.review_refs import format_review_ref
 from booktx.review_tasks import ReviewSelectedRecord, create_review_task
 from booktx.runtime import RuntimeContext, resolve_runtime
 from booktx.status import build_status_snapshot
+from booktx.store import open_translation_store
 from booktx.termbase import (
     EffectiveTranslationTermbase,
     TermbaseEntry,
@@ -968,13 +968,13 @@ def termbase_write_review_workflow(
             "no termbase-matched records need review for the requested selection",
         )
     first_chapter_id = candidate_matches[0].chapter_id
-    store = load_translation_store(runtime.project)
+    repo = open_translation_store(runtime.project)
     selected: list[ReviewSelectedRecord] = []
     seen_records: set[str] = set()
     for match in candidate_matches:
         if match.record_id in seen_records or match.chapter_id != first_chapter_id:
             continue
-        stored = store.records.get(match.record_id)
+        stored = repo.get_record(match.record_id)
         if stored is None:
             continue
         base_review = active_review_candidate(stored)

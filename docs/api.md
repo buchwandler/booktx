@@ -5,13 +5,14 @@ The CLI and its documented JSON output are the user-facing interface. Python
 module names and function signatures may change between releases unless a
 separate API contract says otherwise.
 
-The durable model names currently include `TranslationStoreV2`, translation
-records and review candidates, context models, profile configuration, source
-manifests, EPUB span metadata, and the v3 shard models in
-`booktx.store.models`. New profiles default to the shard-based v3 backend under
+The durable model names currently include the compatibility aliases
+`TranslationStoreV2` / `StoredTranslationRecordV2`, translation records and
+review candidates, context models, profile configuration, source manifests,
+EPUB span metadata, and the v3 shard models in `booktx.store.models`. New
+profiles default to the shard-based v3 backend under
 `translations/<profile>/translation-store/`; existing profiles retain their
-detected v1/v2/v3 backend. `TranslationStoreV2` remains the compatibility
-materialization model.
+detected v1/v2/v3 backend. The backend-neutral materialized store remains the
+compatibility model at Python API boundaries.
 
 The reference is intentionally broad so generated documentation can expose
 model fields and service helpers. It should not be read as a promise that every

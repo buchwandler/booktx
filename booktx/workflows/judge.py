@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from booktx.acceptance import SubmissionValidationError
 from booktx.agents_md import AGENTS_FILENAME, inspect_agents_md
+from booktx.collection_utils import dedupe_preserve_order
 from booktx.config import (
     _err,
     judge_ingest_decisions_path,
@@ -1137,15 +1138,7 @@ def sweep_identical_judge_records_workflow(
 
 
 def _prefill_dedupe(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for raw in values:
-        value = raw.strip()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
+    return dedupe_preserve_order(value for raw in values if (value := raw.strip()))
 
 
 @dataclass(slots=True)

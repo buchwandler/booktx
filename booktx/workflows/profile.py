@@ -16,7 +16,6 @@ from booktx.config import (
     load_profile_project,
     load_source_project,
     load_translation_selection_ledger,
-    load_translation_store,
     load_translation_version_ledger,
     migrate_current_project,
 )
@@ -25,6 +24,7 @@ from booktx.errors import BooktxError
 from booktx.progress import load_source_records
 from booktx.record_refs import parse_record_ref
 from booktx.status import build_profiles_overview, build_status_snapshot
+from booktx.store import open_translation_store
 from booktx.store.status import build_store_status
 from booktx.translation_store import active_candidate
 from booktx.versioning import resolve_identity
@@ -185,8 +185,7 @@ def compare_profile_record(root: Path, profiles: str, record: str) -> dict[str, 
     comparisons: list[dict[str, Any]] = []
     for profile_name in requested:
         profile_project = load_profile_project(root, profile_name)
-        store = load_translation_store(profile_project)
-        stored = store.records.get(canonical_id)
+        stored = open_translation_store(profile_project).get_record(canonical_id)
         candidate = active_candidate(stored) if stored is not None else None
         provenance = None
         if (

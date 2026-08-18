@@ -17,6 +17,7 @@ from booktx.context import (
     ContextQuestion,
     GlossaryEntry,
     TranslationContext,
+    clear_context_readiness,
     load_context,
     next_question_id,
     write_context,
@@ -139,15 +140,6 @@ def set_disposition(
         if write:
             write_decisions(project, decisions)
     return result, not unchanged
-
-
-def clear_context_readiness(context: TranslationContext) -> None:
-    context.ready = False
-    context.ready_forced = False
-    context.ready_reason = ""
-    context.ready_by = ""
-    context.ready_at = ""
-
 
 @dataclass
 class ProfilePrefillResult:

@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from booktx.collection_utils import dedupe_preserve_order
 from booktx.config import (
     BooktxError,
     Project,
@@ -140,15 +141,7 @@ def _normalize_term_identities(terms: list[str]) -> list[str]:
 
 
 def _dedupe_preserve(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for raw in values:
-        value = raw.strip()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
+    return dedupe_preserve_order(value for raw in values if (value := raw.strip()))
 
 
 def build_filtered_context_pack(

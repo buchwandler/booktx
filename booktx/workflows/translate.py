@@ -64,6 +64,7 @@ from booktx.cli_support import (
     _selected_chapter,
     _staged_preflight_check,
     _store_record_payload,
+    _StoreRecordReader,
     _submission_ingest_hint,
     console,
     resolve_profile_local_path,
@@ -1994,13 +1995,13 @@ def translate_task_status_workflow(
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     _require_chunks(proj)
     task = _load_translation_task_or_exit(proj, task_id)
-    store = load_translation_store(proj)
+    store_reader = _StoreRecordReader(proj)
 
     accepted_ids: list[str] = []
     missing_ids: list[str] = []
     stale_ids: list[str] = []
     for record in task.records:
-        stored = store.records.get(record.id)
+        stored = store_reader.get(record.id)
         if stored is None:
             missing_ids.append(record.id)
             continue
@@ -2088,6 +2089,7 @@ def translation_get_record_workflow(
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     selected, details = _store_record_payload(proj, record_ref)
     ordered = details["ordered"]
+    store_reader = details["store_reader"]
     ordered_ids = [record.record_id for record in ordered]
     selected_id = selected["id"]
     try:
@@ -2096,15 +2098,13 @@ def translation_get_record_workflow(
         _die(f"unknown source record id: {selected_id}")
         return
 
-    store = details["store"]
-
     def _record_payload(source_record: SourceRecordView) -> dict[str, Any]:
         payload = {
             "id": source_record.record_id,
             "chunk_id": source_record.chunk_id,
             "source": source_record.source,
         }
-        stored = store.records.get(source_record.record_id)
+        stored = store_reader.get(source_record.record_id)
         if stored is not None:
             payload["active_version"] = stored.active_version
             candidate = (
@@ -2183,7 +2183,7 @@ def translation_list_workflow(
     except ValueError as exc:
         _die(str(exc))
         return
-    store = load_translation_store(proj)
+    store_reader = _StoreRecordReader(proj)
     payload: list[dict[str, Any]] = []
     for record in ordered:
         if record.record_id not in selected_ids:
@@ -2193,7 +2193,7 @@ def translation_list_workflow(
             "chunk_id": record.chunk_id,
             "source": record.source,
         }
-        stored = store.records.get(record.record_id)
+        stored = store_reader.get(record.record_id)
         if stored is not None:
             if stored.active_version is not None:
                 item["active_version"] = stored.active_version
@@ -2225,8 +2225,7 @@ def translation_compare_workflow(
     """Compare multiple stored version candidates for one record."""
     proj = _load_project_or_exit(project_dir, profile=profile, require_profile=True)
     selected, details = _store_record_payload(proj, record_ref)
-    store = details["store"]
-    stored = store.records.get(selected["id"])
+    stored = details["stored"]
     if stored is None:
         _die(f"record {selected['id']} has no stored translations")
         return
@@ -2507,8 +2506,10 @@ def translation_revise_record_workflow(
     if not target_text.strip():
         _die(f"empty target for record {record_id}")
 
-    # Load store and check the record exists.
-    stored = load_translation_store(proj).records.get(record_id)
+    from booktx.store import open_translation_store
+
+    repo = open_translation_store(proj)
+    stored = repo.get_record(record_id)
     if stored is None:
         _die(f"record {record_id} has no stored translations")
     assert stored is not None
@@ -2563,9 +2564,6 @@ def translation_revise_record_workflow(
         proj, bundle=bundle, record_ids={record_id}
     )[bundle.index.record_to_chapter[record_id]]
     version_ref = write_context.version_ref
-    from booktx.store import open_translation_store
-
-    repo = open_translation_store(proj)
 
     def _mutate(store: TranslationStoreV2) -> None:
         ensure_store_record(
@@ -2659,10 +2657,12 @@ def translation_revise_block_workflow(
         _die("duplicate record id in block submission")
         return
 
-    store = load_translation_store(proj)
+    from booktx.store import open_translation_store
+
+    repo = open_translation_store(proj)
     conflicts = []
     for item in submitted:
-        stored = store.records.get(item.id)
+        stored = repo.get_record(item.id)
         if stored is None:
             _die(f"record {item.id} has no stored translations")
             return
@@ -2713,9 +2713,6 @@ def translation_revise_block_workflow(
         proj, bundle=bundle, record_ids=submitted_ids
     )
     version_ref = next(iter(write_contexts.values())).version_ref
-    from booktx.store import open_translation_store
-
-    repo = open_translation_store(proj)
 
     def _mutate(store_to_edit: TranslationStoreV2) -> None:
         for item in submitted:
@@ -2813,6 +2810,8 @@ def translate_migrate_inline_xhtml_workflow(
     from booktx.inline_audit import migrate_inline_xhtml
 
     report = migrate_inline_xhtml(runtime.project, write_safe=write_safe)
+    if write_safe and report["written"]:
+        _maybe_auto_export_indexes(runtime.project, trigger="translation")
     if json_output:
         console.print_json(json.dumps(report, ensure_ascii=False))
         return
@@ -2870,12 +2869,15 @@ def translation_search_cmd_workflow(
         _die("provide at least one positive search criterion or --record")
         return
 
-    from booktx.config import load_translation_store
     from booktx.translation_store import effective_target_candidate
 
     bundle = _project_status_snapshot(proj)
-    store = load_translation_store(proj)
-    store_records = store.records
+    store_reader = _StoreRecordReader(proj)
+    store_records = (
+        {record_id: stored for record_id, stored in store_reader.repo.iter_records()}
+        if chapter is None
+        else None
+    )
     source_by_id = bundle.index.source_by_id
 
     chapters_to_search = (
@@ -2883,7 +2885,7 @@ def translation_search_cmd_workflow(
     )
 
     if record is not None:
-        stored = store_records.get(record)
+        stored = store_reader.get(record)
         if stored is None:
             _die(f"record {record} not found in store")
             return
@@ -2921,8 +2923,12 @@ def translation_search_cmd_workflow(
                 console.print(f"ref: {ref}")
         return
 
-    def _neighbor_target(records: dict[str, Any], rid: str) -> str:
-        stored = records.get(rid)
+    def _neighbor_target(rid: str) -> str:
+        stored = (
+            store_records.get(rid)
+            if store_records is not None
+            else store_reader.get(rid)
+        )
         if stored is None:
             return ""
         eff = effective_target_candidate(stored)
@@ -2933,7 +2939,11 @@ def translation_search_cmd_workflow(
     for cid in chapters_to_search:
         flat = list(bundle.index.record_ids_by_chapter.get(cid, []))
         for idx, record_id in enumerate(flat):
-            stored = store_records.get(record_id)
+            stored = (
+                store_records.get(record_id)
+                if store_records is not None
+                else store_reader.get(record_id)
+            )
             if stored is None:
                 continue
             eff = effective_target_candidate(stored)
@@ -2995,14 +3005,14 @@ def translation_search_cmd_workflow(
                     before_records = [
                         {
                             "id": rid,
-                            "target": _neighbor_target(store_records, rid),
+                            "target": _neighbor_target(rid),
                         }
                         for rid in before_ids
                     ]
                     after_records = [
                         {
                             "id": rid,
-                            "target": _neighbor_target(store_records, rid),
+                            "target": _neighbor_target(rid),
                         }
                         for rid in after_ids
                     ]

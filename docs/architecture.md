@@ -41,8 +41,9 @@ their detected backend and are never auto-migrated. V2 is the compatibility
 `translation-store.json`; v3 stores a manifest plus per-chunk current,
 translation-candidate, and review-candidate shards. Each changed chunk shares
 one advancing revision across its three files, and normal readers retry around
-publication and validate cross-shard invariants. `TranslationStoreV2` remains
-the compatibility materialization model returned by the Python loader surface.
+publication and validate cross-shard invariants. The compatibility
+materialization model remains the Python loader surface regardless of the live
+backend.
 Effective output still chooses a valid review candidate before the current
 translation version.
 Task context views and revision metadata preserve the source, baseline, and

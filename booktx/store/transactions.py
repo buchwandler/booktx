@@ -26,6 +26,7 @@ from .paths import validate_relative_store_path
 __all__ = [
     "commit_v3_transaction",
     "recover_v3_transactions",
+    "_json_revision",
 ]
 
 
@@ -307,6 +308,7 @@ def commit_v3_transaction(
     deleted_chunk_ids: list[str],
     changed_record_ids: list[str],
     wrote_manifest: bool,
+    summary: str = "",
     expected_hashes: dict[str, str | None] | None = None,
     expected_revisions: dict[str, int | None] | None = None,
     stale_lock_policy: Literal["reject", "repair"] = "reject",
@@ -346,6 +348,7 @@ def commit_v3_transaction(
             transaction_id=transaction_id,
             created_at=utc_timestamp(),
             status="prepared",
+            summary=summary,
             writes=journal_writes,
             deletes=sorted(validate_relative_store_path(path) for path in deletes),
         )

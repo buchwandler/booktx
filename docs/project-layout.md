@@ -51,12 +51,12 @@ book/
 
 ## Profile-local state
 
-Each `translations/<profile>/` directory is an isolation boundary. The
-new profiles use v3 by default. Existing profiles keep their detected backend;
-the v2 `translation-store.json` remains supported and the
-`translation-store/` directory is the canonical v3 shard backend. `context.json`
-and the version ledger are also durable state. Tasks, todos, submission files,
-reviews, judge artifacts, and reports remain profile-local.
+Each `translations/<profile>/` directory is an isolation boundary. New profiles
+use v3 by default. Existing profiles keep their detected backend; the v2
+`translation-store.json` remains supported and the `translation-store/`
+directory is the canonical v3 shard backend. `context.json` and the version
+ledger are also durable state. Tasks, todos, submission files, reviews, judge
+artifacts, and reports remain profile-local.
 
 `translated/`, editor indexes, and `output/` are generated artifacts. They are
 rebuildable from source state and the profile store and are not the source of

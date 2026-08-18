@@ -52,6 +52,7 @@ from booktx.context import (
     apply_answer_to_context,
     baseline_payload,
     baseline_sha256,
+    clear_context_readiness,
     default_context,
     ensure_context_markdown_safe_to_overwrite,
     load_context,
@@ -670,7 +671,7 @@ def plan_context_pack_import(
     # Readiness invalidation: clear if the effective policy changed, preserve if no-op.
     changed = _effective_context_changed(target, merged)
     if changed:
-        _clear_readiness(merged)
+        clear_context_readiness(merged)
         findings.append(
             ContextPackImportFinding(
                 section="readiness",
@@ -1281,14 +1282,6 @@ def has_unfinished_tasks(project: Project) -> bool:
 def _dir_has_json(path: Path) -> bool:
     """Return True if ``path`` is a directory containing at least one .json file."""
     return path.is_dir() and any(path.glob("*.json"))
-
-
-def _clear_readiness(context: TranslationContext) -> None:
-    context.ready = False
-    context.ready_forced = False
-    context.ready_reason = ""
-    context.ready_by = ""
-    context.ready_at = ""
 
 
 def _effective_context_changed(

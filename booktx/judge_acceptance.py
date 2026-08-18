@@ -16,7 +16,6 @@ from booktx.config import (
     current_source_sha256,
     load_profile_project,
     load_translation_selection_ledger,
-    load_translation_store,
     load_translation_version_ledger,
     write_translation_selection_ledger,
 )
@@ -40,6 +39,7 @@ from booktx.models import (
     TranslatedRecord,
 )
 from booktx.selection_mode import revision_focus, selection_purpose
+from booktx.store import open_translation_store
 from booktx.termbase_tasking import (
     applicable_termbase_sha256_for_record_sources,
     validate_termbase_record_pair,
@@ -665,7 +665,7 @@ def _validate_live_candidate_has_not_drifted(
     their immutable payload and never call this.
     """
     source_project = load_profile_project(project.root, selected_candidate.profile)
-    source_stored = load_translation_store(source_project).records.get(item.id)
+    source_stored = open_translation_store(source_project).get_record(item.id)
     if source_stored is None:
         raise _err(
             "judge_candidate_missing",

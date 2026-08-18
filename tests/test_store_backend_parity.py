@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from booktx.identity import store_identity_payload
+from booktx.judge_sources import _build_profile_snapshot
 from booktx.status import build_status_snapshot
 from booktx.store import StoreFormat, open_translation_store
 from booktx.validate import validate_project
@@ -127,6 +128,37 @@ def test_v2_and_v3_match_build_and_editor_index_goldens(tmp_path: Path):
     assert cicada["selected_kind"] == "translation"
     assert cicada["selected_ref"] == "1.1"
     assert cicada["target"] == "Die Zikadensaengerin wartete."
+
+
+def test_v2_and_v3_produce_equivalent_judge_source_snapshots(tmp_path: Path):
+    fixture_v2 = create_rich_store_fixture(
+        tmp_path / "judge-v2",
+        store_format=StoreFormat.V2,
+        activate_stale_review=False,
+    )
+    fixture_v3 = create_rich_store_fixture(
+        tmp_path / "judge-v3",
+        store_format=StoreFormat.V3,
+        activate_stale_review=False,
+    )
+
+    snapshot_v2, files_v2, counts_v2 = _build_profile_snapshot(
+        fixture_v2.project, fixture_v2.project
+    )
+    snapshot_v3, files_v3, counts_v3 = _build_profile_snapshot(
+        fixture_v3.project, fixture_v3.project
+    )
+
+    assert counts_v2 == counts_v3
+    assert files_v2["translation-store.json"] == files_v3["translation-store.json"]
+    assert files_v2["translation-version-ledger.json"] == files_v3[
+        "translation-version-ledger.json"
+    ]
+    assert snapshot_v2.translation_store_sha256 == snapshot_v3.translation_store_sha256
+    assert (
+        snapshot_v2.effective_candidates_total
+        == snapshot_v3.effective_candidates_total
+    )
 
 
 @pytest.mark.parametrize("store_format", [StoreFormat.V2, StoreFormat.V3])

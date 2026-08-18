@@ -68,9 +68,9 @@ opaque-content preservation.
 `context.json` is authoritative and `context.md` is rendered. Each task stores
 an immutable effective context view under
 `translations/<profile>/context-history/views/<sha>/`. Translation and review
-revisions retain baseline and context-view provenance. Do not edit
-`translation-store.json`, v3 shard files, or rendered context manually; use the
-CLI workflows.
+revisions retain baseline and context-view provenance. Do not edit the
+canonical translation store (`translation-store.json` for v2 or shard files for
+v3) or rendered context manually; use the CLI workflows.
 
 ## Glossary phrase collisions
 

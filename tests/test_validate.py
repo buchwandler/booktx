@@ -14,6 +14,7 @@ from booktx.config import (
     init_project,
     load_project,
     translation_store_path,
+    translation_store_v3_manifest_path,
     translation_version_ledger_path,
     write_manifest,
     write_translation_store,
@@ -40,6 +41,7 @@ from booktx.progress import source_record_sha256
 from booktx.validate import (
     Finding,
     Severity,
+    load_effective_translated_chunks,
     validate_chunk_pair,
     validate_project,
     validate_record_pair,
@@ -406,13 +408,13 @@ def test_missing_ledger_version_is_an_error_for_v2_store(tmp_path: Path):
         source.model_dump_json(), encoding="utf-8"
     )
     from booktx.config import translation_store_v3_root
+    from booktx.store import StoreFormat, create_translation_store
 
     v3_root = translation_store_v3_root(proj)
     if v3_root.exists():
         shutil.rmtree(v3_root)
     translation_store_path(proj).unlink(missing_ok=True)
-    write_translation_store(
-        proj,
+    create_translation_store(proj, format=StoreFormat.V2).write_materialized_v2(
         TranslationStoreV2(
             records={
                 "0001-000001": StoredTranslationRecordV2(
@@ -433,7 +435,7 @@ def test_missing_ledger_version_is_an_error_for_v2_store(tmp_path: Path):
                     ],
                 )
             }
-        ),
+        )
     )
 
     report = validate_project(load_project(proj.root, profile="de_default"))
@@ -858,6 +860,19 @@ def test_effective_output_reports_not_accepted_active_review(tmp_path: Path):
     # unusable active_review is reported as an error.
     assert "active_review_not_accepted" in rules
     assert effective.chunks["0001"].records[0].target == base
+
+
+def test_invalid_store_finding_uses_backend_neutral_message(tmp_path: Path):
+    proj = init_project(tmp_path / "book", target_language="de")
+    translation_store_v3_manifest_path(proj).write_text("{", encoding="utf-8")
+
+    effective = load_effective_translated_chunks(proj)
+
+    assert any(
+        finding.rule == "invalid_translation_store"
+        and "canonical translation store is invalid:" in finding.message
+        for finding in effective.findings
+    )
 
 
 def test_review_coverage_findings_missing_pass_when_enforced():

@@ -253,10 +253,9 @@ def _has_accepted_store_records(proj: Project) -> bool:
         repo = open_translation_store(candidate)
         if repo.is_empty():
             continue
-        store = repo.materialize_v2()
         if any(
             any(rec.status == "accepted" for rec in record.versions)
-            for record in store.records.values()
+            for _record_id, record in repo.iter_records()
         ):
             return True
     return False

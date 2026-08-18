@@ -7,19 +7,29 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from booktx.config import Project
+from booktx.config import Project, _err, translation_store_path
 from booktx.epub_inline_xhtml import (
     INLINE_XHTML_CODEC,
     inline_skeleton,
     sanitize_target_fragment,
     strip_inline_xhtml,
 )
-from booktx.io_utils import write_text_atomic
+from booktx.errors import BooktxError
+from booktx.io_utils import write_json_model_atomic, write_text_atomic
 from booktx.models import Chunk, Record, TranslatedChunk, TranslatedRecord
 from booktx.progress import load_source_chunks
+from booktx.store import open_translation_store
+from booktx.translation_store import (
+    EffectiveCandidateError,
+    effective_candidate_selection,
+    find_candidate,
+    find_review_candidate,
+    sha256_text,
+)
 from booktx.validate import (
     _resolve_validation_scope,
     load_effective_translated_chunks,
+    strict_load_translated,
     validate_record_pair,
 )
 
@@ -247,55 +257,341 @@ def safe_migrated_target(source: str, target: str) -> str | None:
     return None
 
 
+def _dependent_review_refs(
+    record_id: str,
+    stored: Any,
+    *,
+    base_kind: str,
+    base_ref: str,
+) -> list[str]:
+    refs = sorted(
+        review.review_ref
+        for review in stored.reviews
+        if review.base_kind == base_kind and review.base_ref == base_ref
+    )
+    if base_kind not in {"translation", "review"}:
+        raise _err(
+            "inline_xhtml_migration_invalid_selection",
+            f"record {record_id} has unsupported candidate kind {base_kind!r}",
+        )
+    return refs
+
+
+def _plan_canonical_migrations(
+    project: Project,
+    pending: list[dict[str, str]],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    try:
+        repo = open_translation_store(project)
+    except BooktxError as exc:
+        if exc.code != "translation_store_missing":
+            raise
+        return [], [
+            {
+                "record_id": item["record_id"],
+                "chunk_id": item["chunk_id"],
+                "old_target": item["old_target"],
+                "proposed_target": item["new_target"],
+                "reason": "canonical_translation_store_missing",
+            }
+            for item in pending
+        ]
+
+    mapped: list[dict[str, str]] = []
+    review: list[dict[str, str]] = []
+    for item in pending:
+        record_id = item["record_id"]
+        stored = repo.get_record(record_id)
+        if stored is None:
+            review.append(
+                {
+                    "record_id": record_id,
+                    "chunk_id": item["chunk_id"],
+                    "old_target": item["old_target"],
+                    "proposed_target": item["new_target"],
+                    "reason": "canonical_store_record_missing",
+                }
+            )
+            continue
+        selection = effective_candidate_selection(stored, strict_active_review=True)
+        if selection is None:
+            review.append(
+                {
+                    "record_id": record_id,
+                    "chunk_id": item["chunk_id"],
+                    "old_target": item["old_target"],
+                    "proposed_target": item["new_target"],
+                    "reason": "no_effective_canonical_candidate",
+                }
+            )
+            continue
+        if isinstance(selection, EffectiveCandidateError):
+            review.append(
+                {
+                    "record_id": record_id,
+                    "chunk_id": item["chunk_id"],
+                    "old_target": item["old_target"],
+                    "proposed_target": item["new_target"],
+                    "reason": selection.rule,
+                    "message": selection.message,
+                }
+            )
+            continue
+        if selection.candidate.target != item["old_target"]:
+            review.append(
+                {
+                    "record_id": record_id,
+                    "chunk_id": item["chunk_id"],
+                    "old_target": item["old_target"],
+                    "proposed_target": item["new_target"],
+                    "reason": "effective_output_not_canonical",
+                    "candidate_kind": selection.selected_kind,
+                    "candidate_ref": selection.selected_ref,
+                }
+            )
+            continue
+        dependent_refs = _dependent_review_refs(
+            record_id,
+            stored,
+            base_kind=selection.selected_kind,
+            base_ref=selection.selected_ref,
+        )
+        if dependent_refs:
+            review.append(
+                {
+                    "record_id": record_id,
+                    "chunk_id": item["chunk_id"],
+                    "old_target": item["old_target"],
+                    "proposed_target": item["new_target"],
+                    "reason": "dependent_reviews_would_drift",
+                    "candidate_kind": selection.selected_kind,
+                    "candidate_ref": selection.selected_ref,
+                    "dependent_review_refs": ", ".join(dependent_refs),
+                }
+            )
+            continue
+        mapped.append(
+            {
+                **item,
+                "candidate_kind": selection.selected_kind,
+                "candidate_ref": selection.selected_ref,
+            }
+        )
+    return mapped, review
+
+
+def _apply_canonical_migrations(
+    project: Project,
+    *,
+    chunks: list[Chunk],
+    mapped: list[dict[str, str]],
+    translated_by_chunk: dict[str, TranslatedChunk],
+    updated_at: str,
+    timestamp: str,
+    reports_dir: Any,
+) -> bool:
+    if not mapped:
+        return False
+    store_path = translation_store_path(project)
+    if project.profile_dir is not None and store_path.is_file():
+        backup = reports_dir / f"translation-store.before-inline-xhtml-{timestamp}.json"
+        backup.write_text(store_path.read_text("utf-8"), "utf-8")
+
+    repo = open_translation_store(project)
+    planned = {item["record_id"]: item for item in mapped}
+
+    def _mutate(store: Any) -> None:
+        for record_id, item in planned.items():
+            stored = store.records.get(record_id)
+            if stored is None:
+                raise _err(
+                    "inline_xhtml_migration_conflict",
+                    "record "
+                    f"{record_id} disappeared before the canonical migration ran",
+                )
+            selection = effective_candidate_selection(stored, strict_active_review=True)
+            if selection is None or isinstance(selection, EffectiveCandidateError):
+                raise _err(
+                    "inline_xhtml_migration_conflict",
+                    "record "
+                    f"{record_id} no longer has a writable effective canonical "
+                    "candidate",
+                )
+            if (
+                selection.selected_kind != item["candidate_kind"]
+                or selection.selected_ref != item["candidate_ref"]
+                or selection.candidate.target != item["old_target"]
+            ):
+                raise _err(
+                    "inline_xhtml_migration_conflict",
+                    f"record {record_id} changed before the canonical migration ran",
+                )
+            if selection.selected_kind == "translation":
+                candidate = find_candidate(stored, selection.selected_ref)
+                if candidate is None:
+                    raise _err(
+                        "inline_xhtml_migration_conflict",
+                        "record "
+                        f"{record_id} lost translation candidate "
+                        f"{selection.selected_ref}",
+                    )
+                candidate.target = item["new_target"]
+                candidate.updated_at = updated_at
+            else:
+                review = find_review_candidate(stored, selection.selected_ref)
+                if review is None:
+                    raise _err(
+                        "inline_xhtml_migration_conflict",
+                        "record "
+                        f"{record_id} lost review candidate {selection.selected_ref}",
+                    )
+                review.target = item["new_target"]
+                review.target_sha256 = sha256_text(item["new_target"])
+                review.updated_at = updated_at
+
+    repo.edit_records(
+        sorted(planned),
+        _mutate,
+        summary="migrate inline xhtml targets",
+    )
+
+    by_chunk = {chunk.chunk_id: chunk for chunk in chunks}
+    changed_chunks = sorted({item["chunk_id"] for item in mapped})
+    if project.translated_dir is not None:
+        project.translated_dir.mkdir(parents=True, exist_ok=True)
+        for chunk_id in changed_chunks:
+            source_chunk = by_chunk.get(chunk_id)
+            translated = (
+                _materialize_translated_chunk(
+                    source_chunk=source_chunk,
+                    repo=repo,
+                    legacy_chunk=translated_by_chunk.get(chunk_id),
+                )
+                if source_chunk is not None
+                else None
+            )
+            if translated is not None:
+                write_json_model_atomic(
+                    project.translated_dir / f"{chunk_id}.json",
+                    translated,
+                )
+    return True
+
+
+def _materialize_translated_chunk(
+    *,
+    source_chunk: Chunk,
+    repo: Any,
+    legacy_chunk: TranslatedChunk | None,
+) -> TranslatedChunk | None:
+    legacy_by_id = (
+        {record.id: record for record in legacy_chunk.records}
+        if legacy_chunk is not None
+        else {}
+    )
+    records: list[TranslatedRecord] = []
+    for source in source_chunk.records:
+        target_text: str | None = None
+        stored = repo.get_record(source.id)
+        if stored is not None:
+            selection = effective_candidate_selection(stored, strict_active_review=True)
+            if (
+                selection is not None
+                and not isinstance(selection, EffectiveCandidateError)
+            ):
+                target_text = selection.candidate.target
+        if target_text is None:
+            legacy = legacy_by_id.get(source.id)
+            if legacy is not None:
+                target_text = legacy.target
+        if target_text is not None:
+            records.append(TranslatedRecord(id=source.id, target=target_text))
+    if not records:
+        return None
+    return TranslatedChunk(chunk_id=source_chunk.chunk_id, records=records)
+
+
 def migrate_inline_xhtml(
     project: Project, *, write_safe: bool = False
 ) -> dict[str, Any]:
     chunks = load_source_chunks(project)
-    effective = load_effective_translated_chunks(project)
-    translated_by_chunk = {
-        chunk_id: chunk.model_copy(deep=True)
-        for chunk_id, chunk in effective.chunks.items()
-    }
-    mapped: list[dict[str, str]] = []
+    translated_by_chunk: dict[str, TranslatedChunk] = {}
+    for path in project.translated():
+        translated, _err = strict_load_translated(path)
+        if translated is not None:
+            translated_by_chunk[path.stem] = translated.model_copy(deep=True)
+    try:
+        repo = open_translation_store(project)
+    except BooktxError as exc:
+        if exc.code != "translation_store_missing":
+            raise
+        repo = None
+    pending: list[dict[str, str]] = []
     review: list[dict[str, str]] = []
     for chunk in chunks:
         translated = translated_by_chunk.get(chunk.chunk_id)
-        if translated is None:
-            continue
-        by_id = {record.id: record for record in translated.records}
+        by_id = (
+            {record.id: record for record in translated.records}
+            if translated is not None
+            else {}
+        )
         for source in chunk.records:
             if source.source_markup != INLINE_XHTML_CODEC:
                 continue
-            target = by_id.get(source.id)
-            if target is None:
+            target_text: str | None = None
+            if repo is not None:
+                stored = repo.get_record(source.id)
+                if stored is not None:
+                    selection = effective_candidate_selection(
+                        stored, strict_active_review=True
+                    )
+                    if (
+                        selection is not None
+                        and not isinstance(selection, EffectiveCandidateError)
+                    ):
+                        target_text = selection.candidate.target
+            if target_text is None:
+                target = by_id.get(source.id)
+                if target is not None:
+                    target_text = target.target
+            if target_text is None:
                 continue
             if not [
                 issue
-                for issue in sanitize_target_fragment(
-                    target.target, source.source
-                ).issues
+                for issue in sanitize_target_fragment(target_text, source.source).issues
                 if issue.severity == "error"
             ]:
                 continue
-            migrated = safe_migrated_target(source.source, target.target)
+            migrated = safe_migrated_target(source.source, target_text)
             if migrated is None:
-                review.append({"record_id": source.id, "reason": "unsafe_or_ambiguous"})
+                review.append(
+                    {
+                        "record_id": source.id,
+                        "chunk_id": chunk.chunk_id,
+                        "old_target": target_text,
+                        "reason": "unsafe_or_ambiguous",
+                    }
+                )
                 continue
-            mapped.append(
+            pending.append(
                 {
+                    "chunk_id": chunk.chunk_id,
                     "record_id": source.id,
-                    "old_target": target.target,
+                    "old_target": target_text,
                     "new_target": migrated,
                 }
             )
-            if write_safe:
-                target.target = migrated
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    mapped, canonical_review = _plan_canonical_migrations(project, pending)
+    review.extend(canonical_review)
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    timestamp = now.strftime("%Y%m%dT%H%M%SZ")
+    updated_at = now.isoformat().replace("+00:00", "Z")
     report = {
         "timestamp": timestamp,
         "mapped_records": mapped,
         "targets_requiring_review": review,
-        "written": write_safe,
+        "written": False,
     }
     reports_dir = (
         project.profile_dir / "reports"
@@ -307,16 +603,18 @@ def migrate_inline_xhtml(
         reports_dir / f"inline-xhtml-migration-{timestamp}.json",
         json.dumps(report, indent=2, ensure_ascii=False) + "\n",
     )
-    if write_safe and project.translated_dir is not None:
-        if project.profile_dir is not None:
-            backup = reports_dir / (
-                f"translation-store.before-inline-xhtml-{timestamp}.json"
-            )
-            store_path = project.profile_dir / "translation-store.json"
-            if store_path.is_file():
-                backup.write_text(store_path.read_text("utf-8"), "utf-8")
-        for chunk_id, translated in translated_by_chunk.items():
-            path = project.translated_dir / f"{chunk_id}.json"
-            if path.exists():
-                write_text_atomic(path, translated.model_dump_json(indent=2) + "\n")
+    if write_safe:
+        report["written"] = _apply_canonical_migrations(
+            project,
+            chunks=chunks,
+            mapped=mapped,
+            translated_by_chunk=translated_by_chunk,
+            updated_at=updated_at,
+            timestamp=timestamp,
+            reports_dir=reports_dir,
+        )
+        write_text_atomic(
+            reports_dir / f"inline-xhtml-migration-{timestamp}.json",
+            json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+        )
     return report

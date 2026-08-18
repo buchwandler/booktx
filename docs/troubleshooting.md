@@ -37,8 +37,8 @@ Do not edit canonical translation store shards to work around a mismatch.
 
 After `booktx profile migrate-current`, mutable translation state belongs under
 `translations/<profile>/`. Old `.booktx/` paths such as `context.json`,
-`tasks/`, `ingest/`, `translated/`, and `translation-store.json` are legacy
-migration input, not current profile storage.
+`tasks/`, `ingest/`, `translated/`, and root-level `translation-store.json`
+are legacy migration input, not current profile storage.
 
 ## Stale tasks and context
 

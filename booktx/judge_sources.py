@@ -7,12 +7,15 @@ into a profile-local, immutable, hash-validated snapshot under
 separate from :mod:`booktx.judge_store`, which stays focused on candidate
 selection over already-loaded views.
 
-The canonical per-record state that is copied is ``translation-store.json``
-(active versions, active review candidates, source hashes, targets, refs), not
-``translated/*.json`` (which is rebuild/export material and may be stale).
-``translation-version-ledger.json`` and ``identity.json`` are copied for
-auditability when present; ``profile-config.json`` is always copied so the
-snapshot can be validated against the configured source contract.
+The canonical per-record state is materialized into a compatibility snapshot
+file named ``translation-store.json`` (schema version 2) containing the active
+versions, active review candidates, source hashes, targets, and refs. This is a
+portable judge snapshot representation, not a statement that the live source
+profile itself uses the v2 backend. ``translated/*.json`` remains rebuild/export
+material and is never the source of truth here. ``translation-version-ledger.json``
+and ``identity.json`` are copied for auditability when present; ``profile-config.json``
+is always copied so the snapshot can be validated against the configured source
+contract.
 
 Hash contract (one explicit contract throughout the module):
 
@@ -88,6 +91,8 @@ MANIFEST_VERSION = 1
 
 
 def _materialize_store_from_repo(project: Project) -> TranslationStoreV2:
+    """Return the canonical store as the portable judge snapshot payload."""
+
     repo = open_translation_store(project)
     report = inspect_store(project)
     return TranslationStoreV2(
@@ -224,7 +229,8 @@ def _build_profile_snapshot(
     """Plan one per-profile snapshot from a live source project.
 
     Returns the snapshot model, the exact copied-file texts (``None`` when the
-    source file is absent), and a small dict of recomputed counts.
+    source file is absent), and a small dict of recomputed counts. The stored
+    ``translation-store.json`` payload is a backend-neutral materialized snapshot.
     """
     cfg = source_project.profile_config
     assert cfg is not None  # validated by caller

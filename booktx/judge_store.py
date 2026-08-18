@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from booktx.config import Project, _err, load_translation_store
+from booktx.config import Project, _err
 from booktx.context import TranslationContext
 from booktx.models import (
     ApplicableTermbaseEntrySnapshot,
@@ -21,6 +21,7 @@ from booktx.models import (
     Record,
     TranslatedRecord,
 )
+from booktx.store import open_translation_store
 from booktx.termbase_tasking import validate_termbase_record_pair
 from booktx.translation_store import (
     EffectiveCandidateError,
@@ -119,7 +120,7 @@ def validate_judge_source_profile(
 
 def selected_record_ids(project: Project) -> set[str]:
     ids: set[str] = set()
-    for record_id, stored in load_translation_store(project).records.items():
+    for record_id, stored in open_translation_store(project).iter_records():
         selection = effective_candidate_selection(stored, strict_active_review=True)
         if isinstance(selection, EffectiveCandidateError) or selection is None:
             continue

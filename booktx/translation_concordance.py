@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from booktx.config import load_translation_store
+from booktx.store import open_translation_store
 from booktx.translation_store import effective_target_candidate
 
 if TYPE_CHECKING:
@@ -223,8 +223,10 @@ def build_concordance(
         )
         for query in queries
     ]
-    store = load_translation_store(project)
-    store_records = store.records
+    store_records = {
+        record_id: stored
+        for record_id, stored in open_translation_store(project).iter_records()
+    }
     ordered_ids = [
         record_id
         for chapter in bundle.index.record_ids_by_chapter.values()
@@ -298,7 +300,10 @@ def build_concordance(
         for record_id in ordered_ids
         if record_id in bundle.index.source_by_id
     ]
-    store_payload = store.model_dump(mode="json")
+    store_payload = {
+        record_id: stored.model_dump(mode="json")
+        for record_id, stored in store_records.items()
+    }
     rendered_groups = [
         group for group in groups if group.total_matches or group.origin != "heuristic"
     ]

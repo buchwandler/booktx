@@ -16,7 +16,7 @@ from booktx.models import (
 from booktx.progress import load_source_records
 from booktx.translation_store import legacy_store_to_v2
 
-from .models import StoreCommitResult, StoreFormat
+from .models import StoreCommitResult, StoreFormat, edit_materialized_store
 
 __all__ = ["V1V2TranslationStoreRepository"]
 
@@ -76,10 +76,11 @@ class V1V2TranslationStoreRepository:
         self, mutator: Callable[[TranslationStoreV2], T], *, summary: str = ""
     ) -> T:
         del summary
-        store = self.materialize_v2()
-        result = mutator(store)
-        self.write_materialized_v2(store)
-        return result
+        return edit_materialized_store(
+            self.materialize_v2,
+            self.write_materialized_v2,
+            mutator,
+        )
 
     def edit_records(
         self,

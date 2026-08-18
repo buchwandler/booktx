@@ -8,11 +8,12 @@ from booktx.runtime import RuntimeMode
 
 __all__ = [
     "display_path",
+    "relative_or_posix",
     "display_source_ref",
 ]
 
 
-def _relative_or_posix(path: Path, root: Path) -> str:
+def relative_or_posix(path: Path, root: Path) -> str:
     try:
         return path.relative_to(root).as_posix()
     except ValueError:
@@ -29,7 +30,7 @@ def display_path(path: Path, mode: RuntimeMode) -> str:
     """Render ``path`` for the current runtime mode without leaking parents."""
     resolved = path.expanduser().resolve()
     if not mode.isolated_output:
-        return _relative_or_posix(resolved, mode.project_root)
+        return relative_or_posix(resolved, mode.project_root)
 
     profile_root = mode.profile_root
     if profile_root is not None:

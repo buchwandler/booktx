@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,7 @@ from booktx.config import (
     translation_review_task_path,
     translation_selection_ledger_path,
     translation_store_path,
+    translation_store_v3_root,
     translation_task_agent_brief_path,
     translation_task_path,
     translation_task_source_block_path,
@@ -213,6 +215,19 @@ def test_translation_store_helpers_roundtrip(tmp_path: Path):
     assert loaded_record.source_sha256 == "abc123"
     assert loaded_record.active_version == "1.1"
     assert loaded_record.versions[0].target == "Hallo."
+
+
+def test_write_translation_store_requires_explicit_existing_backend(tmp_path: Path):
+    project = init_project(tmp_path / "book", target_language="de")
+    v3_root = translation_store_v3_root(project)
+    if v3_root.exists():
+        shutil.rmtree(v3_root)
+
+    with pytest.raises(BooktxError, match="create it explicitly") as excinfo:
+        write_translation_store(project, TranslationStoreV2())
+
+    assert excinfo.value.code == "translation_store_missing"
+    assert not translation_store_path(project).exists()
 
 
 def test_translation_version_ledger_helpers_roundtrip(tmp_path: Path):

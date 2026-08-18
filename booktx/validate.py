@@ -1139,7 +1139,7 @@ def load_effective_translated_chunks(  # noqa: C901
                 chunk_id="store",
                 severity=Severity.ERROR,
                 rule="invalid_translation_store",
-                message=f"translation-store.json is invalid: {exc}",
+                message=f"canonical translation store is invalid: {exc}",
             )
         )
         store = None

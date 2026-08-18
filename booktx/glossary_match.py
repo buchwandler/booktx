@@ -18,6 +18,7 @@ import json
 import re
 from dataclasses import dataclass
 
+from booktx.collection_utils import dedupe_preserve_order
 from booktx.context import GlossaryEntry
 from booktx.termbase import TermbaseEntry
 from booktx.termbase_match import iter_boundary_matches, termbase_source_matches
@@ -36,15 +37,7 @@ def contains_term(text: str, term: str, *, case_sensitive: bool) -> bool:
 
 
 def _dedupe_terms(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for raw in values:
-        value = raw.strip()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
+    return dedupe_preserve_order(value for raw in values if (value := raw.strip()))
 
 
 def source_terms(entry: GlossaryEntry) -> list[str]:

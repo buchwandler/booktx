@@ -36,6 +36,7 @@ __all__ = [
     "ChapterContext",
     "TranslationContext",
     "apply_answer_to_context",
+    "clear_context_readiness",
     "context_path",
     "context_markdown_path",
     "chapter_map_path",
@@ -237,6 +238,16 @@ def normalize_context_question_provenance(context: TranslationContext) -> None:
     for q in context.questions:
         if q.status == "answered" and q.answer and q.answer_source is None:
             q.answer_source = "legacy"
+
+
+def clear_context_readiness(context: TranslationContext) -> None:
+    """Reset the approval/readiness fields after a meaningful policy change."""
+
+    context.ready = False
+    context.ready_forced = False
+    context.ready_reason = ""
+    context.ready_by = ""
+    context.ready_at = ""
 
 
 def unresolved_required_questions(context: TranslationContext) -> list[ContextQuestion]:

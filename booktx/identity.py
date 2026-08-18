@@ -7,7 +7,6 @@ lives.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from booktx.config import (
@@ -16,7 +15,7 @@ from booktx.config import (
     project_source_sha256,
 )
 from booktx.context import context_path, load_context
-from booktx.path_display import display_path
+from booktx.path_display import display_path, relative_or_posix
 from booktx.runtime import RuntimeMode
 from booktx.store import StoreFormat, detect_store_format, open_translation_store
 from booktx.versioning import canonical_json_sha256, resolve_identity
@@ -27,14 +26,6 @@ __all__ = [
     "store_identity_payload",
 ]
 
-
-def _relative(path: Path, root: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
 def context_identity_payload(
     proj: Project,
     *,
@@ -42,7 +33,9 @@ def context_identity_payload(
 ) -> dict[str, Any]:
     path = context_path(proj)
     rel_path = (
-        display_path(path, mode) if mode is not None else _relative(path, proj.root)
+        display_path(path, mode)
+        if mode is not None
+        else relative_or_posix(path, proj.root)
     )
     if not path.is_file():
         return {
@@ -94,7 +87,7 @@ def store_identity_payload(proj: Project) -> dict[str, Any]:
         }
     try:
         repo = open_translation_store(proj)
-        store = repo.materialize_v2()
+        record_count = sum(1 for _record_id, _stored in repo.iter_records())
     except Exception:
         return {
             "exists": True,
@@ -105,9 +98,9 @@ def store_identity_payload(proj: Project) -> dict[str, Any]:
         }
     return {
         "exists": True,
-        "version": 3 if store_format == StoreFormat.V3 else store.version,
+        "version": 3 if store_format == StoreFormat.V3 else 2,
         "format": store_format.value,
-        "record_count": len(store.records),
+        "record_count": record_count,
         "status": "ok",
     }
 

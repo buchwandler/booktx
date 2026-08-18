@@ -34,8 +34,8 @@ from booktx.config import (
     Project,
     load_judge_task,
     load_translation_selection_ledger,
-    load_translation_store,
 )
+from booktx.store import open_translation_store
 from booktx.translation_store import (
     EffectiveCandidateError,
     effective_candidate_selection,
@@ -104,13 +104,10 @@ def audit_revision_provenance(
         selection ledger are loaded once. Judge tasks are loaded lazily and
         cached per ``judge_task_id`` within this call.
     """
-    if store is None:
-        store = load_translation_store(project)
     if ledger is None:
         ledger = load_translation_selection_ledger(project)
     decisions: dict[str, JudgeDecision] = ledger.records
-
-    scope = record_ids if record_ids is not None else list(store.records.keys())
+    repo = open_translation_store(project) if store is None else None
 
     valid: set[str] = set()
     issues: list[RevisionProvenanceIssue] = []
@@ -121,8 +118,19 @@ def audit_revision_provenance(
             task_cache[task_id] = load_judge_task(project, task_id)
         return task_cache[task_id]
 
-    for record_id in scope:
-        stored = store.records.get(record_id)
+    if store is not None:
+        scope = record_ids if record_ids is not None else list(store.records.keys())
+        store_items = ((record_id, store.records.get(record_id)) for record_id in scope)
+    elif record_ids is None:
+        assert repo is not None
+        store_items = repo.iter_records()
+    else:
+        assert repo is not None
+        store_items = (
+            (record_id, repo.get_record(record_id)) for record_id in record_ids
+        )
+
+    for record_id, stored in store_items:
         if stored is None:
             # No store record: out of scope for provenance (no active target).
             continue

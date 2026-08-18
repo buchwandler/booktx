@@ -80,7 +80,7 @@ booktx build ./book --profile passthrough_en
 ## Selection and revision profiles
 
 `booktx judge create-profile` creates compare or revision profiles. A selection
-profile stores accepted judge decisions in its normal `TranslationStoreV2`
+profile stores accepted judge decisions in its normal canonical translation
 store and keeps judge provenance separately. A single-source revision profile
 requires an explicit `copy` or `edited` judge decision for every record.
 Prepare isolated judge work from the project root with

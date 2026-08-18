@@ -31,8 +31,8 @@ resolution.
 New profiles use v3 as the canonical record store. Existing profiles remain on
 the backend detected on disk; v2 is a single `translation-store.json` and v3 is
 the manifest plus per-chunk shard backend under
-`translations/<profile>/translation-store/`. `TranslationStoreV2` remains the
-compatibility materialization model used at API and migration boundaries.
+`translations/<profile>/translation-store/`. The compatibility materialization
+model remains the API and migration boundary regardless of the live backend.
 `translation-version-ledger.json` records version history. Generated
 `translated/`, editor indexes, reports, and output files are derived artifacts
 and can be rebuilt.
