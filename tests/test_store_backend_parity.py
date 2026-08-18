@@ -151,13 +151,13 @@ def test_v2_and_v3_produce_equivalent_judge_source_snapshots(tmp_path: Path):
 
     assert counts_v2 == counts_v3
     assert files_v2["translation-store.json"] == files_v3["translation-store.json"]
-    assert files_v2["translation-version-ledger.json"] == files_v3[
-        "translation-version-ledger.json"
-    ]
+    assert (
+        files_v2["translation-version-ledger.json"]
+        == files_v3["translation-version-ledger.json"]
+    )
     assert snapshot_v2.translation_store_sha256 == snapshot_v3.translation_store_sha256
     assert (
-        snapshot_v2.effective_candidates_total
-        == snapshot_v3.effective_candidates_total
+        snapshot_v2.effective_candidates_total == snapshot_v3.effective_candidates_total
     )
 
 

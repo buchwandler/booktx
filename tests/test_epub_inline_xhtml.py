@@ -194,8 +194,6 @@ def test_migrate_inline_xhtml_write_safe_updates_canonical_store(
         effective.chunks["0001"].records[0].target
         == "die <em>Esca Volenti</em> erbebte"
     )
-    assert (
-        (reloaded.translated_dir / "0001.json").read_text("utf-8")
-        .find("die <em>Esca Volenti</em> erbebte")
-        >= 0
-    )
+    assert (reloaded.translated_dir / "0001.json").read_text("utf-8").find(
+        "die <em>Esca Volenti</em> erbebte"
+    ) >= 0

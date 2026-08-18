@@ -288,7 +288,9 @@ def test_edit_records_rejects_cross_chunk_mutation(tmp_path: Path):
     def _mutate(store: TranslationStoreV2) -> None:
         store.records[other_id] = fixture.store.records[other_id].model_copy(deep=True)
 
-    with pytest.raises(BooktxError, match="outside the requested chunk scope") as excinfo:
+    with pytest.raises(
+        BooktxError, match="outside the requested chunk scope"
+    ) as excinfo:
         repo.edit_records([source_id], _mutate, summary="scope violation")
 
     assert excinfo.value.code == "translation_store_scope_violation"

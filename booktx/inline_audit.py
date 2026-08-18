@@ -495,9 +495,8 @@ def _materialize_translated_chunk(
         stored = repo.get_record(source.id)
         if stored is not None:
             selection = effective_candidate_selection(stored, strict_active_review=True)
-            if (
-                selection is not None
-                and not isinstance(selection, EffectiveCandidateError)
+            if selection is not None and not isinstance(
+                selection, EffectiveCandidateError
             ):
                 target_text = selection.candidate.target
         if target_text is None:
@@ -545,9 +544,8 @@ def migrate_inline_xhtml(
                     selection = effective_candidate_selection(
                         stored, strict_active_review=True
                     )
-                    if (
-                        selection is not None
-                        and not isinstance(selection, EffectiveCandidateError)
+                    if selection is not None and not isinstance(
+                        selection, EffectiveCandidateError
                     ):
                         target_text = selection.candidate.target
             if target_text is None:

@@ -1,6 +1,6 @@
 ---
 title: "Architecture Documentation"
-version: 2
+version: 5
 generator: "archledger 0.4.0"
 arc42_template_version: "9.0-EN"
 ---
@@ -246,11 +246,18 @@ booktx/
 ├── validate.py           # Validation engine
 ├── build.py              # Output artifact generation (MD/EPUB)
 ├── errors.py             # Structured error types
+├── collection_utils.py   # Small collection helpers (dedupe_preserve_order)
+├── translation_quality.py # Shared quality policy and prompt primitives
+├── quality_benchmark.py  # Deterministic linguistic regression benchmark
+├── validation_receipts.py # Short-lived staged validation receipts
+├── source_analysis_render.py  # Markdown rendering for source analysis
+├── source_analysis_snapshot.py # Snapshot read/write for source analysis
 │
 ├── commands/             # CLI command groups (one module per Typer app)
 │   ├── root.py, translate.py, review.py, judge.py, source.py,
 │   ├── context.py, profile.py, epub.py, glossary.py, termbase.py,
-│   ├── series.py, identity.py, guide.py, agents.py, version.py
+│   ├── series.py, identity.py, guide.py, agents.py, version.py,
+│   ├── judge_presenters.py  # Judge command presentation helpers
 │
 ├── workflows/            # Command business logic (one per command group)
 │   └── (mirrors commands/ structure)
@@ -258,6 +265,10 @@ booktx/
 ├── store/                # V3 shard store + storage abstraction
 │   ├── detect.py, v3.py, v1_v2.py, migration.py
 │   ├── models.py, paths.py, transactions.py, doctor.py
+│
+├── quality_backends/     # Pluggable linguistic quality backends
+│   ├── __init__.py       # LinguisticBackend Protocol, BackendFinding
+│   ├── languagetool.py   # Local LanguageTool CLI adapter
 │
 ├── data/                 # Static data (common lemmas)
 └── templates/            # Sample templates
@@ -274,7 +285,7 @@ The `Project` dataclass is the central context object. It resolves paths for bot
 68+ Pydantic models defining every JSON artifact. Key models:
 
 - `Chunk` / `Record` / `TranslatedChunk` — extraction and translation wire format
-- `TranslationStoreV2` / `StoredTranslationRecordV2` — canonical store with nested version/review candidates
+- `MaterializedTranslationStore` / `StoredTranslationRecord` (compatibility aliases: `TranslationStoreV2` / `StoredTranslationRecordV2`) — the backend-neutral materialized translation-store view
 - `TranslationCandidate` / `TranslationReviewCandidate` — version and review provenance records
 - `TranslationTask` / `TranslationReviewTask` — immutable task records
 - `TranslationTodo` / `ReviewTodo` — bounded multi-chapter/-pass run control
@@ -295,26 +306,45 @@ Operates on `TranslationStoreV2` records. Key operations:
 
 Provides `TranslationStoreV3` with shard-per-record storage, transactions, migration from V2, and parity tests. The `manifest.json` tracks store-level metadata; each record is a directory with `current.json`, `candidates/`, and `reviews/` shards.
 
+### `booktx.quality_backends/` — Pluggable Linguistic Quality Backends
+
+Defines the `LinguisticBackend` Protocol and `BackendFinding` data class for backend-neutral quality findings. Ships with `LocalLanguageToolBackend` that shells out to a caller-configured LanguageTool CLI executable. Never downloads LanguageTool or silently falls back. Custom backends can be added by implementing the protocol.
+
+### `booktx.translation_quality` — Shared Quality Policy
+
+Shared first-pass translation quality policy and prompt primitives used by both translation and grammar-judge workflows. Defines `QualityMode` (protocol/basic/strict), `ResolvedSubmissionQualityPolicy`, German grammar checklist rendering, and quality policy fingerprinting. Keeps quality-mode semantics in one place to prevent drift.
+
+### `booktx.validation_receipts` — Staged Validation Receipts
+
+Generates content-addressed receipt keys bound to task ID, input SHA-256, context view hash, glossary hash, and quality policy fingerprint. Receipts are written to `translations/<profile>/validation-receipts/` and allow `translate submit` to skip re-validation when the same file is resubmitted unchanged.
+
 ### `booktx.commands/` + `booktx.workflows/`
 
 Command modules define Typer apps and CLI parameters. Workflow modules contain the business logic. This separation keeps CLI surface thin and testable independently of presentation.
 
 ## Black-Box Components
 
-| Component                                                 | Responsibility                                                                          |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **Extractor** (`chunking.py`)                             | Parse source documents into sentence-level `Record` objects with placeholder protection |
-| **Chapter Mapper** (`chapters.py`)                        | Map source headings to chapters, produce `chapter-map.json`                             |
-| **Translation Store** (`translation_store.py` + `store/`) | Persist and query versioned translation/review candidates                               |
-| **Context Engine** (`context.py`)                         | Compose chapter notes, build context views, snapshot for tasks                          |
-| **Task Factory** (`workflows/translate.py`)               | Build immutable `TranslationTask` with frozen context                                   |
-| **Submission Ingest** (`workflows/translate.py`)          | Validate and ingest translated records into store                                       |
-| **Review Engine** (`workflows/review.py`)                 | Select review candidates, build review tasks, ingest review submissions                 |
-| **Judge Engine** (`workflows/judge.py`)                   | Compare/select/revision across profiles, produce decisions                              |
-| **Builder** (`build.py`)                                  | Resolve effective candidates, restore placeholders, write output                        |
-| **Validator** (`validate.py`)                             | Detect stale records, missing translations, chain drift                                 |
-| **Glossary** (`glossary_*.py`)                            | Human-curated terminology with binding enforcement                                      |
-| **Termbase** (`termbase*.py`)                             | Advanced reusable preference storage surface                                            |
+| Component                                                    | Responsibility                                                                          |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| **Extractor** (`chunking.py`)                                | Parse source documents into sentence-level `Record` objects with placeholder protection |
+| **Chapter Mapper** (`chapters.py`)                           | Map source headings to chapters, produce `chapter-map.json`                             |
+| **Translation Store** (`translation_store.py` + `store/`)    | Persist and query versioned translation/review candidates                               |
+| **Context Engine** (`context.py`)                            | Compose chapter notes, build context views, snapshot for tasks                          |
+| **Task Factory** (`workflows/translate.py`)                  | Build immutable `TranslationTask` with frozen context                                   |
+| **Submission Ingest** (`workflows/translate.py`)             | Validate and ingest translated records into store                                       |
+| **Review Engine** (`workflows/review.py`)                    | Select review candidates, build review tasks, ingest review submissions                 |
+| **Judge Engine** (`workflows/judge.py`)                      | Compare/select/revision across profiles, produce decisions                              |
+| **Builder** (`build.py`)                                     | Resolve effective candidates, restore placeholders, write output                        |
+| **Validator** (`validate.py`)                                | Detect stale records, missing translations, chain drift                                 |
+| **Glossary** (`glossary_*.py`)                               | Human-curated terminology with binding enforcement                                      |
+| **Termbase** (`termbase*.py`)                                | Advanced reusable preference storage surface                                            |
+| **Quality Backends** (`quality_backends/`)                   | Pluggable linguistic quality backends with Protocol interface                           |
+| **Translation Quality** (`translation_quality.py`)           | Shared quality policy, mode semantics, and prompt primitives                            |
+| **Quality Benchmark** (`quality_benchmark.py`)               | Deterministic linguistic regression benchmark for CI                                    |
+| **Validation Receipts** (`validation_receipts.py`)           | Short-lived receipts for staged translation validation                                  |
+| **Source Analysis Render** (`source_analysis_render.py`)     | Markdown rendering helpers for source analysis reports                                  |
+| **Source Analysis Snapshot** (`source_analysis_snapshot.py`) | Snapshot read/write helpers for source analysis                                         |
+| **Judge Presenters** (`commands/judge_presenters.py`)        | Presentation helpers for judge command output                                           |
 
 ### Level 1
 
@@ -429,6 +459,62 @@ Assembles the Typer CLI app tree. Mounts 16 command groups (translate, review, j
 **Location:**
 
 Lazy console entry point referenced by pyproject.toml [project.scripts]. Wraps booktx.cli:main in try/except. On import failure, renders concise diagnostics with exit code 70, project-data safety message, troubleshooting commands, and BOOKTX_DEBUG=1 opt-in for full traceback.
+
+#### Quality Backends (quality_backends/)
+
+**Parent:** None
+**Interfaces:**
+**Location:**
+
+Pluggable linguistic quality backends with a Protocol-based interface. Defines `LinguisticBackend` contract and `BackendFinding` data class for backend-neutral quality findings. Ships with `LocalLanguageToolBackend` adapter that shells out to a caller-configured LanguageTool CLI executable. Never downloads LanguageTool or silently falls back to another backend.
+
+#### Quality Benchmark (quality_benchmark.py)
+
+**Parent:** None
+**Interfaces:**
+**Location:**
+
+Deterministic benchmark runner for first-pass linguistic regression cases. Loads quality fixture files (JSON lists of source/bad_target pairs), runs `audit_text()` against each case, and produces a `QualityBenchmarkReport` with builtin recall, false-positive counts, and total case metrics. Used by CI and local development to detect regressions in the built-in linguistic audit rules.
+
+#### Source Analysis Snapshot (source_analysis_snapshot.py)
+
+**Parent:** None
+**Interfaces:**
+**Location:**
+
+Snapshot read/write helpers extracted from `booktx.source_analysis`. Builds profile-scoped `SourceAnalysisSnapshot` envelopes wrapping canonical `SourceAnalysisReport` data. Validates snapshot payloads by checking schema version, envelope flags, and recomputing the embedded `analysis_sha256` digest to detect tampering.
+
+#### Source Analysis Render (source_analysis_render.py)
+
+**Parent:** None
+**Interfaces:**
+**Location:**
+
+Markdown rendering helpers extracted from `booktx.source_analysis`. Renders source analysis reports as structured Markdown with bucket-grouped review candidates, capability labels, glossary promotion commands, and example snippets. Separates presentation logic from the core analysis engine.
+
+#### Translation Quality Policy (translation_quality.py)
+
+**Parent:** None
+**Interfaces:**
+**Location:**
+
+Shared first-pass translation quality policy and prompt primitives used by both translation and grammar-judge workflows. Defines `QualityMode` (protocol/basic/strict), `ResolvedSubmissionQualityPolicy`, German grammar checklist, and target-language checklist rendering. Keeps quality-mode semantics, policy identity, and agent instructions in one place to prevent drift between lint, acceptance, and generated prompts.
+
+#### Validation Receipts (validation_receipts.py)
+
+**Parent:** None
+**Interfaces:**
+**Location:**
+
+Short-lived receipts for successful staged translation validation. Generates content-addressed receipt keys bound to task ID, input SHA-256, context view hash, glossary hash, and quality policy fingerprint. Receipts are written to `translations/<profile>/validation-receipts/` and allow the submit command to skip re-validation when the same file is submitted again unchanged.
+
+#### Judge Presenters (commands/judge_presenters.py)
+
+**Parent:** None
+**Interfaces:**
+**Location:**
+
+Presentation helpers for judge command output. Renders judge artifact paths relative to profile root (in profile-root mode) or project root (in project mode). Builds sync render payloads with profile snapshots, manifest display paths, and next-action hints for the judge workflow.
 
 ## Interfaces
 
@@ -740,7 +826,7 @@ Optional submission-time checks: placeholder integrity, suspicious length ratios
 
 ## Single-File V2 Store as Default
 
-**Document version:** 2
+**Document version:** 5
 
 ## Context
 
@@ -758,7 +844,7 @@ TranslationStoreV2 nests TranslationCandidate versions and TranslationReviewCand
 
 ## Typer with Command Catalog Fallback
 
-**Document version:** 2
+**Document version:** 5
 
 ## Context
 
@@ -776,7 +862,7 @@ command_catalog.py defines SUMMARY_OVERRIDES and panel metadata as typed dicts. 
 
 ## Lazy Bootstrap Entry Point
 
-**Document version:** 2
+**Document version:** 5
 
 ## Context
 
@@ -794,7 +880,7 @@ pyproject.toml console script points to booktx.bootstrap:main, which wraps bookt
 
 ## Review Pass Order as Lexicographic DAG
 
-**Document version:** 2
+**Document version:** 5
 
 ## Context
 
@@ -812,7 +898,7 @@ Review refs use R<pass>.<run> format. The total order is lexicographic on (pass_
 
 ## Profile Root Markers for Agent Isolation
 
-**Document version:** 2
+**Document version:** 5
 
 ## Context
 
@@ -978,32 +1064,36 @@ EPUB or Markdown parsing libraries may change behavior across versions, affectin
 | **Source Manifest**       | `.booktx/source-manifest.json` — extraction metadata and source SHA-256                            |
 | **Chapter Map**           | `.booktx/chapter-map.json` — chapter-to-chunk mapping                                              |
 
-| Term                  | Definition                                                                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Chunk                 | A JSON file (chunks/NNNN.json) containing up to chunk_size source records extracted from the source document.                                                      |
-| Record                | A single translatable unit (sentence or paragraph) with placeholdered text, identified by a canonical record ID like 0001-000042.                                  |
-| Placeholder           | A non-translatable span replaced by a deterministic token (**NAME_001**, **TAG_001**) during extraction. The original text is restored verbatim during build.      |
-| Profile               | An isolated translation target under translations/<profile>/ with its own store, context, version ledger, tasks, and output.                                       |
-| Translation Store     | The canonical record-level translation state file (translation-store.json) containing StoredTranslationRecordV2 entries with nested version and review candidates. |
-| Translation Candidate | One versioned translation of a record, identified by a version_ref like 1.1, carrying target text, baseline refs, context hashes, and provenance metadata.         |
-| Review Candidate      | One quality-improved review output identified by a review_ref like R1.2, derived from a translation or earlier review base with provenance chain validation.       |
-| Version Ledger        | translation-version-ledger.json tracking identity (actor, harness, model) per major version and context hash per subversion.                                       |
-| Translation Task      | An immutable work item returned by translate next, containing records to translate with frozen context view paths, glossary/termbase bindings, and config hashes.  |
-| Translation Todo      | A durable run-control artifact for bounded multi-chapter agent translation runs, carrying scope, stop conditions, and chapter lists.                               |
-| Review Todo           | A durable run-control artifact for bounded multi-pass review runs, carrying pass selection modes, chapter lists, and stop conditions.                              |
-| Context View          | A frozen snapshot of effective context used by a task, stored under context-history/views/<sha>/. Immutable once created.                                          |
-| Glossary (booktx)     | Human-curated terminology decisions (binding or advisory) with source/target variants, enforcement levels, and usage notes. Managed by booktx glossary.            |
-| Termbase              | Advanced reusable preference storage for translation patterns (phrase preferences, collocations, word senses, forbidden literalisms). Managed by booktx termbase.  |
-| Judge                 | Cross-profile comparison, selection, and revision workflow for evaluating translation quality across profiles.                                                     |
-| Series                | Multi-book project coordination under booktx series, enabling shared termbase and cross-book context management.                                                   |
-| Source Config         | .booktx/source-config.toml defining source language, source file, format (markdown/epub), and chunk size.                                                          |
-| Profile Config        | translations/<profile>/config.toml defining target language, locale, output filename, identity defaults, and review configuration.                                 |
-| Profile Root Marker   | .booktx-profile.json enabling agent-friendly profile resolution from a profile root directory, containing profile name, source identity, and target locale.        |
-| Effective Candidate   | The output target for a record: the active TranslationReviewCandidate if chain-valid, otherwise the active TranslationCandidate.                                   |
-| Submission Ingest     | The process of validating and applying translated or reviewed records into the canonical translation store.                                                        |
-| Canonical Record ID   | Formatted as chunk_id-part_id (e.g., 0001-000042), the unique identifier for a source record within a project.                                                     |
-| Quality Gate          | scripts/quality_gate.py — ordered checks (compile, focused tests, full pytest, Ruff, mypy, build, wheel install, CLI smoke tests) stopping at first failure.       |
-| Bootstrap             | booktx.bootstrap.main() — the lazy console entry point that wraps CLI import in try/except for startup error containment.                                          |
-| Names File            | .booktx/names.json — manually curated list of protected terms that are placeholdered during extraction and restored during build.                                  |
-| Source Manifest       | .booktx/source-manifest.json — extraction metadata including source file SHA-256, chunk listing, and format information.                                           |
-| Chapter Map           | .booktx/chapter-map.json — mapping of source document headings to chapters with chunk coverage information.                                                        |
+| Term                       | Definition                                                                                                                                                                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chunk                      | A JSON file (chunks/NNNN.json) containing up to chunk_size source records extracted from the source document.                                                                                                                           |
+| Record                     | A single translatable unit (sentence or paragraph) with placeholdered text, identified by a canonical record ID like 0001-000042.                                                                                                       |
+| Placeholder                | A non-translatable span replaced by a deterministic token (**NAME_001**, **TAG_001**) during extraction. The original text is restored verbatim during build.                                                                           |
+| Profile                    | An isolated translation target under translations/<profile>/ with its own store, context, version ledger, tasks, and output.                                                                                                            |
+| Translation Store          | The canonical record-level translation state file (translation-store.json) containing StoredTranslationRecordV2 entries with nested version and review candidates.                                                                      |
+| Translation Candidate      | One versioned translation of a record, identified by a version_ref like 1.1, carrying target text, baseline refs, context hashes, and provenance metadata.                                                                              |
+| Review Candidate           | One quality-improved review output identified by a review_ref like R1.2, derived from a translation or earlier review base with provenance chain validation.                                                                            |
+| Version Ledger             | translation-version-ledger.json tracking identity (actor, harness, model) per major version and context hash per subversion.                                                                                                            |
+| Translation Task           | An immutable work item returned by translate next, containing records to translate with frozen context view paths, glossary/termbase bindings, and config hashes.                                                                       |
+| Translation Todo           | A durable run-control artifact for bounded multi-chapter agent translation runs, carrying scope, stop conditions, and chapter lists.                                                                                                    |
+| Review Todo                | A durable run-control artifact for bounded multi-pass review runs, carrying pass selection modes, chapter lists, and stop conditions.                                                                                                   |
+| Context View               | A frozen snapshot of effective context used by a task, stored under context-history/views/<sha>/. Immutable once created.                                                                                                               |
+| Glossary (booktx)          | Human-curated terminology decisions (binding or advisory) with source/target variants, enforcement levels, and usage notes. Managed by booktx glossary.                                                                                 |
+| Termbase                   | Advanced reusable preference storage for translation patterns (phrase preferences, collocations, word senses, forbidden literalisms). Managed by booktx termbase.                                                                       |
+| Judge                      | Cross-profile comparison, selection, and revision workflow for evaluating translation quality across profiles.                                                                                                                          |
+| Series                     | Multi-book project coordination under booktx series, enabling shared termbase and cross-book context management.                                                                                                                        |
+| Source Config              | .booktx/source-config.toml defining source language, source file, format (markdown/epub), and chunk size.                                                                                                                               |
+| Profile Config             | translations/<profile>/config.toml defining target language, locale, output filename, identity defaults, and review configuration.                                                                                                      |
+| Profile Root Marker        | .booktx-profile.json enabling agent-friendly profile resolution from a profile root directory, containing profile name, source identity, and target locale.                                                                             |
+| Effective Candidate        | The output target for a record: the active TranslationReviewCandidate if chain-valid, otherwise the active TranslationCandidate.                                                                                                        |
+| Submission Ingest          | The process of validating and applying translated or reviewed records into the canonical translation store.                                                                                                                             |
+| Canonical Record ID        | Formatted as chunk_id-part_id (e.g., 0001-000042), the unique identifier for a source record within a project.                                                                                                                          |
+| Quality Gate               | scripts/quality_gate.py — ordered checks (compile, focused tests, full pytest, Ruff, mypy, build, wheel install, CLI smoke tests) stopping at first failure.                                                                            |
+| Bootstrap                  | booktx.bootstrap.main() — the lazy console entry point that wraps CLI import in try/except for startup error containment.                                                                                                               |
+| Names File                 | .booktx/names.json — manually curated list of protected terms that are placeholdered during extraction and restored during build.                                                                                                       |
+| Source Manifest            | .booktx/source-manifest.json — extraction metadata including source file SHA-256, chunk listing, and format information.                                                                                                                |
+| Chapter Map                | .booktx/chapter-map.json — mapping of source document headings to chapters with chunk coverage information.                                                                                                                             |
+| Quality Backend            | A pluggable local linguistic checker implementing the LinguisticBackend Protocol. Returns backend-neutral BackendFinding objects with rule, message, severity, and category.                                                            |
+| Validation Receipt         | A short-lived JSON receipt stored under translations/<profile>/validation-receipts/ that records a successful staged translation validation. Allows translate submit to skip re-validation when the same file is resubmitted unchanged. |
+| Quality Benchmark          | A deterministic regression test runner that loads quality fixture files and measures builtin audit recall and false-positive rates. Used in CI to detect regressions in linguistic audit rules.                                         |
+| Translation Quality Policy | The resolved quality policy combining profile config and command-line quality mode. Controls linguistic audit severity, target-language rules, self-review mode, grammar backend selection, and fingerprinting.                         |

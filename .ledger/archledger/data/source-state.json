@@ -1,124 +1,32 @@
 {
   "directories": {
     ".": {
-      "file_count": 350,
-      "sha256": "d60a215007da946c4602e4438f2810eb93b50ec6d4264e44e0fe6ea3344eea40"
+      "file_count": 281,
+      "sha256": "48504340a1fa6827c196883b4b1464137d06fa8e5f0eeb2bc083350b7e0524fc"
     },
     ".github": {
       "file_count": 5,
-      "sha256": "42df69870444f717b724c6f7f990a5cd2686db4d809508835487b3a77619b6e6"
+      "sha256": "3aacc073837f895447ac901314cd1cc56690ca9d12d795974ebf7f5f08a8aa28"
     },
     ".github/workflows": {
       "file_count": 5,
-      "sha256": "3e519976e288a13fe5b5c33a7114e9314e5ca7b3a04c323f6e2484cdb5cef560"
-    },
-    ".releaseledger": {
-      "file_count": 81,
-      "sha256": "3f9e7ce127667c7f303bec131fe162246376b968dd1a209e67c1c9ebaf701edd"
-    },
-    ".releaseledger/ledgers": {
-      "file_count": 81,
-      "sha256": "ea3344d363305cefd4a91d7cfafe37af08528efbde31d8a103a87568fe3c382b"
-    },
-    ".releaseledger/ledgers/main": {
-      "file_count": 81,
-      "sha256": "3d535ff59f862d649055d796521c8ad2dd560a39227262462a56986989637f6d"
-    },
-    ".releaseledger/ledgers/main/indexes": {
-      "file_count": 2,
-      "sha256": "e63aafd49b0f46cfca5c89785dd57e84531ca7f5cc77808afbb66b6849d571e1"
-    },
-    ".releaseledger/ledgers/main/releases": {
-      "file_count": 79,
-      "sha256": "dadac5bb4e78aea06e5c81235da61b1480ac9a61809e5cddc273d2f514b72142"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0": {
-      "file_count": 15,
-      "sha256": "5f4221203f0d3f07f566c35b0c30527e5667b53f72515378964fa7faee230415"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/audit": {
-      "file_count": 1,
-      "sha256": "a6dfc108e699cfc79a26554c27e36da8be7f1290ba980d538584b4a5c55f2769"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries": {
-      "file_count": 13,
-      "sha256": "7c7603c6fbe40a196d7fa5f470ecefbed8e1825a391a5e83b6e99739e24daa3c"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0": {
-      "file_count": 14,
-      "sha256": "6024aad49a63e486a666934d1011959d025de864b2ed5c004ec085866759b235"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries": {
-      "file_count": 13,
-      "sha256": "6c65edc2a32ff70874cf997ed0cb655d892cca74cf4237ba7143942c49e0600a"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1": {
-      "file_count": 9,
-      "sha256": "14ec5393c20c39e249afbf32eac84373483b388f05fe2e246424b21f409b80f5"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries": {
-      "file_count": 8,
-      "sha256": "837e585295f72b07d37a0210207c0f2d8b39df09a571e490d7ecc90634b94ebe"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0": {
-      "file_count": 12,
-      "sha256": "c1d63b1a0adf7a9883df7c280884e3c9d67e69aa28e0a78320624e05a8cc8e70"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries": {
-      "file_count": 11,
-      "sha256": "96f7c5ac62ea3646c294192d93718fe95b9810c6a308910b63dc9bec74327921"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.1": {
-      "file_count": 4,
-      "sha256": "5bcf8892404930476310b1e87a759f59ee9d81e0381a2c5ab266d1f525b2b6b1"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.1/entries": {
-      "file_count": 3,
-      "sha256": "97910de61891644abbdbea42cf4e2c5ab4ef851c1cbedf157b4e529675e5b0a3"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.2": {
-      "file_count": 4,
-      "sha256": "66f916a53140082b15b6714659d366dfdf07ff7c7ea0b23226227d054afbb802"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.2/entries": {
-      "file_count": 3,
-      "sha256": "90a8f167222b0d6b62e70848f74b66ec8c0a84970b485f36940b77c6dfa42114"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3": {
-      "file_count": 13,
-      "sha256": "aa5a26426e16bc3cc3694c6e485145812a76b7776eb00df3aefd50e49b5fa50e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/audit": {
-      "file_count": 1,
-      "sha256": "6157b3b2092c442f74dd0796912f49e3bcb4e9401dc486571de9d93f3f11959e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries": {
-      "file_count": 11,
-      "sha256": "6db57f4643dc6688e180818730a933be053308ae619fc5c7b28f744d9ecfef08"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0": {
-      "file_count": 8,
-      "sha256": "8a85a429b3a8b7bcbb5ad7337986473b77cd69fc20cbdd5b9956bf17b95da3c8"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/audit": {
-      "file_count": 1,
-      "sha256": "fd556fd79d19c550eddabdaa269d7e876932256a38fcd92b091d6c841b16dce8"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/entries": {
-      "file_count": 6,
-      "sha256": "be983e9944ff5611573d8ba445d5e528318f50e789dc04acf0ba1e65a34905b9"
+      "sha256": "e763373114367b8cd5c461f2edf1528733deb53879c9a7a5349d90ca009393f0"
     },
     "booktx": {
-      "file_count": 130,
-      "sha256": "69b974bd2aad56cc6aa2ace118598c594ddf8e103a02fdb28e314964ddaab39c"
+      "file_count": 138,
+      "sha256": "55bcc60c096e3a7e477e4dd2caebe56ec2db6bd3bdc1ab061b805df41226a026"
     },
     "booktx/commands": {
-      "file_count": 16,
-      "sha256": "e60aacef8f7b28133b8121f636c706be395ea146da940f45aff3a602f1da87c8"
+      "file_count": 17,
+      "sha256": "f5f07542e25db8cf348ca2de58a04c5696047c8cf85af560450bdb7b5b141a3d"
+    },
+    "booktx/quality_backends": {
+      "file_count": 2,
+      "sha256": "1c3f75a135ba888f830e9863c22ecf9ef206b1ebe8d9cbb758b596a8a1314d38"
     },
     "booktx/store": {
       "file_count": 10,
-      "sha256": "68ae77e0284dadd284142abc31dc2491bd3a7e8f6d5791942731e2893fa00043"
+      "sha256": "1052c0a161f2152a0fa280a3d2edba3728415c422fd22a54bd3a7fb8fbb78104"
     },
     "booktx/templates": {
       "file_count": 1,
@@ -126,11 +34,11 @@
     },
     "booktx/workflows": {
       "file_count": 17,
-      "sha256": "ffbc253e1c96b25eb2cc60804f94ed6bd04710822f42578951085673c316a39c"
+      "sha256": "0238aacac5ee61223bd303e647180c176fd8b4539c474f5a2479331560ad24fe"
     },
     "docs": {
-      "file_count": 22,
-      "sha256": "89f3dcc0c4e43cb18b670598defa85be26fd98e0175de83e3897927753834939"
+      "file_count": 23,
+      "sha256": "9e1ec70179357134edcc579dac02e052b903e5b09b90c8516b476473a8224d9a"
     },
     "scripts": {
       "file_count": 2,
@@ -138,15 +46,15 @@
     },
     "skills": {
       "file_count": 1,
-      "sha256": "50b0309895229652c877ba4fe64431773c5b24769ee45907b517be0aef3073db"
+      "sha256": "666d4f0b555e2c2bdeb82ea37ed426e262f3dd734e8ae89562b34d498729864e"
     },
     "skills/booktx": {
       "file_count": 1,
-      "sha256": "e9f74577cc1eaf3607c7ab9dc9d00d8ebd7de2aa1a72c8610307b6d3ddf0ad1f"
+      "sha256": "04d11d2efdb3dfc03a08450a340483b68b0de9fde7dd9505e3fc6630934e00d2"
     },
     "tests": {
-      "file_count": 99,
-      "sha256": "31df8c078a92874fafd3ba5a2f4da5635ebbc1477d98d3216323960b8579548c"
+      "file_count": 104,
+      "sha256": "51efc424a71adcfbdf99bb6415c8bc31c92e2f8fb816023aaea5a5fc2490c1e6"
     },
     "tests/book": {
       "file_count": 10,
@@ -175,6 +83,14 @@
     "tests/book/translations/de_default/translated": {
       "file_count": 1,
       "sha256": "c32ee34b94e6678868fd45f7ee7779734cfd254be6fe5c261721d34a192a4749"
+    },
+    "tests/fixtures": {
+      "file_count": 1,
+      "sha256": "d9f15b5ee2b7776004434f7ccc455a9d7adcc1978924c5712eb8670f0fdbba68"
+    },
+    "tests/fixtures/translation_quality": {
+      "file_count": 1,
+      "sha256": "0898c2c3d7d27042ff5102313954f80ce3409d2c8339ff6da5084cf9f03afb15"
     }
   },
   "files": {
@@ -182,7 +98,7 @@
       "sha256": "19b10b671511b71e0d7a15ee2014172ca96369d2bca0f82cfda89feeea14c676"
     },
     ".github/workflows/codecov.yml": {
-      "sha256": "38f978fafd266e8c0ede289c983c4ed9dd443846f5c7c73b3e4007bec90c4915"
+      "sha256": "d1d29acea8215b6c0b4abde00fc27e1e814fca4af145620c2094d318855393eb"
     },
     ".github/workflows/pre-commit.yml": {
       "sha256": "58d92d74ca5f6b04a2e3acc3030e14d81d3aec1100570ce0e5bf80cac4042d11"
@@ -191,7 +107,7 @@
       "sha256": "208837907eee7b004c956f02fa856b6e6355425428cc38a8de959e95f2dce592"
     },
     ".github/workflows/quality.yml": {
-      "sha256": "54480e99ba903566b056fe54c1aabae6b8f17fc71728a4293f459619b4861e0a"
+      "sha256": "da4b68f9d53133b032f021546f385f9d12eb9f795cf65b38ac962516616ebd85"
     },
     ".github/workflows/tests.yml": {
       "sha256": "ea5e80f0b05f74daf706d49f717093720cd194383bf3b6a5968d476a2503d58f"
@@ -205,260 +121,11 @@
     ".readthedocs.yaml": {
       "sha256": "da28d5b8d562fdb135b048a945b344a2a99ad9132754dc0aa5e3125f04c09e71"
     },
-    ".releaseledger.toml": {
-      "sha256": "56fb5291a4e75ee787876a382613fd09325e94f9fff9da9a9cfeed6bbbf1bfcb"
-    },
-    ".releaseledger/ledgers/main/indexes/entries.json": {
-      "sha256": "7ea8fff4e0e6cdfbc93a58f90b91da2c438afce024721394a6ee435557d472bb"
-    },
-    ".releaseledger/ledgers/main/indexes/releases.json": {
-      "sha256": "682cfd47491af585735bf9cf8beced25246268bece06221f0015b07e77a1efd3"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/audit/commit-audit.yaml": {
-      "sha256": "3b68bc4b42b0b140d96a863c6c95ff96a3fd6cfe7e080f136f2b8b64c97678fb"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0001.md": {
-      "sha256": "f4435ada958ba8f733f4da8d69838113832de5fb9bc993142e850555ddb1d21c"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0002.md": {
-      "sha256": "615d01e608e984f8b7b8e7cba8cd9dedffefed0ecf61f6890db0c357c751a843"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0003.md": {
-      "sha256": "bdd258319197b853186224af831c289ba48b557d35e376499783ae7d2dc1ac62"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0004.md": {
-      "sha256": "33499933541860fe8c535986dc35f5fd76404945b076b3348801592a552f63e3"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0005.md": {
-      "sha256": "cd105418b5510f14d9fb6169e28e48de3f2721bbb3e867b8a38a54149d9523cd"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0006.md": {
-      "sha256": "ff2913639add8c483cc582b29d12589e49b28856a6780392b7764a3bdeb00893"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0007.md": {
-      "sha256": "6934f968e2c0a221b869773146a76dd2292b10ea82d8519326f3d383b02ffe82"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0008.md": {
-      "sha256": "0f0292ab5851a7f7f2b3186462c04569e9eb098b0582780108a5bece762cda4d"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0009.md": {
-      "sha256": "42f620d2254bad9fbe36f53ff5c946ed6047fbbf711dfb4a426aae6466cfe940"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0010.md": {
-      "sha256": "37b517add0e44c2537114475ef69623b5c1e535f21585a005e5674175814530e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0011.md": {
-      "sha256": "8ad5ad4969b9648d5f7e1d64bb4d906c18349ba40083464dd4eb02e5aab1f8f2"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0012.md": {
-      "sha256": "b38db60e5834be09276e077e5c237b2ff470e216ad058eabc8f427f700fcbd72"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/entries/entry-0013.md": {
-      "sha256": "cb8395cb8a8bf1d0260cf4177462d0922b4ec061d27517f449ada019323c4eaf"
-    },
-    ".releaseledger/ledgers/main/releases/v0.2.0/release.md": {
-      "sha256": "893d12860f01c9dde5f534e59b98bc668a367a6e8cdcbecd23d843e9d09afa19"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0001.md": {
-      "sha256": "a99f077c438975b16455cace5a578bfb8e0c8d5d5942994e83fe123a1052c81d"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0002.md": {
-      "sha256": "f5b1c67e70cae1e5b6402b6b60c7eadd3d7d6c0526cd97edaac23423a88c0fa5"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0003.md": {
-      "sha256": "c8d60a2e34f36181a0fcaf7caa45ab4cec1b7a57d6002d42405ed98bdf2a9916"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0004.md": {
-      "sha256": "5287c1313f40e5df8e6213401e3a5cc331b079d176a17843877cc7cee1260e0b"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0005.md": {
-      "sha256": "fab32a075519371dcb63c9b5a87bebf44e59ec85b8b45b6a02aaea0ba24c4ce1"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0006.md": {
-      "sha256": "af1899bd530c146a40a33db6af6a5caa4c972d3c67c70485ddf6d83a51582061"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0007.md": {
-      "sha256": "67f8fdf564091f512622b4c6a9eeb86ed241982997b213be3728b1310d97f82a"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0008.md": {
-      "sha256": "398f8490fbef101f88f3ab774dca8e4f3f993c72af3fc098ecc16188a3110f18"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0009.md": {
-      "sha256": "1b848549c20d8d48ee6f364df1c09e5ff93d31e02496760cec9a33b62c865331"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0010.md": {
-      "sha256": "485ebf0f5b6907e71d64ef3e3c872003ca80c2555a6ef1fee4fc9a8fac8d8349"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0011.md": {
-      "sha256": "3e56b4cfdc392a47f92286ea35cb45022d12cc5c653378b959606a2636981ffe"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0012.md": {
-      "sha256": "eab0af5cc5d4a5886178afb41fd0bc45a760f5c288153088f8d9625009618da1"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/entries/entry-0013.md": {
-      "sha256": "4d0852b806cb1aeba43d6aa351a1077cc65c2497fb4ba6325164dd682a7a6ce7"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.0/release.md": {
-      "sha256": "532a2611d05d6ee44a4b9fafe6543fe04ae79d6d10df93269efff86c8a8ea088"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0001.md": {
-      "sha256": "4408458195e104426b11c8dec534160f5078f59693200142dea4e1f096f1803f"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0002.md": {
-      "sha256": "09e763fca71c352366fb455820d653fedbda5b84f95b4315cbc5a714c034a8c4"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0003.md": {
-      "sha256": "b6e6d89c6f8526a33742b1a3e7303899072858266f6a6ed3ff510bc351e8781e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0004.md": {
-      "sha256": "b02ac05a17fe340e923035da876bdb2157ae9a75f4f441a3624c24a35b1d0d95"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0005.md": {
-      "sha256": "bc5d2ceabf12b44687cf9ff2dc4acfeaf590f39562fe39b699ea47d057718413"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0006.md": {
-      "sha256": "4cec84f6458bf6f13a195f86695d1bb97f021d7f998fea06322251bc68a0a04c"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0007.md": {
-      "sha256": "baff8c8c07da72eed3b62be4fbbb2bd305230261e5a38ff9cff98f45e7acd442"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/entries/entry-0008.md": {
-      "sha256": "3b1f31fee641871e247eb4898bfa87f6f878061603a18bbf792a3f4a849d0c55"
-    },
-    ".releaseledger/ledgers/main/releases/v0.3.1/release.md": {
-      "sha256": "c5f156bb45d6fc16cc258befae8ab0885e769ba1ce7727fb0190130a29e4d36e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0001.md": {
-      "sha256": "d690be283f10d8e311eda31c107bd8a0e733451563c6660311fe8b160bf73040"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0002.md": {
-      "sha256": "7d768134eba7f3c7ee29944e62d6651646860b3dd3b1d6abb74bd85e4ca481f6"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0003.md": {
-      "sha256": "a813c7af1482e0cf0dd9396e64c57b90ed82b25cc2096d0c94dabb02b1e88c14"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0004.md": {
-      "sha256": "2c1e89c2f88cf115d1808373307b423ed674b69621eb270ec0b34ccfb9e8f57f"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0005.md": {
-      "sha256": "e9e450a4350e6929f679ae042f902deef31db6e8fe41c7d4c453341f0cf33bf1"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0006.md": {
-      "sha256": "6366d23c794992dfbdbc03ddf8a2c6c17c75cc9b5f5db70a5af497f5057c6680"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0007.md": {
-      "sha256": "f51b3f484388f50db7ba50681958036d392e4b46295c72f9b8ac55f187b417e2"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0008.md": {
-      "sha256": "22261a88607291f0eadca5b4569b7ab45c4f6609d0a2f57492bddd3ec3bed959"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0009.md": {
-      "sha256": "5b9b0d755c6bfaa8ba4fc52c6274b2260da15258a0587ba80f693f4127a37900"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0010.md": {
-      "sha256": "28fe4b3a5332a9049a922f92120c37f4d0742f7b021534ada5610a7e84c861b9"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/entries/entry-0011.md": {
-      "sha256": "d7aa276e1f62667b729bc9c9052131102ff8b1a8e15b396a46a10c1d48169bdb"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.0/release.md": {
-      "sha256": "46d570a6c8edbb039a8dd87ce87b9e1a3566e932d1ed43de5fc2e8a2adbbe06e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.1/entries/entry-0001.md": {
-      "sha256": "5a8b42b73f27de4dce2674c7c1fea91c348aaec39e80baf881fa1380d9196550"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.1/entries/entry-0002.md": {
-      "sha256": "2b05d7e294db1a999ad2823caa698a25bfbf0a025f5191bcc270829b0f320f4c"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.1/entries/entry-0003.md": {
-      "sha256": "88ccd73cc6bb29b10ff2af4a5043077f025d3da223486cca0c06b151f0f64f75"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.1/release.md": {
-      "sha256": "63da033d2fb4a507089fe8d8782d63f587197c1b401a7c7b5151f9a2e9ea051b"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.2/entries/entry-0001.md": {
-      "sha256": "b734547384967b08f40ce260b5c3049101ea9694ddd330216f85ed756d0ad0fc"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.2/entries/entry-0002.md": {
-      "sha256": "0c86435c5ea0701cf8a5e92f3fe42200d99aee50ea8068086da0a0926c4f4f81"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.2/entries/entry-0003.md": {
-      "sha256": "4d5642cc4b862671d54bfb1017989f15d1acb8642d55ec5d79816e4cbb9dca2e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.2/release.md": {
-      "sha256": "0819d22309178cf9be74d7fc0018a8c1289ee3c94f3d433007b7495d5da3f789"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/audit/commit-audit.yaml": {
-      "sha256": "7f899ec93309dacd56b747d6ce7cab59c91cf25d3f8eb728011e5bfeddafb479"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0001.md": {
-      "sha256": "5a9b4515bf0243ab6634003e6257eb71ba1664109354877530e33944f5d13937"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0002.md": {
-      "sha256": "42a896abcafbc54c8d7d85c13f4cd8f1936d8abd4d6e4ffaeca4d6ef417f6e7e"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0003.md": {
-      "sha256": "b3fbdc05f803f4bc612494f94fd3c40ef2e5502793abef1984e3ffb21e58307a"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0004.md": {
-      "sha256": "27de2cacceb7d3f0ffa53da98ee7f514d0d9fb1b34ef2f2be00dcbc9db21cec0"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0005.md": {
-      "sha256": "4a77f3028e16992ef2e709d63a59e6eee010cba4bf6b503c557ee4afe1b919b7"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0006.md": {
-      "sha256": "904b551e8f29d162d5147ec9547767f17a3fe6f4504c561dd97c7c4a9134caa6"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0007.md": {
-      "sha256": "5e8bb7662479ae89298845a97083ab8b3adae327b5d317eed2d4feb5954b4cb7"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0008.md": {
-      "sha256": "deac9e185887f0060cd63732e61849b5f4332c08d7883dbc8749a34349ab270c"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0009.md": {
-      "sha256": "e6d71494cd26dbcbffe3735c7f11a0591a94d75b69b9da12f322c2c460c30f28"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0010.md": {
-      "sha256": "c8456bf49caab3c74da47e3fa9cd8378fd4880d009747d51c43fac43699c9351"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/entries/entry-0011.md": {
-      "sha256": "8ad44c2527f6b608f2819d6433183616c6eb6daaa270ada225068c49f260470b"
-    },
-    ".releaseledger/ledgers/main/releases/v0.4.3/release.md": {
-      "sha256": "aeae822a9124345459538e9740d9075ae3434e3a2f03545f5f7156d8d4850a33"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/audit/commit-audit.yaml": {
-      "sha256": "70ca409f83e5a9126edc55a2d3d36bbf08e3f673c254a12a3f5b27f2b04d15d5"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0001.md": {
-      "sha256": "3ffa3933bbfb218e8ce2b2f24745ec98156a4fe51e14e2da22bb6f67158e5d83"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0002.md": {
-      "sha256": "2def5403419abf9f61efa5857be557229228904519f390b4b95b99db030f741c"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0003.md": {
-      "sha256": "c5236841e4a23830532732010f1c01031a592cbc6291d87fd1c8309a424dd804"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0004.md": {
-      "sha256": "07d44f4734b7c39555c18a3e8a43aa37ffd5e25ec5619e3a24bfc71faf357975"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0005.md": {
-      "sha256": "a8896629dbc288a12b30d895754cbcefa721e129d2e4facbf45dd7bd3f507165"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/entries/entry-0006.md": {
-      "sha256": "ed70cba7f846610a508a8ba3f00b8042c3e87e1773b85b7937507edb3560da76"
-    },
-    ".releaseledger/ledgers/main/releases/v0.5.0/release.md": {
-      "sha256": "6364eb8f1547f85ba5ec1e4f43daffaa29995651372960951095f8be98fda117"
-    },
     ".ruff.toml": {
       "sha256": "7127a0f9ca1865d7f6d55e4caa8778cc1d31cf45a605e6cb491982ac01bf3637"
     },
     "ARCHITECTURE.md": {
-      "sha256": "6f6fd856d065dc8d1bf1fcc8fdb43bb7a1b1fa0a50f88a34cccec0ec5e151d64"
-    },
-    "CHANGELOG.md": {
-      "sha256": "c1a14999581416931a86573749060461506f87d1b6311cf3c0974805cce5ee1c"
+      "sha256": "342b1a90032214a3e93fbc7ee3b5635dc93b7ff824035703785eec3553763b06"
     },
     "README.md": {
       "sha256": "b6b78973424e30ecce28cb1e41222844cedc71a7173bbe3e8def5833850ea132"
@@ -467,16 +134,16 @@
       "sha256": "9179541d04dfb1899f0367a9125510bbf08dd62d240433a97354846ef3341f5d"
     },
     "booktx/acceptance.py": {
-      "sha256": "65f40641eafb22e5817544f696c015470912e97e3243bd84287110951a40de92"
+      "sha256": "799dc5f35e68e9baefd9fa43145b4bac47c49675ca6c68a5e235c35a08763889"
     },
     "booktx/acceptance_preflight.py": {
       "sha256": "55933106d6eb67ffc3c549f7a53291f3484c6cf1de1313d8a9b940ed156ad627"
     },
     "booktx/agent_todo.py": {
-      "sha256": "1bfd7ad7aa342cadb54328234c2816f77563011376fd9954d227a0c78b661c05"
+      "sha256": "43d9549088e2373824ae04ce6994503b2b4718e990c7aefcef0b23d329a6a2a0"
     },
     "booktx/agents_md.py": {
-      "sha256": "b3d6fb99b808b10e4861c825ad8a69825c956b053d414293341c09f79a748a1c"
+      "sha256": "80440ecb534967c9619aa77401a176354a96bca02251472fcb8c34c5bffc8075"
     },
     "booktx/block_protocol.py": {
       "sha256": "49b29fb3501979f6c3026ff4a6d0e452964374c62b1e63fac1d703803032a71f"
@@ -497,13 +164,16 @@
       "sha256": "32570c893fa3bb147d78840b582fa09f8c506b8b826b5e597a6b63f992e56217"
     },
     "booktx/cli_support.py": {
-      "sha256": "39b4b1e251d8f336d20aacdcf62cbc7796edfcfb9f3656ce105bcf7decb1c8ea"
+      "sha256": "2c694bc6f32bbc7d03862bfd5850f84d59f47af8fb9c7d630bf46388f76087bd"
+    },
+    "booktx/collection_utils.py": {
+      "sha256": "e90f4b5a3cc9d49b319e15ab9d14418bd6cec5221443fc75e0290b997951087a"
     },
     "booktx/command_catalog.py": {
-      "sha256": "86d3d2fa0834b9b8e256117c62db7fae12ad20d06c71c670c7c0db08563051a1"
+      "sha256": "a6a1038627ca001f0406cb40bda0029b50dda5ad81fd0998d8c52617da3a8a72"
     },
     "booktx/command_hints.py": {
-      "sha256": "45363023e034d6085180615f366334c045d58baa827cdd7bcffaa561ccb37276"
+      "sha256": "8dca4c5a6d32c7f36b860071c5d9c2f53df58ff13068f668a68bd354e8a85bf4"
     },
     "booktx/commands/__init__.py": {
       "sha256": "4ea5bf7d3e545f8ba258243a286ebc1f6022f6db9291aadaacbc9d54fb516e99"
@@ -527,7 +197,10 @@
       "sha256": "968dffc6bb81f58e1e15aef305377c02b2fcd52a2ad8dee410e9f8947aeefc57"
     },
     "booktx/commands/judge.py": {
-      "sha256": "ab163054db5e1ace3eada225b3a3f870ebb1a92cee4c2c7d93edf0ed51a04f60"
+      "sha256": "e05ff60383cd025c61d6c85d9ce0a77ad88121b2194e714b61050d08d881bbe1"
+    },
+    "booktx/commands/judge_presenters.py": {
+      "sha256": "c95105bfd1a102eedeb68e331be3b65540cfc9f1a23165881634be57cb79fb14"
     },
     "booktx/commands/profile.py": {
       "sha256": "3df1b98d8d7d0b6f74fbc1c6d3e21b55d42082230abc99c68f6ca0f411d07faf"
@@ -542,31 +215,31 @@
       "sha256": "e518fbcdf1b4b81a037fcfac56e516b0dab9ef4a4e7a13e7901b98d142c98636"
     },
     "booktx/commands/source.py": {
-      "sha256": "bfdd9fe2a139f91de8716d31d10ed2d6799fc850af6215d3317e636e56cf3172"
+      "sha256": "06235f1c2e76d93d0001855227889c204e7f9e40142db815a426620d4637372e"
     },
     "booktx/commands/termbase.py": {
       "sha256": "906b62a8ffb53b3a47f95e2930b5e6eb32e8139029a650d50214233d26b6208f"
     },
     "booktx/commands/translate.py": {
-      "sha256": "223e499fa2f5b2230d3bb0f7af30b8203ae982788a7b380d96944947e3c48a62"
+      "sha256": "c032f8fea2ce46b2f0a8e8a409f4a2e84b5b6c7018e2fe62a2ce7fac0875e67c"
     },
     "booktx/commands/version.py": {
       "sha256": "1e76e8218e7a9dcfc0021ff5935583eda494f79ed95707e4f4567a43447a6efe"
     },
     "booktx/config.py": {
-      "sha256": "fdbb7146e9d750546c53994772c7cdf16197ee50569df7b06fa21fea643d5f73"
+      "sha256": "2d398f2934367bfd935cdbf1e68085b1ececc284c257d69ea6a5fe94a28ca621"
     },
     "booktx/context.py": {
-      "sha256": "b40a981d93addf9adc62d0d4d543aab72b5d712b46006c0874601df2af7fa662"
+      "sha256": "60c439d9aeb5ea58960526596130cb147740f37a260769264156d52ce6c87e11"
     },
     "booktx/context_organization.py": {
       "sha256": "f919e4a8f59e1f3daeb0e8ef46d95a1a1c703ffb344eb634de501799913d89f6"
     },
     "booktx/context_packs.py": {
-      "sha256": "41963b010999156677c3e1158ce24739f4754e31a4c7caa6262ee0b202691043"
+      "sha256": "1410c614a46ae3d4e1bf7b1f9482ff6ed4db6b9eaf647148331dbd46f6f76a3e"
     },
     "booktx/context_sync.py": {
-      "sha256": "34762ee51bf9b6b9a1ef3d79e1d7fd35250ce7452b10ee77bbe3f963915c4eba"
+      "sha256": "ad6a122f2aff3374af23b79cca0b7ab433b0edf650b5bceb0e792a0dadae9a42"
     },
     "booktx/editor_indexes.py": {
       "sha256": "89060ef10a23f51f0e63a6c028d6732a1c47d143a70177b62a1a4d65f20777db"
@@ -602,7 +275,7 @@
       "sha256": "662b90e6092fb2069f04e9f75d879f78ba111473321f5b26738712eb6129a337"
     },
     "booktx/glossary_match.py": {
-      "sha256": "50983e9d9e1841d1c2ed1f222fbf1271900864e53bb12e4d1874a67df3de447a"
+      "sha256": "dc50c48f3498a6fae2f5ad89c41d153869b01fe1294b75650e0d1c02f98ae68f"
     },
     "booktx/glossary_tasking.py": {
       "sha256": "6ab9488eab1c31139a18b1002aa958538c9287cecb8a14a681e8e12d450368e8"
@@ -617,49 +290,49 @@
       "sha256": "441d2f60f83d5d3eb78014703f131b51c01cc7c126e4fa44a2d6f768e376c8ac"
     },
     "booktx/identity.py": {
-      "sha256": "33307889117b97d59043a0b526d4ee9909befdc76a2c4103d15a302347c96f5a"
+      "sha256": "64fb8c17b6f79c5b4db36e5aeced190fc28a75486e986511b938c4ec22a5630c"
     },
     "booktx/inline_audit.py": {
-      "sha256": "a2ed4606c576d86b548f97b85d228e87092a80490644d4bd359575fbca515ae2"
+      "sha256": "888b5a28747a7c529ed8ef28cdc5affa229d6e81f90c6c820e158c849dc13184"
     },
     "booktx/io_utils.py": {
       "sha256": "63033340f8633c71bea7ea524f57a087fdb6225e24defcdeea29c1aac1bdb46e"
     },
     "booktx/judge_acceptance.py": {
-      "sha256": "31fcf50363e60f4eac699145b0ae339408661ce66766454a1a4302d2e008c434"
+      "sha256": "4ff9e5801268fe741502aee9335b976d3c255d815d16dbccc24dae20c290ad10"
     },
     "booktx/judge_policy.py": {
       "sha256": "d6bec92fc0bdc51f9d07b58b7e0de41547fc784e6e184224e8546e933057b322"
     },
     "booktx/judge_provenance.py": {
-      "sha256": "15aa7064475cf21c59d7b5dd8d9cdeea65808187dd099502c27ad23e2cb24049"
+      "sha256": "70cc17897a5295975c32fe3e584b6e2d615a2bec7f2e9f2da6e82f7e37b1a28b"
     },
     "booktx/judge_sources.py": {
-      "sha256": "9c8ac00b25804751ae2fb780d1ab5ecb56ceaa896d9564b5c5591bbf39a1faf9"
+      "sha256": "313952fca32e18b9b1769418053bc4567a26060a1ce2977b4fb777d756ff136a"
     },
     "booktx/judge_store.py": {
-      "sha256": "39b7cb06eb7acec1e229b460bebde723c1f84907ac9155973483fe4f537bce42"
+      "sha256": "42a9372888ef9323a64a8c11cb1920393058deab16a8b534f80cb7e6dfc15c53"
     },
     "booktx/judge_tasks.py": {
-      "sha256": "35d3b6be835809cfc798b60cbd50f8a5b74cb68acc505f76ca60d791f7e8924a"
+      "sha256": "4fb4b92e455574c1d76cd5b19f0077b97b75c44189c0fc16ce0b646a35b1e6de"
     },
     "booktx/judge_todos.py": {
       "sha256": "e17f505811f08c0cd0abe910eae6d8c81a7360a5175180819acb0b2981df61f7"
     },
     "booktx/linguistic_audit.py": {
-      "sha256": "2e8c9dcddfeb9469cbf1bcc08a44e4baa836592ee6575a3d10c7bedd790323ad"
+      "sha256": "3cb83f489e86cd5d50da945c0a95a083614f7c949ebcacf7bc9a1bdd3344c1e8"
     },
     "booktx/markdown_io.py": {
       "sha256": "a96813f72995a62a8e0edf8621739c48c1e47ab0a8fe73adaa3009c492bf6df3"
     },
     "booktx/models.py": {
-      "sha256": "7108382429c5e76decdddaf95177a914696c893efd5bf98ab574ac12bc148f0d"
+      "sha256": "8c7fddefd255ac68d6ba0557de72f4471ea3558730a3e27b795ac9fc0ce2e87a"
     },
     "booktx/pass_through.py": {
       "sha256": "8f4c0d3aca600c6b67ee5f9c4185b84677eab2c85e0b664f20490482f7a08540"
     },
     "booktx/path_display.py": {
-      "sha256": "bdf060d972618d93957745f615312091b3acfd288a465bb13690b0c811012e9d"
+      "sha256": "882f52e8e561e2261ac1d706179944cdfd55d504fe699ef2f4fc33ec8a2e204c"
     },
     "booktx/path_ids.py": {
       "sha256": "3c477cc16716e48cb7ba7fb067fd1ed728ac2858ea5e0e0697ed007b2ff92081"
@@ -678,6 +351,15 @@
     },
     "booktx/qa_scan.py": {
       "sha256": "540bc05bbae728ab8b0a03beadbada061eed1dd1d58a91eed5deeff151bd4ee9"
+    },
+    "booktx/quality_backends/__init__.py": {
+      "sha256": "de87aa6ce5baada4c2663a7abb0739194bf25a084b4f3bd28dc89f0a36814d6b"
+    },
+    "booktx/quality_backends/languagetool.py": {
+      "sha256": "cba9b715e4ae983fda4a7b95606fc6679e47fda5334d13c6dab77380be0a0df1"
+    },
+    "booktx/quality_benchmark.py": {
+      "sha256": "c55a3c5e11d9e85327e40b9362c98a67ea490fb1edf5c2b480852ebc8df6bf47"
     },
     "booktx/record_refs.py": {
       "sha256": "aed8dff3d617f1c3ab3d03fc019fb34ab1ac1cf058aec387b65f7782bdc60735"
@@ -710,16 +392,22 @@
       "sha256": "a972c50ce3be7eff859a77c563a1a57560a1149ed0f92ead7dab79f43cbd20a0"
     },
     "booktx/source_analysis.py": {
-      "sha256": "1533a688031ceb142c012edbc26cf41b3aaabe0f7ea7a125ba11d024335980d0"
+      "sha256": "18a67c918cb95bf48681f714b1aea1373679db4d47b2ad318b26ee23d25abd18"
     },
     "booktx/source_analysis_context.py": {
-      "sha256": "06953dcdd526b3afd5918630c6f2daa0994440fd6a5e5ec043bffc88209edff6"
+      "sha256": "f9c15fcd84da75704907c72cc9352f792572bf3914d4a07d54f7b76a46210022"
+    },
+    "booktx/source_analysis_render.py": {
+      "sha256": "4ab5bec4444518d5435a834749c5ba4876ed37ddac867b1af578c8f4c76498d3"
+    },
+    "booktx/source_analysis_snapshot.py": {
+      "sha256": "a57e7fe1ecc1a80a762d563d30f7fcfb758071fdc2f0e8a2d782dd590dced15e"
     },
     "booktx/source_candidate_coverage.py": {
-      "sha256": "e94639835c912ce32561a6524434cd59bfed76df2be874185c01d0fdd2e2cbe4"
+      "sha256": "ecdfe857eead23951bab8e1ffa2b22e9544684ef53fb4775e6e2c8a99b3ce3c9"
     },
     "booktx/source_interview.py": {
-      "sha256": "7057d3bb64e904ba7df914bf206b414432fb346adaf8f56c00ae1863ff4577d1"
+      "sha256": "b73c55ddbb4ee230e0cc2c1ae0ed0a20dc32e3aeb903da2f538c0443f8c187ca"
     },
     "booktx/status.py": {
       "sha256": "e7c4c50fec2aeeb5df187c352c0f6637751b104067d06d41ac60e9e5588425ef"
@@ -737,7 +425,7 @@
       "sha256": "1b7c4fc00fd7cbb354f889473bf56c536ddc456f3cd77571a6486616148899fd"
     },
     "booktx/store/models.py": {
-      "sha256": "c58ae010afafdebfbc7a5ea86c10c25dbb2c2e1c0aa347fcf467fd8e5958adc6"
+      "sha256": "943474dfbb63fe7974f2f375702f52f99d4a3bd539c20d939c2d557f94fed815"
     },
     "booktx/store/paths.py": {
       "sha256": "136582118ba514dce991466bcd5c6f5664236c9f396a46e85a1fee8ccf560a19"
@@ -746,19 +434,19 @@
       "sha256": "f99862cec693b7d8d3ef28c64091d2c0e92d54cf33f99a125be9c8bad4de5874"
     },
     "booktx/store/transactions.py": {
-      "sha256": "199b4874d5b4031da3c5921b1b1e766d1418ca5e89013df70ce194b95d0840c1"
+      "sha256": "8513b41c86a9a89331bac99ed3d0b1fcfed54b1371c1924f7b9059b67f13c4e9"
     },
     "booktx/store/v1_v2.py": {
-      "sha256": "b273f1a1d58d28628fa6a5fccf850562a48ae7502af7c59e304b68cb03a42961"
+      "sha256": "601cb52e00f84806aa4bf962dc942637268782104da6c7bc16ca1b4c262ac600"
     },
     "booktx/store/v3.py": {
-      "sha256": "396db7f189b8088ad95f9f646ffd257150b96aa1ba3b56d006963dcdb72b619d"
+      "sha256": "d33779f2589f531546d7713b154d891634729789178643d1d8a900a4dd47c201"
     },
     "booktx/submissions.py": {
       "sha256": "1857a0eda19ee5e128f3bfe780d544440315f6182c8d5b102190656b7cc2d766"
     },
     "booktx/tasks.py": {
-      "sha256": "3406aecadc221138b6ec8b6012f3447220abf86b6f0e7b777b7c6f5a8ba7d78e"
+      "sha256": "1cf09bb1e9689d6b52c90a2d5b51a7d7042a1cb800e932a2f5dfd565e1dcd13b"
     },
     "booktx/templates/shadows_of_apt.json": {
       "sha256": "14d1ba8ee2847fd3310121bc7222c43c56aeb4eb2b287265d79ad09c6a9d59c8"
@@ -782,22 +470,25 @@
       "sha256": "e8785af6187f55cd09a45be27435a122ccda9eb5d012633b34fb4d6bdd790270"
     },
     "booktx/todo_resume.py": {
-      "sha256": "c1a970ff774e17e9941efd453c1a0689334607bb77f2d4ae93eb80f55c5bf184"
+      "sha256": "187b45bcca5ec540b15d6977957d06fe88ef224ebc5eb7565861a323eb12b1b0"
     },
     "booktx/todo_status.py": {
-      "sha256": "1efa91e5b84343ba22b56af3f69e74e6094fcb235f739ad10af45c098fc10531"
+      "sha256": "823618f6f416ee5fcc5f33f3955a617f42496f58a294bd255cd27ea5f85b57fb"
     },
     "booktx/translation_concordance.py": {
-      "sha256": "a7ec672358a125b52471b14a9fd510633c4364255de9e3dc8688119d7e749324"
+      "sha256": "dca850176b57ff50b13888c0ca4bd4782744c10a5c96aa0f6e29536050923a74"
+    },
+    "booktx/translation_quality.py": {
+      "sha256": "dfbe3ca30a25b6aabd71888b63f92a933b609304e8b573e59be2d661bee583ff"
     },
     "booktx/translation_store.py": {
       "sha256": "7eac958c59f1a33c2eddc4ac811b6d0dfc0d69444a8216ccac4b45354db7b072"
     },
     "booktx/validate.py": {
-      "sha256": "56f73d9bf6b48f96f40e7e54c06e16f7331528972268799054e09d91b5e7ffea"
+      "sha256": "f4397adc4ccf1e78a84f757f345410b88a00aa86562604f5913cadea6ad99d21"
     },
     "booktx/validation_receipts.py": {
-      "sha256": "2486eede4edd8924a0da57dd3427cb45b767f9da5e3ce0b59e31e1548af35a0e"
+      "sha256": "29720ab783aca0db2642830175be095a602fdcfec81bdbbd17bbd19c51c709bf"
     },
     "booktx/versioning.py": {
       "sha256": "c5634d1f70d244d2d03312b6450f90b11379ecbe40c22c7434c08dd13ec8df81"
@@ -806,10 +497,10 @@
       "sha256": "dee3daa93ee579b8603ac1b4e9f4a39dba20eea0bc5ebbcc580f84db475b5a3f"
     },
     "booktx/workflows/agents.py": {
-      "sha256": "c7eccac897719ae871aeb43213d96a182ac434fdfe8f5547d23c10a5b7dab299"
+      "sha256": "12049f40c987799c5c6f6888b82a5aa4368201fbd92f509ddf7a063015ae5770"
     },
     "booktx/workflows/context.py": {
-      "sha256": "90a4a9fa5a6bbe580339eb37f621993ed7003ae9179b32bcd0f0d8b9bb06ed59"
+      "sha256": "96e1f2cdbafd345bf6234862976a32ef34c7947cf86d194c43d01860b3f3bb01"
     },
     "booktx/workflows/epub.py": {
       "sha256": "11d73e26b60bc531fa20b7c477c40c5d12f01238869d60dc06720bab18e9c73d"
@@ -821,52 +512,55 @@
       "sha256": "b2795815e9061e9706d7b45e1f52aabfc0eea328a11ad6ac9e0f6bf72a2914ae"
     },
     "booktx/workflows/judge.py": {
-      "sha256": "3c32b5eee4591aac2e77ab56f8501b48012feceaf2c066192ab5d9c5de9ba753"
+      "sha256": "1a0654f2575abcf230244a7f52e9537ca832f10fc1377ad38d693c447110ffe8"
     },
     "booktx/workflows/profile.py": {
-      "sha256": "5b72c754cbc4b6dc7b17282b0552d6222a234e03857f7170b38d362b57fa6c47"
+      "sha256": "efc01ee2270b04f8913b903926422392adf79d7ab4c0992b3b16f4f67ef4f991"
     },
     "booktx/workflows/review.py": {
       "sha256": "544d90ecc6fdcf7c19254c0a6e5cacf81d321f8e3ce86b24eddeba76235bb996"
     },
     "booktx/workflows/root.py": {
-      "sha256": "28fcdfe03c687937108d59c49a3e95d449c6420ca4c5313ecbe972d9dd76c205"
+      "sha256": "1e7e1a6f757b27f8f5ef39473673f57fc41e1e8f2a2824e4666758d8524395a8"
     },
     "booktx/workflows/series.py": {
-      "sha256": "138a660662c527cebececf8747cc32ad3fe149a2ccde02693aae5c7f238f27f5"
+      "sha256": "dcef46f0cacd766470a9635593b112b2cb94c1df04a3e79f6f1716ebec7c162a"
     },
     "booktx/workflows/source.py": {
       "sha256": "9bef58d373e81b63501e4ecb61600e9e1437170c3b331580eb92869e9480f7d0"
     },
     "booktx/workflows/source_interview.py": {
-      "sha256": "8573b9ca109b3d2cedcffd6b11e6ccbf0f9b12a0331071a672d457aa9996be86"
+      "sha256": "25019e06c181902729a881d8199dea807f044b26e703d3d36b98a6a5f4d236b2"
     },
     "booktx/workflows/store.py": {
       "sha256": "00a966d5449b0c73046c9b9bb6ad8936bf0471d27f6438de1760f7088d01b716"
     },
     "booktx/workflows/termbase.py": {
-      "sha256": "711dce8c14112fe66263a952695562a2f26312fbdad3358983e5a444fb1c7b37"
+      "sha256": "449c881a9146a857d83740a8224a467304f449f8b0d16fcffe24282b3dba4680"
     },
     "booktx/workflows/translate.py": {
-      "sha256": "4ba9859426dcb5e4c12fb0c4df05102d94deb4a89688312e136b355634901c2a"
+      "sha256": "29c21125f53aa3df9a007a0a31d9b527cc3b50020638e0c0c1b0c5acf3f8297e"
     },
     "booktx/workflows/version.py": {
       "sha256": "6e008040a372ef30a9eca6a788565354ba02ba86c5da2da26e76581f1b80931e"
     },
     "docs/agent-workflow.md": {
-      "sha256": "32c06ee2ec07bd61c0e68132e686301e9d38508c0086c8ecd52d6c60ba91839e"
+      "sha256": "28bb366b1b47af584e1d86b983cec5d1b73af19e8abe8bb6327d92df31c50fd8"
     },
     "docs/api.md": {
-      "sha256": "dc67a98ab7e741ef6935a7f146292b2609c28793d224889eca35dca259e85460"
+      "sha256": "036644e3d1d0fe1ce585f39c35902118cf939455d3efd6e0d85d8ce79f28b9c7"
     },
     "docs/architecture.md": {
-      "sha256": "c0d621f0df25a6484dec0c4c77e8340a64665816f5c2d3512499c9dadb55a20d"
+      "sha256": "f84dab7b6ca1d383193aea4c626fbefed0a2467b7dbfdad7e373f329513edbf2"
+    },
+    "docs/changelog.md": {
+      "sha256": "49ac667a775e3c291392c9a0043acfb6a56a35c86f37cd2d110c5bb631747e6a"
     },
     "docs/commands.md": {
-      "sha256": "9836887ed2c71e2f004938f15dca961f31a32780851bc083e7a09adb3fc6a42b"
+      "sha256": "9c00639464ad936c9a324b8296b9ea996b3f6ce3c3827339ff849060a56fcc03"
     },
     "docs/concepts.md": {
-      "sha256": "d13facb2af154c1902189c5b1c84d0604e9a4f43a0f55e4d032f7b45e6e04c7c"
+      "sha256": "f81be1d0c07bb8bcf9eff5e541022c1b4ecce39d377d809350d6f3c3f224c8d5"
     },
     "docs/conf.py": {
       "sha256": "46b42d5de10b3acda00ee5ad0b4a76ab2a98ed27a9721e8891052f3e6cc0cfd3"
@@ -875,7 +569,7 @@
       "sha256": "76478b44aa3d00d3895fb79e008d7c7bc4ce77777b9de02b27123dcf33b5caa5"
     },
     "docs/development.md": {
-      "sha256": "7f597a0926704497e1654f7232b37f1922d4d011cb996d409215b6fe6e110274"
+      "sha256": "d2b201e55105eb5ccf98ec18e154de670cf0134efca7626688060f53afe77aae"
     },
     "docs/epub.md": {
       "sha256": "a1401351425f7037d5ba3147cce2e99d7d2ead6265ce9e9b503564ceded4cb30"
@@ -884,7 +578,7 @@
       "sha256": "729d4ddde6590c10cb60afa17dd7f78f40793f6dc9ab6a3d64e92a84b196e5fc"
     },
     "docs/index.md": {
-      "sha256": "2356c2d6fc7a1c7aa46711d4ffb4015436bb2b101c902439bfa6ca6a08dff5b1"
+      "sha256": "debc5489872d4c481d22ef0f651796ce7571cbf1daba5cf031a68dca792c8002"
     },
     "docs/maintenance.md": {
       "sha256": "88913e591aef273d36fc9a548c4f28f2b70e9d293df1e6f7d0dbc3fe7c55a5c3"
@@ -896,10 +590,10 @@
       "sha256": "8a72ca73770da2f13e6641948eea6016ec00a76c102755cbcbaa814ea19c563d"
     },
     "docs/profiles.md": {
-      "sha256": "2a519b98f18c90437e92102d85c957da70effc1aa17f69c36086a27b174d1a64"
+      "sha256": "de400e7103194b1fa54249e052ab37ee006652ce1fd3f0d9c3832258a7af887a"
     },
     "docs/project-layout.md": {
-      "sha256": "aadecd32cb062c91213db8803b8aecb3ba4f99106f577e09c74eac6bcf06fce4"
+      "sha256": "bc0cf7e786b5175ada0b677723cfa012ad3ee39315de3d0edc31e0ae5a67ca8b"
     },
     "docs/quickstart.md": {
       "sha256": "bbdfe020200392e2450e7b924c9a40e91ddb65555e74fdbb015ed115cdfe2f66"
@@ -911,16 +605,16 @@
       "sha256": "15b332276d4f1d250a3b698ec62250f55e823942ca1aa30dfe2f98ba518d7504"
     },
     "docs/translation-contract.md": {
-      "sha256": "1eb96d6db4bbdf557c8e53b4c693a26ebdbba741799acaa4ce5a700e276a01f3"
+      "sha256": "fd116c69a9dc0e6702fdedc57562c9e02ae046a7ee48ea6ebc5e9693bd52290b"
     },
     "docs/translation-store.md": {
-      "sha256": "5c4ad900f3f0de5b1d8a5829ddedf1dd690c88f0c56c4b868e9cd35abe6578eb"
+      "sha256": "c03141844eaeaca8b32c04665ce443bff98a0bb0c6ae8fad64a7748033623beb"
     },
     "docs/troubleshooting.md": {
-      "sha256": "b1b1c1f37b544ee9d99e94cb59fac04f826b7f5284a81975f0a08c9d8dc1e2f9"
+      "sha256": "3186880014f07f17da3601110c2ee0b6d008c3a4c3ebbd04acef99c8795a2f7a"
     },
     "pyproject.toml": {
-      "sha256": "f6284cc50894f7d3922d0c6e39d23e2efa30818e263411d95eaaf34cd53ad0d3"
+      "sha256": "e9ab257c4209875e7bb45c8d2af63e78c02f9ec515b82e03557d2e13090211e3"
     },
     "scripts/check_command_catalog.py": {
       "sha256": "00433c744a2f0914c4cd211ae75cfca7e8362230c208f0e98e42468974a9d452"
@@ -929,7 +623,7 @@
       "sha256": "187fac40518d1e5a9f36fcfd2be756ec0665b17a5ad7dd7ea7005f623eb95e6e"
     },
     "skills/booktx/SKILL.md": {
-      "sha256": "6ff854146b33e6e678d0ea4f931c05d040b30b37522fce202db7c28084557415"
+      "sha256": "b8967eed3d47335784ba11e1c2ecaee02cd8326c62f55cc36c49d04c4be74c19"
     },
     "tests/__init__.py": {
       "sha256": "56ac42a23f7838a820e4db0496af1aefdbbd709aa1e81b68abe176d658f6c332"
@@ -964,11 +658,14 @@
     "tests/book/translations/de_default/translated/0001.json": {
       "sha256": "5389da5b65b5a4dfcd4661281dc31d3fd79a7e904c8edc3911a819ee3e982e0a"
     },
+    "tests/fixtures/translation_quality/book6.json": {
+      "sha256": "7d74a05da7dfe66687553422f5c914abeffb1f0b8ff40f42376bdb68ddbffcbf"
+    },
     "tests/store_backend_fixtures.py": {
       "sha256": "32b0145be92d52db78d4c32842aae3c18151a0229e51a1e4ff5ac24d1bb71c08"
     },
     "tests/test_acceptance.py": {
-      "sha256": "d81b2682db075f43b0dec422171c7751acf588e7d7b1c842dd540ec556716884"
+      "sha256": "f154261a9d133da443fb5cdff04a193b6cb71f534eb57c6b23a5049c5d8a9b07"
     },
     "tests/test_agents_md.py": {
       "sha256": "a882bab12d9c671314655fd7018baaad5541210698152339dc033df76bd0063d"
@@ -1004,7 +701,7 @@
       "sha256": "9b37d8f2636fb8a38ba91aaf9ef021ba7f5b199412e8c1dee385c3025ba02d47"
     },
     "tests/test_cli_isolation.py": {
-      "sha256": "4bd498ee0f6344fdcee8678f4c27cab377690cf850b60e2d83178561d24cd619"
+      "sha256": "38bd517ace67fc401c853eb0fbdde305b17a9a2d6143dd70720838113f438d7c"
     },
     "tests/test_cli_large_chapter.py": {
       "sha256": "21983c1fcc7b9124ae99636153a089be39fe85f5bdc60d497aaa88cd023e645d"
@@ -1034,7 +731,7 @@
       "sha256": "47a01bd7a1a230524d9ab2f5c6fb5bc2d5659f5cfb289944e567bae54a4f1d3a"
     },
     "tests/test_cli_review.py": {
-      "sha256": "736619f22aa206988d334a6b2094c1d96d163dab545bec319cf5c72b21bf6029"
+      "sha256": "984cfa7d4a2e245ab4cbc37aa51d6edb91bbebbfea1c5541141448dbeef23254"
     },
     "tests/test_cli_series.py": {
       "sha256": "d85b5c0285c9eb2f989a0af4851f4eb241c7b534c6f5d9a2c7afb758c8b9fd58"
@@ -1046,16 +743,16 @@
       "sha256": "b97820e2f970a9157715aad0f6dcccfd40bbae6a02b8ad5baf285a591da9f320"
     },
     "tests/test_cli_translate.py": {
-      "sha256": "e5688e9b2a359c2b17f0985ad70c82f8eeaa52ab77cf06132d823404b9d6c1b3"
+      "sha256": "1327507cab9137d83ef63824695ca6db839b7694c79e2c958612ab55b24247b7"
     },
     "tests/test_cli_translate_todo.py": {
-      "sha256": "f64253337d1ab9de673a55e273c03542ca6ff0c88b577166d668551175dda090"
+      "sha256": "ac43fe1b1d11910ab080b340c1a6d475795474bfce3fa6a841dd40aa3ec3849f"
     },
     "tests/test_command_catalog.py": {
       "sha256": "93f87b8f9bb04ac7de0b06a1d30ecff374a202c38bfe31294aea970974412919"
     },
     "tests/test_config.py": {
-      "sha256": "7d1b9800b098d6b757c4dab00d9a051560946553d798d4a51065eca47583ce51"
+      "sha256": "bc5a2eafca557a1367f74abe2d9d904c48f00a0dd8476b0bcebece5c604b585d"
     },
     "tests/test_context_io.py": {
       "sha256": "57fe3161116910d8039d9cfc3a06584ab085f460eb1686ae05c751988890979d"
@@ -1067,7 +764,7 @@
       "sha256": "b1e657051a85e6616532ceb535011efdb23de86117ff5920faa88b359d5ea1b5"
     },
     "tests/test_context_packs.py": {
-      "sha256": "3f74463acc20e5a5bd6de11c2b60da3e633fd4de763225c7ab0f0a933028a700"
+      "sha256": "53a748f079cf4638ab8204d45b333b487efcf9fe714af09ee52b4adc09bfac96"
     },
     "tests/test_context_sync.py": {
       "sha256": "20e22fd73ce99e471a9fa5a439cd006396ef4671f55e34b425c71f8e7efe60ad"
@@ -1079,7 +776,7 @@
       "sha256": "480ebee2f5859d13586882d1a8270571288a46e1496b202805a1e798e4d1fcd0"
     },
     "tests/test_epub_inline_xhtml.py": {
-      "sha256": "9b5c09c9fa13d335d244e218c43cd7020a5b2fc3485b80cd0f6552a989ec7e22"
+      "sha256": "ec295e09e04fb0af743ad32a2b60048a6e8e23456114bd82a8342088c4242625"
     },
     "tests/test_epub_io.py": {
       "sha256": "ee1c53d5ae73574956d74374377cb2a839a0afbb28a32e101fe2c26da50f4a48"
@@ -1097,7 +794,7 @@
       "sha256": "a5618a4bc5dd7b57143f6c10069a39ace198efc4f728dfc54527cf41ed269b1e"
     },
     "tests/test_glossary_enforcement.py": {
-      "sha256": "c3bf02d72745517898fe672f7a24ec6db7e2f48c96da452168b34be1f6829617"
+      "sha256": "71a2eed41a81f9c05514eaf8d5b83d1d53cb343222fbb815c6f0c326402f9393"
     },
     "tests/test_grammar_audit.py": {
       "sha256": "2ebd3fb32c4f3b0244223a9eb7ee91d0f95e94168af539f6d1269c37bf9b6a38"
@@ -1109,7 +806,7 @@
       "sha256": "886c25d62528bf4b33bcf1b4c529e4e876aac5cde59c26bf7e556f81ab58ebe1"
     },
     "tests/test_judge.py": {
-      "sha256": "00d66e96fb066b885a0c4391a66869e81880dcd90b7a905d5a5e1273857016d4"
+      "sha256": "17d29edd47266b64fdf6b2ee036eac062384ed95ab70b4a9d7adb1bbe02c2f8a"
     },
     "tests/test_judge_compact.py": {
       "sha256": "ac522a5944b119bd8c4369163158fdc5a0570929413ecf7a59df0535bfe0bd31"
@@ -1144,8 +841,11 @@
     "tests/test_qa_scan.py": {
       "sha256": "cbdbbb3c0e5969d2ffea843fd2be810f9c6f74276e5f28218285cb58200a3b69"
     },
+    "tests/test_quality_benchmark.py": {
+      "sha256": "22129f584fd4e74be5d6b5dc0d9e3978e4adef1cce3738ff05d2bf5f544d920c"
+    },
     "tests/test_review_acceptance.py": {
-      "sha256": "4a6035522a0f2ce327246af17728b9f65e34311d7cfa2a53b2756fea05508502"
+      "sha256": "6b066e3ff96145f0c551087e4f765c9087f584f9486f7be6ca4ebbfe48eb07c5"
     },
     "tests/test_review_refs.py": {
       "sha256": "d986b3cdf68ac622e737b316a748821c9f5dd9132729122d56835c8f1ed63a57"
@@ -1157,16 +857,16 @@
       "sha256": "e6cd3a011cf3a5dde1b727066d524d7098f8ac49a389cbdc4a3332ccfb0d9814"
     },
     "tests/test_review_tasks.py": {
-      "sha256": "d78cb19a863a2767d9479c45875692e2adb71526f592a71c6e92ef5cf9750ab4"
+      "sha256": "afa41202b5aacd042e0aff891f3c8d4b7e12f220cfae56ade780566ed35d4e24"
     },
     "tests/test_review_todo.py": {
-      "sha256": "afa26ec7ec8e494175794839aa4795f3d9c101dbdc5cc1c1664467d33ab8d200"
+      "sha256": "95415f5f1bed4f4fb28fd87410056dc1c3e2929d002c852e1138c78ac9008905"
     },
     "tests/test_runtime.py": {
       "sha256": "966a88c21d535a87b51a45871467c50f5a76c9c786bfd2efbaf29ca29c895724"
     },
     "tests/test_source_analysis.py": {
-      "sha256": "7116cbfb31d4bfbe4a9fa2332d2057b7e594796110b02cd0853d63ec9eaa5a2b"
+      "sha256": "1de88c8801be2b738c97ee1f1c6a82e9b01acededfdd6212c2cc028ff2d9621b"
     },
     "tests/test_source_analysis_context.py": {
       "sha256": "a02f0c2237d80d0ccc47e87727ce143e5caf5fa7ff3fda79d639d487baa842c4"
@@ -1175,13 +875,13 @@
       "sha256": "9c4a2ecf1d95291161d28edadc98fe3bd94b047b0cbfb01f2fa7f7bdbaf13fc3"
     },
     "tests/test_status.py": {
-      "sha256": "a859b3c017a8a34b74581795fd81844a514eebf65f5895d41d1c0c70b3695ae3"
+      "sha256": "67ccbdef0323832e3caeb4b9ecf37a149bdf9edfeb3b8e4901e6575e614a8641"
     },
     "tests/test_store_backend_parity.py": {
-      "sha256": "925c3687f59b6ba4862a9280415fb80835a0c985abab5625c2727d4722b38d9c"
+      "sha256": "b50df5fa20e58b19c97e03964bef9149ce9e5e706caaf9b1f4d0dbcb835e6e71"
     },
     "tests/test_store_backend_v3.py": {
-      "sha256": "604ab65a4b088bb0501d47f73df574b3bb4703842a58964064cd64abc1f6aa12"
+      "sha256": "ec020ce67f39c654ff2a90bb18c7a03d7dc82e477841108cc838baf38bb6b3ea"
     },
     "tests/test_store_doctor_v3.py": {
       "sha256": "38f4970488de28d38a4e3a2ffafaf31f8186fd07388db5b4dee48f870ff43779"
@@ -1205,7 +905,7 @@
       "sha256": "3bded1a25f3c79208d8025a786dae7138258c27bf03f62a8b2ffc3e9f67fb728"
     },
     "tests/test_termbase_match.py": {
-      "sha256": "48acffbb5fe3b8af422df2b027536efb9aaea01c7f7faa3430ac729e10a38f29"
+      "sha256": "df11b4b3ad2882a90c26ac762b6aba7c9442fdd753136ceeccd2de5daba845d3"
     },
     "tests/test_termbase_models.py": {
       "sha256": "34363973edc90e93c5c4c07bfd32ac47219571061db33ccec8323d8b03da5dc5"
@@ -1216,14 +916,23 @@
     "tests/test_termbase_validation.py": {
       "sha256": "f8e7de90e404aa1d10e59afb229037d413391063c3181f486ab84765cc28406b"
     },
+    "tests/test_translation_batch_budget.py": {
+      "sha256": "d9882117a71caf3787342a18d0e43a535e37727b3b65d461498e273f8ca1f00c"
+    },
     "tests/test_translation_concordance.py": {
       "sha256": "f3e44d5d51d480f1f1775fb5d6caa85e4d23efbd5754d3fc35c5b778f7d8e895"
     },
+    "tests/test_translation_quality.py": {
+      "sha256": "0e38211a92c42f92d53767eef405dd99a81e7637d37e6d3133f6c0496119983e"
+    },
     "tests/test_validate.py": {
-      "sha256": "9e375d5469621c57707037dddb5608441e3ac8ddef8b74ac027eec37f4457aa7"
+      "sha256": "2cc82c390b87dc32ce2eec763f8190cdfc6a3bc9fbbd11777ec93a777643dda5"
     },
     "tests/test_validate_context.py": {
       "sha256": "aaddb5cb9dadeeacaedcfe644266fe2e3e3d0fd48e235504522758daf17702af"
+    },
+    "tests/test_validation_receipts.py": {
+      "sha256": "db18afa167780fb142cba5852b075079595df485f777c1190612e4767743d5e5"
     },
     "tests/test_version.py": {
       "sha256": "918513b386fa8477a8c3047708bcfa84c464fbf2e80488709f235fb9957f0370"
@@ -1231,7 +940,7 @@
   },
   "project_name": "booktx",
   "project_uuid": "816e173a-3ffa-4a95-80bd-6da6f6e3a54e",
-  "reason": "after-archledger-update",
+  "reason": "final-after-glossary-fix",
   "scanner": {
     "exclude": [
       ".git/**",
@@ -1262,5 +971,5 @@
     "used": "git"
   },
   "schema": "archledger.source-state.v3",
-  "version": 2
+  "version": 5
 }

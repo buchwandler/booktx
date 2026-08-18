@@ -141,6 +141,7 @@ def set_disposition(
             write_decisions(project, decisions)
     return result, not unchanged
 
+
 @dataclass
 class ProfilePrefillResult:
     profile: str

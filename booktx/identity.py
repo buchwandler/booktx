@@ -26,6 +26,7 @@ __all__ = [
     "store_identity_payload",
 ]
 
+
 def context_identity_payload(
     proj: Project,
     *,
