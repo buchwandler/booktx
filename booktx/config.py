@@ -57,6 +57,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -67,9 +68,9 @@ import tomli_w
 from booktx.errors import BooktxError, _err
 from booktx.path_ids import safe_artifact_id
 
-try:
-    import tomllib  # type: ignore[import-not-found]  # Python 3.11+ stdlib
-except ModuleNotFoundError:  # Python 3.10
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # Python 3.10
     import tomli as tomllib
 
 from booktx.epub_manifest import sha256_path
@@ -1335,9 +1336,9 @@ def identity_path(project: Project) -> Path:
 
 
 def load_translation_store(project: Project) -> TranslationStoreV2:
-    from booktx.store import open_translation_store
+    from booktx.store import materialize_compatibility_store, open_translation_store
 
-    return open_translation_store(project).materialize_v2()
+    return materialize_compatibility_store(open_translation_store(project))
 
 
 def load_translation_version_ledger(project: Project) -> TranslationVersionLedger:
@@ -1374,7 +1375,10 @@ def load_translation_selection_ledger(project: Project) -> TranslationSelectionL
 def write_translation_store(
     project: Project, store: TranslationStore | TranslationStoreV2
 ) -> None:
-    from booktx.store import open_translation_store
+    from booktx.store import (
+        open_translation_store,
+        write_materialized_compatibility_store,
+    )
     from booktx.translation_store import legacy_store_to_v2
 
     if isinstance(store, TranslationStore):
@@ -1388,7 +1392,7 @@ def write_translation_store(
         store_v2 = store
 
     repository = open_translation_store(project)
-    repository.write_materialized_v2(store_v2)
+    write_materialized_compatibility_store(repository, store_v2)
 
 
 def write_translation_version_ledger(

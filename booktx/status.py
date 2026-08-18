@@ -27,10 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from booktx.chapters import (
-    ChapterMap,
-    ensure_chapter_map,
-)
+from booktx.chapters import ChapterMap
 from booktx.config import (
     Project,
     current_source_sha256,
@@ -44,7 +41,8 @@ from booktx.config import (
     project_source_sha256,
 )
 from booktx.models import Chunk, StatusTotals, TranslatedRecord
-from booktx.progress import SourceRecordView, load_source_chunks, load_source_records
+from booktx.progress import SourceRecordView, load_source_records
+from booktx.source_record_index import build_source_record_index
 from booktx.store import StoreFormat, detect_store_format, open_translation_store
 from booktx.validate import (
     Severity,
@@ -267,10 +265,6 @@ class StatusBundle:
     effective: Any | None = None
 
 
-def _chapter_map_for_workflow(proj: Project) -> ChapterMap:
-    return ensure_chapter_map(proj)
-
-
 def epub_chapter_audit_summary(
     proj: Project, chapter_map: ChapterMap
 ) -> EpubAuditSummary | None:
@@ -329,12 +323,13 @@ def build_status_snapshot(
     """
     source_path = find_source_file(proj)
     manifest = load_manifest(proj)
-    source_chunks = {chunk.chunk_id: chunk for chunk in load_source_chunks(proj)}
-    source_records = load_source_records(proj)
-    chapter_map = _chapter_map_for_workflow(proj)
+    source_index = build_source_record_index(proj)
+    source_chunks = source_index.source_chunks
+    source_records = source_index.ordered_records
+    chapter_map = source_index.chapter_map
     effective = load_effective_translated_chunks(proj, source_chunks=source_chunks)
 
-    source_by_id = {record.record_id: record for record in source_records}
+    source_by_id = source_index.source_by_id
     translated_by_id: dict[str, TranslatedRecord] = {
         record.id: record
         for chunk in effective.chunks.values()
@@ -353,23 +348,8 @@ def build_status_snapshot(
         and finding.chunk_id not in {"context", "store"}
     }
 
-    ordered_record_ids = [record.record_id for record in source_records]
-    record_index_by_id = {
-        record_id: idx for idx, record_id in enumerate(ordered_record_ids)
-    }
-    record_ids_by_chapter: dict[str, list[str]] = {}
-    record_to_chapter: dict[str, str] = {}
-
-    for chapter in chapter_map.chapters:
-        start = record_index_by_id.get(chapter.start_record_id)
-        end = record_index_by_id.get(chapter.end_record_id)
-        if start is None or end is None or end < start:
-            ids: list[str] = []
-        else:
-            ids = ordered_record_ids[start : end + 1]
-        record_ids_by_chapter[chapter.chapter_id] = ids
-        for record_id in ids:
-            record_to_chapter[record_id] = chapter.chapter_id
+    record_ids_by_chapter = source_index.record_ids_by_chapter
+    record_to_chapter = source_index.record_to_chapter
 
     chunk_summaries: list[ChunkProgress] = []
     for chunk in source_chunks.values():
@@ -634,12 +614,11 @@ def build_profiles_overview(project: Project) -> ProfilesOverview:
     # shared across profiles, so avoid reloading them (and rewriting
     # chapter-map.json) once per profile. Each profile only contributes its
     # own effective translations.
-    shared_chunks = (
-        {chunk.chunk_id: chunk for chunk in load_source_chunks(project)}
-        if project.chunks()
-        else {}
+    source_index = build_source_record_index(project) if project.chunks() else None
+    shared_chunks = source_index.source_chunks if source_index is not None else {}
+    shared_total_records = (
+        len(source_index.ordered_records) if source_index is not None else 0
     )
-    shared_total_records = len(load_source_records(project)) if project.chunks() else 0
 
     for profile_name in profiles:
         profile_project = load_profile_project(project.root, profile_name)

@@ -356,8 +356,10 @@ def _inspect_legacy_store(
     findings: list[StoreDoctorFinding] = []
     legacy_path = translation_store_path(project)
     try:
+        from .models import materialize_compatibility_store
+
         repo = open_translation_store(project)
-        store = repo.materialize_v2()
+        store = materialize_compatibility_store(repo)
     except Exception as exc:  # noqa: BLE001
         _add_finding(
             findings,

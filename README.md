@@ -23,7 +23,8 @@ Python 3.10 and newer are supported.
 ```text
 .booktx/                    shared source-derived state
 translations/<profile>/     mutable state for one translation effort
-TranslationStoreV2          current profile-local record store
+translation-store/          default v3 canonical store for new profiles
+translation-store.json      supported v2 compatibility store
 ```
 
 A profile is the hard isolation boundary. Project-root commands that need a
@@ -65,9 +66,11 @@ book/
 
 `.booktx/` contains source configuration, manifests, protected names, chapter
 metadata, and extracted chunks. Translation records, context, tasks, reviews,
-ledgers, reports, and output belong under the selected profile. The canonical
-store is shard-based under `translation-store/`; do not edit shard files
-directly.
+ledgers, reports, and output belong under the selected profile. The translation
+store is the logical canonical record repository for that profile; new profiles
+use the shard-based `translation-store/` backend and v2
+`translation-store.json` remains a supported compatibility backend. Do not edit
+canonical store files directly.
 
 New profiles use the v3 canonical store by default. Existing profiles keep the
 backend detected on disk; ordinary commands never auto-migrate them. Use

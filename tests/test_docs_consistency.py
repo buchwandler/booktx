@@ -235,6 +235,8 @@ def test_documentation_preserves_current_invariants() -> None:
         "booktx model set",
         "booktx actor set",
         "booktx harness set",
+        "current profile-local record store",
+        "opt-in migration target",
     )
     assert not [phrase for phrase in forbidden if phrase in docs]
     markers = (
@@ -246,6 +248,34 @@ def test_documentation_preserves_current_invariants() -> None:
     )
     for marker in markers:
         assert marker in docs, f"current documentation invariant missing: {marker}"
+
+
+def test_store_policy_docs_match_v3_default_invariants() -> None:
+    doc_paths = [
+        ROOT / "README.md",
+        ROOT / "skills" / "booktx" / "SKILL.md",
+        *sorted((ROOT / "docs").glob("*.md")),
+        ROOT / "ARCHITECTURE.md",
+    ]
+    docs = "\n".join(path.read_text("utf-8") for path in doc_paths)
+    required_markers = (
+        "New profiles default to the v3",
+        "Existing profiles keep their detected backend",
+        "never auto-migrate",
+        "logical canonical record-level translation repository",
+        "portable judge snapshot",
+    )
+    missing = [marker for marker in required_markers if marker not in docs]
+    assert not missing, f"store-policy documentation markers missing: {missing}"
+
+    stale_phrases = (
+        "Translation Store glossary entries defining canonical state as "
+        "`translation-store.json`",
+        "The canonical record-level translation state (`translation-store.json`)",
+        "TranslationStoreV2          current profile-local record store",
+    )
+    present = [phrase for phrase in stale_phrases if phrase in docs]
+    assert not present, f"stale store-policy wording still present: {present}"
 
 
 def test_retained_docs_are_reachable_from_toctree() -> None:

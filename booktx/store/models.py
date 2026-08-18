@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -24,13 +24,15 @@ from .paths import canonical_chunk_id, validate_relative_store_path
 
 __all__ = [
     "CURRENT_SHARD_SCHEMA",
+    "CompatibilityTranslationStoreRepository",
+    "MaterializedStoreRecord",
+    "MaterializedStoreSnapshot",
     "MaterializedTranslationStore",
     "REVIEW_CANDIDATE_SHARD_SCHEMA",
     "StoreFormat",
     "StoreCommitResult",
     "StoreMigrationPlan",
     "StoreMigrationResult",
-    "StoreMutationBatch",
     "STORE_MIGRATION_PLAN_SCHEMA",
     "STORE_V3_SCHEMA",
     "StoredTranslationRecord",
@@ -39,6 +41,8 @@ __all__ = [
     "TRANSLATION_CANDIDATE_SHARD_SCHEMA",
     "TranslationStoreRepository",
     "edit_materialized_store",
+    "materialize_compatibility_store",
+    "write_materialized_compatibility_store",
     "V3CurrentRecord",
     "V3CurrentShard",
     "V3Manifest",
@@ -60,8 +64,12 @@ TRANSLATION_CANDIDATE_SHARD_SCHEMA = "booktx.translation-candidate-shard.v1"
 REVIEW_CANDIDATE_SHARD_SCHEMA = "booktx.review-candidate-shard.v1"
 STORE_MIGRATION_PLAN_SCHEMA = "booktx.store-migration-plan.v1"
 
-MaterializedTranslationStore = TranslationStoreV2
-StoredTranslationRecord = StoredTranslationRecordV2
+MaterializedStoreSnapshot = TranslationStoreV2
+MaterializedStoreRecord = StoredTranslationRecordV2
+
+# Backward-compatible aliases retained for compatibility-oriented imports.
+MaterializedTranslationStore = MaterializedStoreSnapshot
+StoredTranslationRecord = MaterializedStoreRecord
 
 
 def _sha256_text(text: str) -> str:
@@ -93,15 +101,6 @@ class StoreFormat(str, Enum):
     V1 = "v1"
     V2 = "v2"
     V3 = "v3"
-
-
-@dataclass(slots=True)
-class StoreMutationBatch:
-    """Summary of a logical repository mutation."""
-
-    summary: str = ""
-    changed_record_ids: list[str] = field(default_factory=list)
-    changed_chunk_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -621,42 +620,29 @@ def validate_v3_shard_consistency(
 
 
 class TranslationStoreRepository(Protocol):
-    """Backend-neutral repository contract."""
+    """Backend-neutral repository contract for ordinary workflow operations."""
 
     format: StoreFormat
-
-    def materialize_v2(self) -> MaterializedTranslationStore:
-        """Return the canonical store as the legacy-compatible v2 model."""
-
-    def write_materialized_v2(
-        self, store: MaterializedTranslationStore
-    ) -> StoreCommitResult:
-        """Persist a materialized v2 store into this backend."""
-
-    def edit_v2(
-        self, mutator: Callable[[MaterializedTranslationStore], T], *, summary: str = ""
-    ) -> T:
-        """Load, mutate, and persist the store atomically for this backend."""
 
     def edit_records(
         self,
         record_ids: Iterable[str],
-        mutator: Callable[[MaterializedTranslationStore], T],
+        mutator: Callable[[MaterializedStoreSnapshot], T],
         *,
         summary: str = "",
         source_sha256: str | None = None,
     ) -> T:
         """Load, mutate, and persist only the affected records or chunks."""
 
-    def get_record(self, record_id: str) -> StoredTranslationRecord | None:
+    def get_record(self, record_id: str) -> MaterializedStoreRecord | None:
         """Return one record if present."""
 
-    def iter_records(self) -> Iterator[tuple[str, StoredTranslationRecord]]:
+    def iter_records(self) -> Iterator[tuple[str, MaterializedStoreRecord]]:
         """Iterate all records in canonical-id order."""
 
     def iter_chunk_records(
         self, chunk_id: int | str
-    ) -> Iterator[tuple[str, StoredTranslationRecord]]:
+    ) -> Iterator[tuple[str, MaterializedStoreRecord]]:
         """Iterate all records for one chunk."""
 
     def is_empty(self) -> bool:
@@ -669,10 +655,32 @@ class TranslationStoreRepository(Protocol):
         """Persist a new store-level source identity without changing records."""
 
 
+@runtime_checkable
+class CompatibilityTranslationStoreRepository(TranslationStoreRepository, Protocol):
+    """Compatibility repository surface for full-store materialization.
+
+    These helpers intentionally remain outside the ordinary workflow contract.
+    They exist for migration, rollback, legacy import/export, and parity checks
+    that genuinely need a full materialized store snapshot.
+    """
+
+    def materialize_v2(self) -> MaterializedStoreSnapshot:
+        """Return the canonical store as the legacy-compatible v2 model."""
+
+    def write_materialized_v2(
+        self, store: MaterializedStoreSnapshot, *, summary: str = ""
+    ) -> StoreCommitResult:
+        """Persist a materialized v2 compatibility snapshot.
+
+        ``summary`` is optional transaction metadata. Journal-capable backends
+        may persist it; legacy flat-file backends may ignore it.
+        """
+
+
 def edit_materialized_store(
-    load_store: Callable[[], MaterializedTranslationStore],
-    write_store: Callable[[MaterializedTranslationStore], StoreCommitResult],
-    mutator: Callable[[MaterializedTranslationStore], T],
+    load_store: Callable[[], MaterializedStoreSnapshot],
+    write_store: Callable[[MaterializedStoreSnapshot], StoreCommitResult],
+    mutator: Callable[[MaterializedStoreSnapshot], T],
 ) -> T:
     """Load, mutate, and persist the compatibility materialized store once."""
 
@@ -680,3 +688,30 @@ def edit_materialized_store(
     result = mutator(store)
     write_store(store)
     return result
+
+
+def materialize_compatibility_store(
+    repository: TranslationStoreRepository,
+) -> MaterializedStoreSnapshot:
+    """Return the compatibility store snapshot for a repository."""
+
+    if not isinstance(repository, CompatibilityTranslationStoreRepository):
+        raise TypeError("repository does not expose compatibility materialization")
+    return repository.materialize_v2()
+
+
+def write_materialized_compatibility_store(
+    repository: TranslationStoreRepository,
+    store: MaterializedStoreSnapshot,
+    *,
+    summary: str = "",
+) -> StoreCommitResult:
+    """Persist one compatibility store snapshot through ``repository``.
+
+    ``summary`` is optional transaction metadata. Journal-capable backends may
+    persist it; legacy flat-file backends may ignore it.
+    """
+
+    if not isinstance(repository, CompatibilityTranslationStoreRepository):
+        raise TypeError("repository does not expose compatibility materialization")
+    return repository.write_materialized_v2(store, summary=summary)

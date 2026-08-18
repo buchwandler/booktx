@@ -9,7 +9,9 @@ from typing import Any
 import pytest
 
 import booktx.cli_support as cli_support
+import booktx.validate as validate_module
 import booktx.workflows.translate as translate_workflows
+import booktx.workflows.translate_query as translate_query_workflows
 from booktx.cli_support import _store_record_payload
 from booktx.config import (
     current_source_sha256,
@@ -27,6 +29,8 @@ from booktx.models import (
     TranslationCandidate,
     TranslationStoreV2,
 )
+from booktx.progress import load_source_chunks
+from booktx.source_record_index import build_source_record_index
 from booktx.store import (
     StoreFormat,
     detect_store_format,
@@ -38,7 +42,9 @@ from booktx.store.paths import (
     translation_candidates_shard_path,
 )
 from booktx.translation_store import upsert_translation_version
+from booktx.validate import load_effective_translated_chunks
 from booktx.workflows.translate import (
+    translate_export_workflow,
     translation_list_workflow,
     translation_search_cmd_workflow,
 )
@@ -329,11 +335,7 @@ def test_translation_list_workflow_uses_chunk_reads_without_materializing(
     )
     outputs: list[str] = []
 
-    def _fail_loader(*_args: Any, **_kwargs: Any) -> Any:
-        raise AssertionError("load_translation_store must not be used here")
-
     monkeypatch.setattr(cli_support, "open_translation_store", lambda _project: proxy)
-    monkeypatch.setattr(translate_workflows, "load_translation_store", _fail_loader)
     monkeypatch.setattr(
         translate_workflows.console,
         "print_json",
@@ -364,11 +366,7 @@ def test_translation_search_workflow_streams_records_without_materializing(
     )
     outputs: list[str] = []
 
-    def _fail_loader(*_args: Any, **_kwargs: Any) -> Any:
-        raise AssertionError("load_translation_store must not be used here")
-
     monkeypatch.setattr(cli_support, "open_translation_store", lambda _project: proxy)
-    monkeypatch.setattr(translate_workflows, "load_translation_store", _fail_loader)
     monkeypatch.setattr(
         translate_workflows.console,
         "print_json",
@@ -387,10 +385,119 @@ def test_translation_search_workflow_streams_records_without_materializing(
     assert proxy.iter_records_calls == 1
 
 
+def test_translation_search_workflow_scopes_chapter_reads_to_selected_chunks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    fixture = create_rich_store_fixture(
+        tmp_path / "search-scoped",
+        store_format=StoreFormat.V3,
+        activate_stale_review=False,
+    )
+    proxy = _NoMaterializeRepo(
+        open_translation_store(fixture.project, default_format=StoreFormat.V3)
+    )
+    outputs: list[str] = []
+    source_index = build_source_record_index(fixture.project)
+    chapter_id = "0002"
+    expected_chunk_ids = sorted(
+        {
+            source_index.source_by_id[record_id].chunk_id
+            for record_id in source_index.record_ids_by_chapter[chapter_id]
+        }
+    )
+
+    monkeypatch.setattr(cli_support, "open_translation_store", lambda _project: proxy)
+    monkeypatch.setattr(
+        translate_workflows.console,
+        "print_json",
+        lambda payload: outputs.append(payload),
+    )
+
+    translation_search_cmd_workflow(
+        fixture.project.root,
+        profile="de_default",
+        chapter=chapter_id,
+        target="Kommandantin",
+        as_json=True,
+    )
+
+    assert outputs
+    assert proxy.materialize_calls == 0
+    assert proxy.iter_records_calls == 0
+    assert sorted(set(proxy.iter_chunk_calls)) == expected_chunk_ids
+
+
+def test_scoped_effective_load_reads_only_requested_chunk_store_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    fixture = create_rich_store_fixture(
+        tmp_path / "effective-scoped",
+        store_format=StoreFormat.V3,
+        activate_stale_review=False,
+    )
+    proxy = _NoMaterializeRepo(
+        open_translation_store(fixture.project, default_format=StoreFormat.V3)
+    )
+    chunk_scope = {
+        chunk.chunk_id: chunk
+        for chunk in load_source_chunks(fixture.project)
+        if chunk.chunk_id == "0002"
+    }
+
+    monkeypatch.setattr(
+        validate_module, "open_translation_store", lambda _project: proxy
+    )
+    monkeypatch.setattr(
+        validate_module,
+        "inspect_store",
+        lambda _project: (_ for _ in ()).throw(
+            AssertionError("inspect_store must not run for scoped effective loads")
+        ),
+    )
+
+    effective = load_effective_translated_chunks(
+        fixture.project,
+        source_chunks=chunk_scope,
+    )
+
+    assert list(effective.chunks) == ["0002"]
+    assert proxy.materialize_calls == 0
+    assert proxy.iter_records_calls == 0
+    assert proxy.iter_chunk_calls == ["0002"]
+
+
+def test_translate_export_workflow_uses_chunk_reads_without_materializing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    fixture = create_rich_store_fixture(
+        tmp_path / "export",
+        store_format=StoreFormat.V3,
+        activate_stale_review=False,
+    )
+    proxy = _NoMaterializeRepo(
+        open_translation_store(fixture.project, default_format=StoreFormat.V3)
+    )
+
+    monkeypatch.setattr(
+        translate_query_workflows, "open_translation_store", lambda _project: proxy
+    )
+
+    translate_export_workflow(
+        fixture.project.root,
+        profile="de_default",
+    )
+
+    assert proxy.materialize_calls == 0
+    assert proxy.iter_records_calls == 0
+    assert sorted(set(proxy.iter_chunk_calls)) == sorted(
+        chunk.chunk_id for chunk in load_source_chunks(fixture.project)
+    )
+
+
 def test_load_translation_store_is_limited_to_compat_full_store_paths():
     root = Path(__file__).resolve().parents[1]
     package_root = root / "booktx"
-    allowed = {"booktx/config.py", "booktx/workflows/translate.py"}
+    allowed = {"booktx/config.py"}
     offenders: list[str] = []
     pattern = re.compile(r"\bload_translation_store\(")
 
@@ -411,6 +518,7 @@ def test_production_code_uses_full_store_writer_only_in_allowed_modules():
     allowed = {
         "booktx/config.py",
         "booktx/store/migration.py",
+        "booktx/store/models.py",
         "booktx/store/v1_v2.py",
         "booktx/store/v3.py",
         "booktx/workflows/translate.py",

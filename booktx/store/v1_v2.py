@@ -16,7 +16,7 @@ from booktx.models import (
 from booktx.progress import load_source_records
 from booktx.translation_store import legacy_store_to_v2
 
-from .models import StoreCommitResult, StoreFormat, edit_materialized_store
+from .models import StoreCommitResult, StoreFormat
 
 __all__ = ["V1V2TranslationStoreRepository"]
 
@@ -49,7 +49,10 @@ class V1V2TranslationStoreRepository:
     def materialize_v2(self) -> TranslationStoreV2:
         return _load_v2_store(self.project)
 
-    def write_materialized_v2(self, store: TranslationStoreV2) -> StoreCommitResult:
+    def write_materialized_v2(
+        self, store: TranslationStoreV2, *, summary: str = ""
+    ) -> StoreCommitResult:
+        del summary
         path = translation_store_path(self.project)
         previous = self.materialize_v2() if path.is_file() else TranslationStoreV2()
         write_json_model_atomic(path, store)
@@ -70,16 +73,6 @@ class V1V2TranslationStoreRepository:
             deleted_chunk_ids=sorted(
                 {record_id.split("-", 1)[0] for record_id in previous_ids - current_ids}
             ),
-        )
-
-    def edit_v2(
-        self, mutator: Callable[[TranslationStoreV2], T], *, summary: str = ""
-    ) -> T:
-        del summary
-        return edit_materialized_store(
-            self.materialize_v2,
-            self.write_materialized_v2,
-            mutator,
         )
 
     def edit_records(

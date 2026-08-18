@@ -21,9 +21,9 @@ from booktx.progress import load_source_records
 from booktx.record_refs import parse_record_ref
 
 from .models import (
-    MaterializedTranslationStore,
+    MaterializedStoreRecord,
+    MaterializedStoreSnapshot,
     StoreCommitResult,
-    StoredTranslationRecord,
     StoreFormat,
     V3CurrentRecord,
     V3CurrentShard,
@@ -34,7 +34,6 @@ from .models import (
     V3TranslationCandidate,
     V3TranslationRecord,
     V3TranslationShard,
-    edit_materialized_store,
     validate_v3_shard_consistency,
 )
 from .paths import (
@@ -371,29 +370,29 @@ class V3TranslationStoreRepository:
             )
         return materialized
 
-    def materialize_v2(self) -> MaterializedTranslationStore:
+    def materialize_v2(self) -> MaterializedStoreSnapshot:
         manifest = self._load_manifest()
-        records: dict[str, StoredTranslationRecord] = {}
+        records: dict[str, MaterializedStoreRecord] = {}
         for chunk_id in manifest.chunk_ids:
             for record_id, record in self._materialize_chunk(chunk_id):
                 records[record_id] = record
         return TranslationStoreV2(source_sha256=manifest.source_sha256, records=records)
 
-    def get_record(self, record_id: str) -> StoredTranslationRecord | None:
+    def get_record(self, record_id: str) -> MaterializedStoreRecord | None:
         chunk_id = chunk_id_for_record(record_id)
         for current_id, record in self._materialize_chunk(chunk_id):
             if current_id == record_id:
                 return record
         return None
 
-    def iter_records(self) -> Iterator[tuple[str, StoredTranslationRecord]]:
+    def iter_records(self) -> Iterator[tuple[str, MaterializedStoreRecord]]:
         manifest = self._load_manifest()
         for chunk_id in manifest.chunk_ids:
             yield from self.iter_chunk_records(chunk_id)
 
     def iter_chunk_records(
         self, chunk_id: int | str
-    ) -> Iterator[tuple[str, StoredTranslationRecord]]:
+    ) -> Iterator[tuple[str, MaterializedStoreRecord]]:
         yield from self._materialize_chunk(f"{int(chunk_id):04d}")
 
     def is_empty(self) -> bool:
@@ -401,7 +400,7 @@ class V3TranslationStoreRepository:
         return not manifest.chunk_ids
 
     def _serialize_store(
-        self, store: MaterializedTranslationStore
+        self, store: MaterializedStoreSnapshot
     ) -> tuple[
         V3Manifest,
         dict[str, V3CurrentShard],
@@ -449,8 +448,8 @@ class V3TranslationStoreRepository:
         return max((revision or 0) for revision in revisions) + 1
 
     def _chunk_records(
-        self, store: MaterializedTranslationStore, chunk_id: str
-    ) -> dict[str, StoredTranslationRecord]:
+        self, store: MaterializedStoreSnapshot, chunk_id: str
+    ) -> dict[str, MaterializedStoreRecord]:
         prefix = f"{chunk_id}-"
         return {
             record_id: record
@@ -462,7 +461,7 @@ class V3TranslationStoreRepository:
         self,
         *,
         chunk_id: str,
-        records: dict[str, StoredTranslationRecord],
+        records: dict[str, MaterializedStoreRecord],
         revision: int,
     ) -> SerializedChunk | None:
         if not records:
@@ -506,29 +505,13 @@ class V3TranslationStoreRepository:
             ),
         )
 
-    def _serialize_chunk_records(
-        self, chunk_id: str, records: dict[str, StoredTranslationRecord]
-    ) -> tuple[
-        V3CurrentShard | None,
-        V3TranslationShard | None,
-        V3ReviewShard | None,
-    ]:
-        serialized = self._serialize_chunk(
-            chunk_id=chunk_id,
-            records=records,
-            revision=self._next_chunk_revision(chunk_id),
-        )
-        if serialized is None:
-            return None, None, None
-        return serialized.current, serialized.translations, serialized.reviews
-
     def _plan_chunk_write(
         self,
         *,
         root: Path,
         chunk_id: str,
-        before_records: dict[str, StoredTranslationRecord],
-        after_records: dict[str, StoredTranslationRecord],
+        before_records: dict[str, MaterializedStoreRecord],
+        after_records: dict[str, MaterializedStoreRecord],
         capture_expected_state: bool,
     ) -> ChunkWritePlan:
         current_path = current_shard_path(self.project, chunk_id)
@@ -600,8 +583,8 @@ class V3TranslationStoreRepository:
         self,
         *,
         existing_manifest: V3Manifest,
-        before_store: MaterializedTranslationStore,
-        after_store: MaterializedTranslationStore,
+        before_store: MaterializedStoreSnapshot,
+        after_store: MaterializedStoreSnapshot,
         chunk_ids: list[str],
         capture_expected_state: bool,
         summary: str = "",
@@ -709,8 +692,8 @@ class V3TranslationStoreRepository:
         self,
         *,
         existing_manifest: V3Manifest,
-        before_store: MaterializedTranslationStore,
-        after_store: MaterializedTranslationStore,
+        before_store: MaterializedStoreSnapshot,
+        after_store: MaterializedStoreSnapshot,
         chunk_ids: list[str],
         summary: str = "",
     ) -> StoreCommitResult:
@@ -725,7 +708,7 @@ class V3TranslationStoreRepository:
         return self._commit_write_plan(plan)
 
     def write_materialized_v2(
-        self, store: MaterializedTranslationStore, *, summary: str = ""
+        self, store: MaterializedStoreSnapshot, *, summary: str = ""
     ) -> StoreCommitResult:
         store = TranslationStoreV2.model_validate(store.model_dump(mode="python"))
         existing = self.materialize_v2()
@@ -744,20 +727,11 @@ class V3TranslationStoreRepository:
         )
         return self._commit_write_plan(plan)
 
-    def edit_v2(
-        self, mutator: Callable[[TranslationStoreV2], T], *, summary: str = ""
-    ) -> T:
-        return edit_materialized_store(
-            self.materialize_v2,
-            lambda store: self.write_materialized_v2(store, summary=summary),
-            mutator,
-        )
-
     def _validate_edit_records_scope(
         self,
         *,
-        before_store: MaterializedTranslationStore,
-        after_store: MaterializedTranslationStore,
+        before_store: MaterializedStoreSnapshot,
+        after_store: MaterializedStoreSnapshot,
         chunk_ids: list[str],
     ) -> None:
         requested_chunk_ids = set(chunk_ids)

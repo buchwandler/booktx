@@ -10,6 +10,14 @@ from booktx.models import (
 from booktx.translation_concordance import build_concordance, render_concordance_human
 
 
+class _Repo:
+    def __init__(self, store: TranslationStoreV2) -> None:
+        self._store = store
+
+    def iter_records(self):
+        yield from sorted(self._store.records.items())
+
+
 def _record(
     source: str, target: str, chunk: str, part: str
 ) -> StoredTranslationRecordV2:
@@ -73,7 +81,8 @@ def test_concordance_groups_queries_and_excludes_later_task_records(monkeypatch)
         },
     )
     monkeypatch.setattr(
-        "booktx.translation_concordance.load_translation_store", lambda project: store
+        "booktx.translation_concordance.open_translation_store",
+        lambda project: _Repo(store),
     )
     task = SimpleNamespace(
         task_id="TASK",
@@ -109,7 +118,8 @@ def test_concordance_auto_suppresses_unseen_cues(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "booktx.translation_concordance.load_translation_store", lambda project: store
+        "booktx.translation_concordance.open_translation_store",
+        lambda project: _Repo(store),
     )
     task = SimpleNamespace(
         task_id="TASK",

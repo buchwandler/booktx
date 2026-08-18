@@ -7,17 +7,17 @@ section: risks_and_technical_debt
 title: Risks and Technical Debt
 order: 110
 status: accepted
-version: 2
+version: 3
 body_format: markdown
 ---
 
 ## Risks
 
-### RISK-1: V2 Store Scalability
+### RISK-1: V2 Compatibility Materialization Scalability
 
 **Severity:** Medium | **Probability:** Medium
 
-Large books (100k+ records) produce multi-megabyte `translation-store.json` files. The single-file V2 store loads entirely into memory.
+Compatibility operations that materialize v2 state still load the full accepted store. Large books (100k+ records) therefore produce multi-megabyte `translation-store.json` compatibility snapshots or equivalently large in-memory materializations.
 
 **Mitigation:** V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends.
 

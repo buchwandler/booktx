@@ -1054,8 +1054,17 @@ def load_effective_translated_chunks(  # noqa: C901
             path.stem: _load_source_chunk(path)
             for path in sorted(project.chunks(), key=lambda path: path.stem)
         }
+    requested_chunk_ids = set(source_chunks)
+    all_source_chunk_ids = {path.stem for path in project.chunks()}
+    scoped_chunk_reads = bool(requested_chunk_ids) and (
+        requested_chunk_ids != all_source_chunk_ids
+    )
 
-    translated_paths = {p.stem: p for p in project.translated()}
+    translated_paths = {
+        p.stem: p
+        for p in project.translated()
+        if not scoped_chunk_reads or p.stem in requested_chunk_ids
+    }
     findings: list[Finding] = []
     valid_legacy: dict[str, TranslatedChunk] = {}
     store_records: dict[str, dict[str, TranslatedRecord]] = {}
@@ -1082,7 +1091,9 @@ def load_effective_translated_chunks(  # noqa: C901
         if not any(f.severity == Severity.ERROR for f in chunk_findings):
             valid_legacy[chunk_id] = translated
 
-    stale = sorted(set(translated_paths) - set(source_chunks))
+    stale = (
+        [] if scoped_chunk_reads else sorted(set(translated_paths) - set(source_chunks))
+    )
     for chunk_id in stale:
         findings.append(
             Finding(
@@ -1106,33 +1117,41 @@ def load_effective_translated_chunks(  # noqa: C901
         store_format = StoreFormat.MISSING
     requires_version_ledger = store_format in {StoreFormat.V2, StoreFormat.V3}
 
-    doctor_report = inspect_store(project)
-    for store_finding in doctor_report.findings:
-        # An active review with a stale/rejected base is semantic validation
-        # state, not unreadable shard topology. Let the normal effective
-        # candidate checks report its stable rule (for example
-        # active_review_base_drift) instead of masking it as invalid storage.
-        if (
-            store_finding.code == "invalid_chunk_shards"
-            and "active review" in store_finding.message
-        ):
-            continue
-        findings.append(
-            Finding(
-                chunk_id="store",
-                severity=(
-                    Severity.ERROR
-                    if store_finding.severity == "error"
-                    else Severity.WARN
-                ),
-                rule=store_finding.code,
-                message=store_finding.message,
+    if not scoped_chunk_reads:
+        doctor_report = inspect_store(project)
+        for store_finding in doctor_report.findings:
+            # An active review with a stale/rejected base is semantic validation
+            # state, not unreadable shard topology. Let the normal effective
+            # candidate checks report its stable rule (for example
+            # active_review_base_drift) instead of masking it as invalid storage.
+            if (
+                store_finding.code == "invalid_chunk_shards"
+                and "active review" in store_finding.message
+            ):
+                continue
+            findings.append(
+                Finding(
+                    chunk_id="store",
+                    severity=(
+                        Severity.ERROR
+                        if store_finding.severity == "error"
+                        else Severity.WARN
+                    ),
+                    rule=store_finding.code,
+                    message=store_finding.message,
+                )
             )
-        )
 
     try:
         repo = open_translation_store(project)
-        store = dict(repo.iter_records())
+        if scoped_chunk_reads:
+            store = {
+                record_id: stored
+                for chunk_id in sorted(requested_chunk_ids)
+                for record_id, stored in repo.iter_chunk_records(chunk_id)
+            }
+        else:
+            store = dict(repo.iter_records())
     except Exception as exc:  # noqa: BLE001 - surface invalid store structure
         findings.append(
             Finding(

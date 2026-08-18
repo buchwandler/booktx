@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from booktx.source_analysis import (
     ANALYSIS_SCHEMA,
@@ -14,6 +15,9 @@ from booktx.source_analysis import (
     SourceAnalysisSnapshot,
     compute_analysis_sha256,
 )
+
+if TYPE_CHECKING:
+    from booktx.config import Project
 
 
 def build_snapshot(
@@ -88,7 +92,7 @@ def read_snapshot(
     return SnapshotRead(snapshot=snapshot, stale=stale, hint=hint)
 
 
-def read_canonical_report(project: object) -> SourceAnalysisReport | None:
+def read_canonical_report(project: Project) -> SourceAnalysisReport | None:
     """Read the canonical project-root report, or ``None`` when absent."""
 
     from booktx.config import source_analysis_path

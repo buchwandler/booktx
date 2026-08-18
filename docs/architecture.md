@@ -36,14 +36,15 @@ uses the marker-bound profile and brokers access to shared source data.
 
 ## Store and provenance
 
-New profiles default to the v3 canonical store. Existing profiles remain on
-their detected backend and are never auto-migrated. V2 is the compatibility
-`translation-store.json`; v3 stores a manifest plus per-chunk current,
-translation-candidate, and review-candidate shards. Each changed chunk shares
-one advancing revision across its three files, and normal readers retry around
-publication and validate cross-shard invariants. The compatibility
-materialization model remains the Python loader surface regardless of the live
-backend.
+The translation store is the logical canonical record repository for one
+profile. New profiles default to the v3 canonical backend. Existing profiles
+remain on their detected backend and are never auto-migrated. V2 is the
+compatibility `translation-store.json`; v3 stores a manifest plus per-chunk
+current, translation-candidate, and review-candidate shards. Each changed
+chunk shares one advancing revision across its three files, and normal readers
+retry around publication and validate cross-shard invariants. The compatibility
+materialization model remains the Python loader surface only for workflows that
+explicitly need a whole-store view.
 Effective output still chooses a valid review candidate before the current
 translation version.
 Task context views and revision metadata preserve the source, baseline, and

@@ -7,7 +7,7 @@ section: building_block_view
 title: Building Block View
 order: 50
 status: accepted
-version: 3
+version: 4
 body_format: markdown
 ---
 
@@ -21,7 +21,7 @@ booktx/
 ├── cli_support.py        # Console, project status snapshot helpers
 ├── config.py             # Project/path resolution, profile lifecycle
 ├── models.py             # Pydantic data models (68+ models)
-├── translation_store.py  # V2 store read/write/migration helpers
+├── translation_store.py  # Logical candidate helpers + compatibility materialization
 ├── chunking.py           # Source document to sentence-level records
 ├── chapters.py           # Chapter segmentation and mapping
 ├── context.py            # Context composition, views, sync
@@ -41,10 +41,10 @@ booktx/
 │   ├── series.py, identity.py, guide.py, agents.py, version.py,
 │   ├── judge_presenters.py  # Judge command presentation helpers
 │
-├── workflows/            # Command business logic (one per command group)
+├── workflows/            # Command business logic (one module per command group)
 │   └── (mirrors commands/ structure)
 │
-├── store/                # V3 shard store + storage abstraction
+├── store/                # Canonical store backends, migration, and doctor tooling
 │   ├── detect.py, v3.py, v1_v2.py, migration.py
 │   ├── models.py, paths.py, transactions.py, doctor.py
 │
@@ -67,16 +67,16 @@ The `Project` dataclass is the central context object. It resolves paths for bot
 68+ Pydantic models defining every JSON artifact. Key models:
 
 - `Chunk` / `Record` / `TranslatedChunk` — extraction and translation wire format
-- `MaterializedTranslationStore` / `StoredTranslationRecord` (compatibility aliases: `TranslationStoreV2` / `StoredTranslationRecordV2`) — the backend-neutral materialized translation-store view
+- `MaterializedStoreSnapshot` / `MaterializedStoreRecord` (compatibility aliases: `TranslationStoreV2` / `StoredTranslationRecordV2`) — the backend-neutral materialized compatibility-store view
 - `TranslationCandidate` / `TranslationReviewCandidate` — version and review provenance records
 - `TranslationTask` / `TranslationReviewTask` — immutable task records
 - `TranslationTodo` / `ReviewTodo` — bounded multi-chapter/-pass run control
 - `SourceConfig` / `ProfileConfig` — TOML configuration models
 - `TranslationVersionLedger` — version identity tracking
 
-### `booktx.translation_store` — Store Logic
+### `booktx.translation_store` — Candidate Selection + Compatibility Materialization
 
-Operates on `TranslationStoreV2` records. Key operations:
+Operates on the materialized compatibility store view and shared candidate-selection semantics. Key operations:
 
 - `ensure_store_record()` — idempotent record access/creation
 - `upsert_translation_version()` — insert or update a version candidate with activation
@@ -84,9 +84,9 @@ Operates on `TranslationStoreV2` records. Key operations:
 - `review_chain_is_stale()` / `review_chain_refs()` — review provenance validation
 - `legacy_store_to_v2()` / `migrate_legacy_store()` — V1 to V2 migration
 
-### `booktx.store/` — V3 Shard Store (Opt-in)
+### `booktx.store/` — Canonical Store Backends
 
-Provides `TranslationStoreV3` with shard-per-record storage, transactions, migration from V2, and parity tests. The `manifest.json` tracks store-level metadata; each record is a directory with `current.json`, `candidates/`, and `reviews/` shards.
+Provides backend detection, the default v3 per-chunk shard repository, the legacy v1/v2 compatibility adapter, transactions, migration/rollback helpers, and parity checks. The v3 `manifest.json` tracks store-level metadata while `current/<chunk>.json`, `translation-candidates/<chunk>.json`, and `review-candidates/<chunk>.json` hold one chunk's canonical state.
 
 ### `booktx.quality_backends/` — Pluggable Linguistic Quality Backends
 

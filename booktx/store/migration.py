@@ -32,6 +32,8 @@ from .models import (
     StoreMigrationResult,
     V3Manifest,
     V3ManifestMigration,
+    materialize_compatibility_store,
+    write_materialized_compatibility_store,
 )
 from .paths import transactions_dir
 from .transactions import recover_v3_transactions
@@ -339,7 +341,7 @@ def _preflight(
         StoreFormat.V3,
     }:
         try:
-            store = open_translation_store(project).materialize_v2()
+            store = materialize_compatibility_store(open_translation_store(project))
         except Exception as exc:  # noqa: BLE001
             findings.append(_finding("error", "invalid_source_store", str(exc)))
         if store is not None:
@@ -405,9 +407,13 @@ def _build_temporary_v3(
     if temporary_base.exists():
         shutil.rmtree(temporary_base)
     temp_project = _temporary_project(project, temporary_base)
-    V3TranslationStoreRepository(temp_project).write_materialized_v2(store)
+    write_materialized_compatibility_store(
+        V3TranslationStoreRepository(temp_project), store
+    )
     _set_migration_metadata(temp_project, project, plan)
-    readback = V3TranslationStoreRepository(temp_project).materialize_v2()
+    readback = materialize_compatibility_store(
+        V3TranslationStoreRepository(temp_project)
+    )
     temp_doctor = inspect_store(temp_project)
     findings = temp_doctor.findings_payload()
     parity = _canonical_store(store) == _canonical_store(readback)
@@ -453,9 +459,9 @@ def _build_temporary_v2(
     V1V2TranslationStoreRepository(
         temp_project, format=StoreFormat.V2
     ).write_materialized_v2(store)
-    readback = V1V2TranslationStoreRepository(
-        temp_project, format=StoreFormat.V2
-    ).materialize_v2()
+    readback = materialize_compatibility_store(
+        V1V2TranslationStoreRepository(temp_project, format=StoreFormat.V2)
+    )
     parity = _canonical_store(store) == _canonical_store(readback)
     findings: list[dict[str, str | None]] = []
     if not parity:
@@ -542,7 +548,7 @@ def execute_store_migration(
     with _migration_lock(project, stale_lock_policy):
         # Recheck the source after taking the lock so a concurrent writer cannot
         # invalidate the preflight while the temporary store is being built.
-        latest = open_translation_store(project).materialize_v2()
+        latest = materialize_compatibility_store(open_translation_store(project))
         if store is None:
             store = latest
         elif _canonical_store(latest) != _canonical_store(store):
@@ -570,7 +576,9 @@ def execute_store_migration(
             shutil.rmtree(temporary_base, ignore_errors=True)
         elif target_format == StoreFormat.V2:
             recover_v3_transactions(transactions_dir(project), plan.store_root)
-            source_store = V3TranslationStoreRepository(project).materialize_v2()
+            source_store = materialize_compatibility_store(
+                V3TranslationStoreRepository(project)
+            )
             temporary_base, built = _build_temporary_v2(project, plan, source_store)
             built = replace(
                 built,

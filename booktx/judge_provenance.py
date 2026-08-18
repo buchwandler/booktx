@@ -27,6 +27,7 @@ use it without import cycles.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from booktx.models import (
         JudgeDecision,
         JudgeTask,
+        StoredTranslationRecordV2,
         TranslationSelectionLedger,
         TranslationStoreV2,
     )
@@ -118,6 +120,7 @@ def audit_revision_provenance(
             task_cache[task_id] = load_judge_task(project, task_id)
         return task_cache[task_id]
 
+    store_items: Iterable[tuple[str, StoredTranslationRecordV2 | None]]
     if store is not None:
         scope = record_ids if record_ids is not None else list(store.records.keys())
         store_items = ((record_id, store.records.get(record_id)) for record_id in scope)

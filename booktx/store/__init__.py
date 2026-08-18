@@ -8,12 +8,16 @@ from .detect import (
 )
 from .migration import execute_store_migration
 from .models import (
+    CompatibilityTranslationStoreRepository,
+    MaterializedStoreRecord,
+    MaterializedStoreSnapshot,
     StoreCommitResult,
     StoreFormat,
     StoreMigrationPlan,
     StoreMigrationResult,
-    StoreMutationBatch,
     TranslationStoreRepository,
+    materialize_compatibility_store,
+    write_materialized_compatibility_store,
 )
 
 __all__ = [
@@ -22,10 +26,14 @@ __all__ = [
     "create_translation_store",
     "execute_store_migration",
     "open_translation_store",
+    "CompatibilityTranslationStoreRepository",
+    "MaterializedStoreRecord",
+    "MaterializedStoreSnapshot",
     "StoreCommitResult",
     "StoreFormat",
     "StoreMigrationPlan",
     "StoreMigrationResult",
-    "StoreMutationBatch",
     "TranslationStoreRepository",
+    "materialize_compatibility_store",
+    "write_materialized_compatibility_store",
 ]

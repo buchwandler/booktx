@@ -7,25 +7,26 @@ section: architecture_decisions
 title: Architecture Decisions
 order: 90
 status: accepted
-version: 2
+version: 3
 body_format: markdown
 ---
 
 ## Architecture Decision Records
 
-### ADR-1: Single-File V2 Store as Default
+### ADR-1: V3 Default Store with Explicit Compatibility Boundaries
 
 **Status:** Accepted
 
-**Context:** The original V1 flat store (`TranslationStore`) was a simple dict of record IDs to targets. It lacked source text anchoring, version tracking, and review provenance.
+**Context:** The original V1 flat store (`TranslationStore`) was a simple dict of record IDs to targets. V2 nested candidate and review provenance into `StoredTranslationRecordV2`, but large books and bounded workflows now require a shard-based canonical backend without dropping compatibility tooling.
 
-**Decision:** `TranslationStoreV2` nests `TranslationCandidate` versions and `TranslationReviewCandidate` reviews inside each `StoredTranslationRecordV2`. The store is a single JSON file per profile.
+**Decision:** New profiles default to the v3 `translation-store/` canonical backend. Existing profiles keep their detected v1/v2/v3 backend until explicit migration or rollback. `TranslationStoreV2` remains the supported compatibility materialization model and legacy backend for migration, rollback, parity, and portable judge snapshots rather than the universal application-domain store.
 
 **Consequences:**
 
-- (+) Simple to inspect, backup, and version-control
-- (+) Full provenance per record: source SHA, active version, active review, candidate history
-- (-) Large stores still require materialization at some compatibility boundaries; v3 bounded edits and readiness benchmarks track this tradeoff
+- (+) Ordinary workflows can use bounded chunk reads and writes against the canonical repository
+- (+) Existing profiles retain explicit migration and rollback paths
+- (-) Full-store compatibility materialization still exists at migration, doctor, rollback, and snapshot boundaries and must stay isolated from ordinary workflow code
+- (-) Documentation and tests must distinguish the logical translation store from any one physical backend
 
 ### ADR-2: Typer with Command Catalog Fallback
 
@@ -78,7 +79,3 @@ body_format: markdown
 **Decision:** `write_profile_root_marker()` writes `.booktx-profile.json` containing profile name, source identity, and target locale. A command run from a profile root resolves the profile from this marker and treats `.` as the project root. No implicit single-profile resolution exists.
 
 **Consequences:**
-
-- (+) Agents get deterministic resolution at profile boundary
-- (+) Marker validation prevents stale/inconsistent markers
-- (-) Extra file per profile (acceptable trade-off)

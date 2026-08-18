@@ -7,20 +7,20 @@ section: architecture_constraints
 title: Architecture Constraints
 order: 20
 status: accepted
-version: 2
+version: 3
 body_format: markdown
 ---
 
 ## Technical Constraints
 
-| #   | Constraint                         | Rationale                                                                                                                   |
-| --- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| C-1 | **Python >= 3.10**                 | Must support the oldest non-EOL Python with full typing; no Python 3.9 compatibility required                               |
-| C-2 | **Single-file translation stores** | `TranslationStoreV2` is a single JSON file per profile; V3 shard-based store is an opt-in migration target                  |
-| C-3 | **Typer CLI framework**            | All commands registered via Typer; command catalog provides optional metadata without blocking startup                      |
-| C-4 | **Pydantic >= 2 data models**      | All JSON boundaries use Pydantic models with strict `extra="forbid"` or `extra="allow"` for forward-compatibility detection |
-| C-5 | **Source-first architecture**      | Shared `.booktx/` holds extracted source state; profiles are leaf directories under `translations/`                         |
-| C-6 | **No database**                    | All state is filesystem-based (JSON, TOML, Markdown); no SQL or external services                                           |
+| #   | Constraint                                   | Rationale                                                                                                                                                                                    |
+| --- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C-1 | **Python >= 3.10**                           | Must support the oldest non-EOL Python with full typing; no Python 3.9 compatibility required                                                                                                |
+| C-2 | **Translation-store compatibility boundary** | New profiles default to the v3 shard store; existing profiles keep their detected backend until explicit migration, and `TranslationStoreV2` remains the compatibility materialization model |
+| C-3 | **Typer CLI framework**                      | All commands registered via Typer; command catalog provides optional metadata without blocking startup                                                                                       |
+| C-4 | **Pydantic >= 2 data models**                | All JSON boundaries use Pydantic models with strict `extra="forbid"` or `extra="allow"` for forward-compatibility detection                                                                  |
+| C-5 | **Source-first architecture**                | Shared `.booktx/` holds extracted source state; profiles are leaf directories under `translations/`                                                                                          |
+| C-6 | **No database**                              | All state is filesystem-based (JSON, TOML, Markdown); no SQL or external services                                                                                                            |
 
 ## Organizational Constraints
 

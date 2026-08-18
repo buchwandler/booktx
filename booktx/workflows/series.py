@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -13,9 +14,9 @@ import tomli_w
 if TYPE_CHECKING:
     from booktx.config import Project
 
-try:  # pragma: no cover - Python 3.11+ uses stdlib
-    import tomllib  # type: ignore[import-not-found]
-except ModuleNotFoundError:  # pragma: no cover
+if sys.version_info >= (3, 11):  # pragma: no cover - Python 3.11+ uses stdlib
+    import tomllib
+else:  # pragma: no cover
     import tomli as tomllib
 from booktx.cli_support import _isolated_mode_error
 from booktx.config import (
@@ -1037,7 +1038,8 @@ def prepare_series_book(request: SeriesPrepareRequest) -> SeriesPrepareResult:
             path=str(project.booktx_dir / "source-analysis.json"),
         )
     )
-    from booktx.source_analysis_context import clear_context_readiness, prefill_contexts
+    from booktx.context import clear_context_readiness
+    from booktx.source_analysis_context import prefill_contexts
 
     prefill = prefill_contexts(
         project,

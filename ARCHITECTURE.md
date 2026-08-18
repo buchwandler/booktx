@@ -1,6 +1,6 @@
 ---
 title: "Architecture Documentation"
-version: 5
+version: 6
 generator: "archledger 0.4.0"
 arc42_template_version: "9.0-EN"
 ---
@@ -61,14 +61,14 @@ booktx is a deterministic, source-first CLI tool that prepares Markdown and EPUB
 
 ## Technical Constraints
 
-| #   | Constraint                         | Rationale                                                                                                                   |
-| --- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| C-1 | **Python >= 3.10**                 | Must support the oldest non-EOL Python with full typing; no Python 3.9 compatibility required                               |
-| C-2 | **Single-file translation stores** | `TranslationStoreV2` is a single JSON file per profile; V3 shard-based store is an opt-in migration target                  |
-| C-3 | **Typer CLI framework**            | All commands registered via Typer; command catalog provides optional metadata without blocking startup                      |
-| C-4 | **Pydantic >= 2 data models**      | All JSON boundaries use Pydantic models with strict `extra="forbid"` or `extra="allow"` for forward-compatibility detection |
-| C-5 | **Source-first architecture**      | Shared `.booktx/` holds extracted source state; profiles are leaf directories under `translations/`                         |
-| C-6 | **No database**                    | All state is filesystem-based (JSON, TOML, Markdown); no SQL or external services                                           |
+| #   | Constraint                                   | Rationale                                                                                                                                                                                    |
+| --- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C-1 | **Python >= 3.10**                           | Must support the oldest non-EOL Python with full typing; no Python 3.9 compatibility required                                                                                                |
+| C-2 | **Translation-store compatibility boundary** | New profiles default to the v3 shard store; existing profiles keep their detected backend until explicit migration, and `TranslationStoreV2` remains the compatibility materialization model |
+| C-3 | **Typer CLI framework**                      | All commands registered via Typer; command catalog provides optional metadata without blocking startup                                                                                       |
+| C-4 | **Pydantic >= 2 data models**                | All JSON boundaries use Pydantic models with strict `extra="forbid"` or `extra="allow"` for forward-compatibility detection                                                                  |
+| C-5 | **Source-first architecture**                | Shared `.booktx/` holds extracted source state; profiles are leaf directories under `translations/`                                                                                          |
+| C-6 | **No database**                              | All state is filesystem-based (JSON, TOML, Markdown); no SQL or external services                                                                                                            |
 
 ## Organizational Constraints
 
@@ -91,9 +91,15 @@ booktx is a deterministic, source-first CLI tool that prepares Markdown and EPUB
 - **Python >= 3.10**
   - Impact: Must support the oldest non-EOL Python with full typing support
   - Notes: Describe the rationale and consequences of this constraint.
-- **Detected translation stores**
-  - Impact: New profiles use v3 per-chunk shards; existing profiles retain detected v1/v2/v3 storage, with TranslationStoreV2 as the compatibility model
-  - Notes: Describe the rationale and consequences of this constraint.
+- **Translation-store compatibility boundary**
+
+  - Impact: New profiles use the v3 shard store by default; existing profiles retain their detected backend until explicit migration, and TranslationStoreV2 remains the compatibility materialization model.
+  - Notes: This constraint captures the canonical translation-store policy.
+
+- New profiles default to the shard-based v3 `translation-store/` backend.
+- Existing profiles keep their detected v1/v2/v3 backend until explicit migration.
+- `TranslationStoreV2` remains the compatibility materialization model and supported legacy backend for migration, rollback, parity, and snapshot workflows.
+- Ordinary workflows should depend on repository-native record and chunk operations rather than full-store compatibility materialization.
 - **Typer CLI Framework**
   - Impact: All commands registered via Typer; command catalog provides optional metadata
   - Notes: Describe the rationale and consequences of this constraint.
@@ -239,7 +245,7 @@ booktx/
 ├── cli_support.py        # Console, project status snapshot helpers
 ├── config.py             # Project/path resolution, profile lifecycle
 ├── models.py             # Pydantic data models (68+ models)
-├── translation_store.py  # V2 store read/write/migration helpers
+├── translation_store.py  # Logical candidate helpers + compatibility materialization
 ├── chunking.py           # Source document to sentence-level records
 ├── chapters.py           # Chapter segmentation and mapping
 ├── context.py            # Context composition, views, sync
@@ -259,10 +265,10 @@ booktx/
 │   ├── series.py, identity.py, guide.py, agents.py, version.py,
 │   ├── judge_presenters.py  # Judge command presentation helpers
 │
-├── workflows/            # Command business logic (one per command group)
+├── workflows/            # Command business logic (one module per command group)
 │   └── (mirrors commands/ structure)
 │
-├── store/                # V3 shard store + storage abstraction
+├── store/                # Canonical store backends, migration, and doctor tooling
 │   ├── detect.py, v3.py, v1_v2.py, migration.py
 │   ├── models.py, paths.py, transactions.py, doctor.py
 │
@@ -285,16 +291,16 @@ The `Project` dataclass is the central context object. It resolves paths for bot
 68+ Pydantic models defining every JSON artifact. Key models:
 
 - `Chunk` / `Record` / `TranslatedChunk` — extraction and translation wire format
-- `MaterializedTranslationStore` / `StoredTranslationRecord` (compatibility aliases: `TranslationStoreV2` / `StoredTranslationRecordV2`) — the backend-neutral materialized translation-store view
+- `MaterializedStoreSnapshot` / `MaterializedStoreRecord` (compatibility aliases: `TranslationStoreV2` / `StoredTranslationRecordV2`) — the backend-neutral materialized compatibility-store view
 - `TranslationCandidate` / `TranslationReviewCandidate` — version and review provenance records
 - `TranslationTask` / `TranslationReviewTask` — immutable task records
 - `TranslationTodo` / `ReviewTodo` — bounded multi-chapter/-pass run control
 - `SourceConfig` / `ProfileConfig` — TOML configuration models
 - `TranslationVersionLedger` — version identity tracking
 
-### `booktx.translation_store` — Store Logic
+### `booktx.translation_store` — Candidate Selection + Compatibility Materialization
 
-Operates on `TranslationStoreV2` records. Key operations:
+Operates on the materialized compatibility store view and shared candidate-selection semantics. Key operations:
 
 - `ensure_store_record()` — idempotent record access/creation
 - `upsert_translation_version()` — insert or update a version candidate with activation
@@ -302,9 +308,9 @@ Operates on `TranslationStoreV2` records. Key operations:
 - `review_chain_is_stale()` / `review_chain_refs()` — review provenance validation
 - `legacy_store_to_v2()` / `migrate_legacy_store()` — V1 to V2 migration
 
-### `booktx.store/` — V3 Shard Store (Opt-in)
+### `booktx.store/` — Canonical Store Backends
 
-Provides `TranslationStoreV3` with shard-per-record storage, transactions, migration from V2, and parity tests. The `manifest.json` tracks store-level metadata; each record is a directory with `current.json`, `candidates/`, and `reviews/` shards.
+Provides backend detection, the default v3 per-chunk shard repository, the legacy v1/v2 compatibility adapter, transactions, migration/rollback helpers, and parity checks. The v3 `manifest.json` tracks store-level metadata while `current/<chunk>.json`, `translation-candidates/<chunk>.json`, and `review-candidates/<chunk>.json` hold one chunk's canonical state.
 
 ### `booktx.quality_backends/` — Pluggable Linguistic Quality Backends
 
@@ -544,7 +550,7 @@ Describe the syntax, semantics, and failure cases of this interface.
 4. booktx writes immutable `TranslationTask` JSON with frozen context paths
 5. Agent translates records and runs `booktx translate submit <task-id>` with translated JSON
 6. booktx validates submission against task snapshot, runs linguistic audit if configured
-7. On acceptance, booktx upserts `TranslationCandidate` versions into `TranslationStoreV2`
+7. On acceptance, booktx upserts `TranslationCandidate` versions into the canonical translation store
 
 ### RS-2: Review Lifecycle
 
@@ -579,7 +585,7 @@ On CLI startup, `booktx.bootstrap.main()` wraps `booktx.cli.main()` in a try/exc
 
 ## Translation Lifecycle
 
-1. Agent runs 'booktx translate next --profile de_default'. 2. booktx resolves profile, loads store + context, selects untranslated records. 3. booktx snapshots context view, glossary bindings, termbase entries, config hashes. 4. booktx writes immutable TranslationTask JSON with frozen context paths. 5. Agent translates records. 6. Agent runs 'booktx translate submit <task-id>' with translated JSON. 7. booktx validates submission against task snapshot, runs linguistic audit if configured. 8. On acceptance, booktx upserts TranslationCandidate versions into TranslationStoreV2.
+1. Agent runs 'booktx translate next --profile de_default'. 2. booktx resolves profile, loads store + context, selects untranslated records. 3. booktx snapshots context view, glossary bindings, termbase entries, config hashes. 4. booktx writes immutable TranslationTask JSON with frozen context paths. 5. Agent translates records. 6. Agent runs 'booktx translate submit <task-id>' with translated JSON. 7. booktx validates submission against task snapshot, runs linguistic audit if configured. 8. On acceptance, booktx upserts TranslationCandidate versions into the canonical translation store.
 
 ## Review Lifecycle
 
@@ -754,19 +760,20 @@ Optional submission-time checks: placeholder integrity, suspicious length ratios
 
 ## Architecture Decision Records
 
-### ADR-1: Single-File V2 Store as Default
+### ADR-1: V3 Default Store with Explicit Compatibility Boundaries
 
 **Status:** Accepted
 
-**Context:** The original V1 flat store (`TranslationStore`) was a simple dict of record IDs to targets. It lacked source text anchoring, version tracking, and review provenance.
+**Context:** The original V1 flat store (`TranslationStore`) was a simple dict of record IDs to targets. V2 nested candidate and review provenance into `StoredTranslationRecordV2`, but large books and bounded workflows now require a shard-based canonical backend without dropping compatibility tooling.
 
-**Decision:** `TranslationStoreV2` nests `TranslationCandidate` versions and `TranslationReviewCandidate` reviews inside each `StoredTranslationRecordV2`. The store is a single JSON file per profile.
+**Decision:** New profiles default to the v3 `translation-store/` canonical backend. Existing profiles keep their detected v1/v2/v3 backend until explicit migration or rollback. `TranslationStoreV2` remains the supported compatibility materialization model and legacy backend for migration, rollback, parity, and portable judge snapshots rather than the universal application-domain store.
 
 **Consequences:**
 
-- (+) Simple to inspect, backup, and version-control
-- (+) Full provenance per record: source SHA, active version, active review, candidate history
-- (-) Large stores still require materialization at some compatibility boundaries; v3 bounded edits and readiness benchmarks track this tradeoff
+- (+) Ordinary workflows can use bounded chunk reads and writes against the canonical repository
+- (+) Existing profiles retain explicit migration and rollback paths
+- (-) Full-store compatibility materialization still exists at migration, doctor, rollback, and snapshot boundaries and must stay isolated from ordinary workflow code
+- (-) Documentation and tests must distinguish the logical translation store from any one physical backend
 
 ### ADR-2: Typer with Command Catalog Fallback
 
@@ -820,31 +827,28 @@ Optional submission-time checks: placeholder integrity, suspicious length ratios
 
 **Consequences:**
 
-- (+) Agents get deterministic resolution at profile boundary
-- (+) Marker validation prevents stale/inconsistent markers
-- (-) Extra file per profile (acceptable trade-off)
+## V3 Default Store with Explicit Compatibility Boundaries
 
-## Single-File V2 Store as Default
-
-**Document version:** 5
+**Document version:** 6
 
 ## Context
 
-The original V1 flat store (TranslationStore) was a simple dict of record IDs to targets. It lacked source text anchoring, version tracking, and review provenance.
+The original V1 flat store (`TranslationStore`) was a simple dict of record IDs to targets. V2 added source anchoring, version tracking, and review provenance by nesting `TranslationCandidate` and `TranslationReviewCandidate` state inside `StoredTranslationRecordV2` entries. Large books and bounded workflows now require a shard-based canonical backend so ordinary reads and writes stay scoped without dropping rollback and compatibility tooling.
 
 ## Decision
 
-TranslationStoreV2 nests TranslationCandidate versions and TranslationReviewCandidate reviews inside each StoredTranslationRecordV2. The store is a single JSON file per profile.
+New profiles default to the v3 `translation-store/` canonical backend. Existing profiles keep their detected v1/v2/v3 backend until an explicit migration or rollback command changes it. `TranslationStoreV2` remains the supported compatibility materialization model and legacy backend for migration, rollback, parity checks, and portable judge snapshots rather than the universal application-domain store.
 
 ## Consequences
 
-- (+) Simple to inspect, backup, and version-control
-- (+) Full provenance per record: source SHA, active version, active review, candidate history
-- (-) Large stores still require materialization at some compatibility boundaries; v3 bounded edits and readiness benchmarks track this tradeoff
+- (+) Ordinary workflows can use bounded chunk reads and writes against the canonical repository.
+- (+) Existing profiles and compatibility tooling keep explicit migration and rollback paths.
+- (-) Full-store compatibility materialization still exists at migration, doctor, rollback, and snapshot boundaries and must stay clearly isolated from ordinary workflow code.
+- (-) Documentation and tests must distinguish the logical translation store from any one physical backend.
 
 ## Typer with Command Catalog Fallback
 
-**Document version:** 5
+**Document version:** 6
 
 ## Context
 
@@ -862,7 +866,7 @@ command_catalog.py defines SUMMARY_OVERRIDES and panel metadata as typed dicts. 
 
 ## Lazy Bootstrap Entry Point
 
-**Document version:** 5
+**Document version:** 6
 
 ## Context
 
@@ -880,7 +884,7 @@ pyproject.toml console script points to booktx.bootstrap:main, which wraps bookt
 
 ## Review Pass Order as Lexicographic DAG
 
-**Document version:** 5
+**Document version:** 6
 
 ## Context
 
@@ -898,7 +902,7 @@ Review refs use R<pass>.<run> format. The total order is lexicographic on (pass_
 
 ## Profile Root Markers for Agent Isolation
 
-**Document version:** 5
+**Document version:** 6
 
 ## Context
 
@@ -980,11 +984,11 @@ Code must pass Ruff linting with project configuration (`.ruff.toml`).
 
 ## Risks
 
-### RISK-1: V2 Store Scalability
+### RISK-1: V2 Compatibility Materialization Scalability
 
 **Severity:** Medium | **Probability:** Medium
 
-Large books (100k+ records) produce multi-megabyte `translation-store.json` files. The single-file V2 store loads entirely into memory.
+Compatibility operations that materialize v2 state still load the full accepted store. Large books (100k+ records) therefore produce multi-megabyte `translation-store.json` compatibility snapshots or equivalently large in-memory materializations.
 
 **Mitigation:** V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends.
 
@@ -1023,77 +1027,77 @@ EPUB or Markdown parsing libraries may change behavior across versions, affectin
 
 ## Risk Overview
 
-| Title                         | Severity | Probability | Mitigation                                                                                                                                                                                                                    | Notes                                                                                                                                                                                                               |
-| ----------------------------- | -------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V2 Store Scalability          | medium   | medium      | V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends. | Large books (100k+ records) produce multi-megabyte translation-store.json files. The single-file V2 store loads entirely into memory. Severity: Medium                                                              | Probability: Medium Mitigation: V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends. |
-| Agent Context Window Overflow | medium   | medium      | batch_words and before_records/after_records config options; include_untranslated_neighbors toggle; todo max_run_words cap                                                                                                    | Large chapters with many context records may exceed LLM context windows. Task word budgets and context window sizes are configurable but not automatically enforced against external model limits. Severity: Medium | Probability: Medium Mitigation: batch_words and before_records/after_records config options. include_untranslated_neighbors toggle for review tasks. Todo max_run_words cap.                                                                                  |
-| Placeholder Collision         | low      | low         | Placeholder tokens use distinct pattern unlikely in natural text; custom patterns configurable via SourceAnalysisPatternsConfig                                                                                               | If source text contains literal **NAME_NNN**-like strings, extraction may produce false placeholder matches. Severity: Low                                                                                          | Probability: Low Mitigation: Placeholder tokens use a distinct pattern unlikely in natural text. Custom patterns configurable via SourceAnalysisPatternsConfig.                                                                                               |
-| Source Format Drift           | medium   | low         | Pinned dependency versions in pyproject.toml; manifest records source SHA-256; extraction checks for source drift; test suite covers format-specific edge cases                                                               | EPUB or Markdown parsing libraries may change behavior across versions, affecting extraction output. Severity: Medium                                                                                               | Probability: Low Mitigation: Pinned dependency versions in pyproject.toml. Manifest records source SHA-256; extraction checks for source drift. Test suite covers format-specific edge cases.                                                                 |
+| Title                                        | Severity | Probability | Mitigation                                                                                                                                                                                                                    | Notes                                                                                                                                                                                                                                                                   |
+| -------------------------------------------- | -------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V2 Compatibility Materialization Scalability | medium   | medium      | V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends. | Compatibility operations that materialize v2 state still load the full accepted store. Large books (100k+ records) therefore produce multi-megabyte `translation-store.json` compatibility snapshots or equivalently large in-memory materializations. Severity: Medium | Probability: Medium Mitigation: V3 is the new-profile default, uses bounded per-chunk writes, shared reader revisions, recovery journals, doctor inventory, and explicit v2↔v3 migration/rollback. Parity and readiness-gate tests validate the two backends. |
+| Agent Context Window Overflow                | medium   | medium      | batch_words and before_records/after_records config options; include_untranslated_neighbors toggle; todo max_run_words cap                                                                                                    | Large chapters with many context records may exceed LLM context windows. Task word budgets and context window sizes are configurable but not automatically enforced against external model limits. Severity: Medium                                                     | Probability: Medium Mitigation: batch_words and before_records/after_records config options. include_untranslated_neighbors toggle for review tasks. Todo max_run_words cap.                                                                                  |
+| Placeholder Collision                        | low      | low         | Placeholder tokens use distinct pattern unlikely in natural text; custom patterns configurable via SourceAnalysisPatternsConfig                                                                                               | If source text contains literal **NAME_NNN**-like strings, extraction may produce false placeholder matches. Severity: Low                                                                                                                                              | Probability: Low Mitigation: Placeholder tokens use a distinct pattern unlikely in natural text. Custom patterns configurable via SourceAnalysisPatternsConfig.                                                                                               |
+| Source Format Drift                          | medium   | low         | Pinned dependency versions in pyproject.toml; manifest records source SHA-256; extraction checks for source drift; test suite covers format-specific edge cases                                                               | EPUB or Markdown parsing libraries may change behavior across versions, affecting extraction output. Severity: Medium                                                                                                                                                   | Probability: Low Mitigation: Pinned dependency versions in pyproject.toml. Manifest records source SHA-256; extraction checks for source drift. Test suite covers format-specific edge cases.                                                                 |
 
 # Glossary
 
 ## Glossary
 
-| Term                      | Definition                                                                                         |
-| ------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Chunk**                 | A JSON file (`chunks/NNNN.json`) containing up to `chunk_size` source records                      |
-| **Record**                | A single translatable unit (sentence or paragraph) with placeholdered text                         |
-| **Placeholder**           | A non-translatable span replaced by a token (`__NAME_001__`, `__TAG_001__`) during extraction      |
-| **Profile**               | An isolated translation target under `translations/<profile>/` with own store, context, and output |
-| **Translation Store**     | The canonical record-level translation state (`translation-store.json`)                            |
-| **Translation Candidate** | One versioned translation of a record (`version_ref` like `1.1`)                                   |
-| **Review Candidate**      | One quality-improved review output (`review_ref` like `R1.2`)                                      |
-| **Version Ledger**        | `translation-version-ledger.json` tracking identity per major version                              |
-| **Translation Task**      | An immutable work item with frozen context snapshot                                                |
-| **Translation Todo**      | A durable run-control artifact for bounded multi-chapter agent translation runs                    |
-| **Review Todo**           | A durable run-control artifact for bounded multi-pass review runs                                  |
-| **Context View**          | A frozen snapshot of effective context used by a task, stored under `context-history/views/<sha>/` |
-| **Glossary**              | Human-curated terminology decisions (binding or advisory) managed by `booktx glossary`             |
-| **Termbase**              | Advanced reusable preference storage for translation patterns, managed by `booktx termbase`        |
-| **Judge**                 | Cross-profile comparison/selection/revision workflow                                               |
-| **Series**                | Multi-book project coordination under `booktx series`                                              |
-| **Source Config**         | `.booktx/source-config.toml` defining source language, file, format, and chunk size                |
-| **Profile Config**        | `translations/<profile>/config.toml` defining target language, locale, and output                  |
-| **Profile Root Marker**   | `.booktx-profile.json` enabling agent-friendly profile resolution from a profile root              |
-| **Effective Candidate**   | The output target for a record: active review if chain-valid, else active translation              |
-| **Submission Ingest**     | Validating and applying translated/reviewed records into the canonical store                       |
-| **Canonical Record ID**   | Formatted as `chunk_id-part_id` (e.g., `0001-000042`)                                              |
-| **Quality Gate**          | `scripts/quality_gate.py` — ordered checks stopping at first failure                               |
-| **Bootstrap**             | `booktx.bootstrap.main()` — lazy entry point with startup error containment                        |
-| **Names File**            | `.booktx/names.json` — manually curated protected terms                                            |
-| **Source Manifest**       | `.booktx/source-manifest.json` — extraction metadata and source SHA-256                            |
-| **Chapter Map**           | `.booktx/chapter-map.json` — chapter-to-chunk mapping                                              |
+| Term                      | Definition                                                                                                                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Chunk**                 | A JSON file (`chunks/NNNN.json`) containing up to `chunk_size` source records                                                                                                                                        |
+| **Record**                | A single translatable unit (sentence or paragraph) with placeholdered text                                                                                                                                           |
+| **Placeholder**           | A non-translatable span replaced by a token (`__NAME_001__`, `__TAG_001__`) during extraction                                                                                                                        |
+| **Profile**               | An isolated translation target under `translations/<profile>/` with own store, context, and output                                                                                                                   |
+| **Translation Store**     | The logical canonical record-level translation repository for one profile; v3 `translation-store/` is the default backend for new profiles and v2 `translation-store.json` remains a supported compatibility backend |
+| **Translation Candidate** | One versioned translation of a record (`version_ref` like `1.1`)                                                                                                                                                     |
+| **Review Candidate**      | One quality-improved review output (`review_ref` like `R1.2`)                                                                                                                                                        |
+| **Version Ledger**        | `translation-version-ledger.json` tracking identity per major version                                                                                                                                                |
+| **Translation Task**      | An immutable work item with frozen context snapshot                                                                                                                                                                  |
+| **Translation Todo**      | A durable run-control artifact for bounded multi-chapter agent translation runs                                                                                                                                      |
+| **Review Todo**           | A durable run-control artifact for bounded multi-pass review runs                                                                                                                                                    |
+| **Context View**          | A frozen snapshot of effective context used by a task, stored under `context-history/views/<sha>/`                                                                                                                   |
+| **Glossary**              | Human-curated terminology decisions (binding or advisory) managed by `booktx glossary`                                                                                                                               |
+| **Termbase**              | Advanced reusable preference storage for translation patterns, managed by `booktx termbase`                                                                                                                          |
+| **Judge**                 | Cross-profile comparison/selection/revision workflow                                                                                                                                                                 |
+| **Series**                | Multi-book project coordination under `booktx series`                                                                                                                                                                |
+| **Source Config**         | `.booktx/source-config.toml` defining source language, file, format, and chunk size                                                                                                                                  |
+| **Profile Config**        | `translations/<profile>/config.toml` defining target language, locale, and output                                                                                                                                    |
+| **Profile Root Marker**   | `.booktx-profile.json` enabling agent-friendly profile resolution from a profile root                                                                                                                                |
+| **Effective Candidate**   | The output target for a record: active review if chain-valid, else active translation                                                                                                                                |
+| **Submission Ingest**     | Validating and applying translated/reviewed records into the canonical store                                                                                                                                         |
+| **Canonical Record ID**   | Formatted as `chunk_id-part_id` (e.g., `0001-000042`)                                                                                                                                                                |
+| **Quality Gate**          | `scripts/quality_gate.py` — ordered checks stopping at first failure                                                                                                                                                 |
+| **Bootstrap**             | `booktx.bootstrap.main()` — lazy entry point with startup error containment                                                                                                                                          |
+| **Names File**            | `.booktx/names.json` — manually curated protected terms                                                                                                                                                              |
+| **Source Manifest**       | `.booktx/source-manifest.json` — extraction metadata and source SHA-256                                                                                                                                              |
+| **Chapter Map**           | `.booktx/chapter-map.json` — chapter-to-chunk mapping                                                                                                                                                                |
 
-| Term                       | Definition                                                                                                                                                                                                                              |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chunk                      | A JSON file (chunks/NNNN.json) containing up to chunk_size source records extracted from the source document.                                                                                                                           |
-| Record                     | A single translatable unit (sentence or paragraph) with placeholdered text, identified by a canonical record ID like 0001-000042.                                                                                                       |
-| Placeholder                | A non-translatable span replaced by a deterministic token (**NAME_001**, **TAG_001**) during extraction. The original text is restored verbatim during build.                                                                           |
-| Profile                    | An isolated translation target under translations/<profile>/ with its own store, context, version ledger, tasks, and output.                                                                                                            |
-| Translation Store          | The canonical record-level translation state file (translation-store.json) containing StoredTranslationRecordV2 entries with nested version and review candidates.                                                                      |
-| Translation Candidate      | One versioned translation of a record, identified by a version_ref like 1.1, carrying target text, baseline refs, context hashes, and provenance metadata.                                                                              |
-| Review Candidate           | One quality-improved review output identified by a review_ref like R1.2, derived from a translation or earlier review base with provenance chain validation.                                                                            |
-| Version Ledger             | translation-version-ledger.json tracking identity (actor, harness, model) per major version and context hash per subversion.                                                                                                            |
-| Translation Task           | An immutable work item returned by translate next, containing records to translate with frozen context view paths, glossary/termbase bindings, and config hashes.                                                                       |
-| Translation Todo           | A durable run-control artifact for bounded multi-chapter agent translation runs, carrying scope, stop conditions, and chapter lists.                                                                                                    |
-| Review Todo                | A durable run-control artifact for bounded multi-pass review runs, carrying pass selection modes, chapter lists, and stop conditions.                                                                                                   |
-| Context View               | A frozen snapshot of effective context used by a task, stored under context-history/views/<sha>/. Immutable once created.                                                                                                               |
-| Glossary (booktx)          | Human-curated terminology decisions (binding or advisory) with source/target variants, enforcement levels, and usage notes. Managed by booktx glossary.                                                                                 |
-| Termbase                   | Advanced reusable preference storage for translation patterns (phrase preferences, collocations, word senses, forbidden literalisms). Managed by booktx termbase.                                                                       |
-| Judge                      | Cross-profile comparison, selection, and revision workflow for evaluating translation quality across profiles.                                                                                                                          |
-| Series                     | Multi-book project coordination under booktx series, enabling shared termbase and cross-book context management.                                                                                                                        |
-| Source Config              | .booktx/source-config.toml defining source language, source file, format (markdown/epub), and chunk size.                                                                                                                               |
-| Profile Config             | translations/<profile>/config.toml defining target language, locale, output filename, identity defaults, and review configuration.                                                                                                      |
-| Profile Root Marker        | .booktx-profile.json enabling agent-friendly profile resolution from a profile root directory, containing profile name, source identity, and target locale.                                                                             |
-| Effective Candidate        | The output target for a record: the active TranslationReviewCandidate if chain-valid, otherwise the active TranslationCandidate.                                                                                                        |
-| Submission Ingest          | The process of validating and applying translated or reviewed records into the canonical translation store.                                                                                                                             |
-| Canonical Record ID        | Formatted as chunk_id-part_id (e.g., 0001-000042), the unique identifier for a source record within a project.                                                                                                                          |
-| Quality Gate               | scripts/quality_gate.py — ordered checks (compile, focused tests, full pytest, Ruff, mypy, build, wheel install, CLI smoke tests) stopping at first failure.                                                                            |
-| Bootstrap                  | booktx.bootstrap.main() — the lazy console entry point that wraps CLI import in try/except for startup error containment.                                                                                                               |
-| Names File                 | .booktx/names.json — manually curated list of protected terms that are placeholdered during extraction and restored during build.                                                                                                       |
-| Source Manifest            | .booktx/source-manifest.json — extraction metadata including source file SHA-256, chunk listing, and format information.                                                                                                                |
-| Chapter Map                | .booktx/chapter-map.json — mapping of source document headings to chapters with chunk coverage information.                                                                                                                             |
-| Quality Backend            | A pluggable local linguistic checker implementing the LinguisticBackend Protocol. Returns backend-neutral BackendFinding objects with rule, message, severity, and category.                                                            |
-| Validation Receipt         | A short-lived JSON receipt stored under translations/<profile>/validation-receipts/ that records a successful staged translation validation. Allows translate submit to skip re-validation when the same file is resubmitted unchanged. |
-| Quality Benchmark          | A deterministic regression test runner that loads quality fixture files and measures builtin audit recall and false-positive rates. Used in CI to detect regressions in linguistic audit rules.                                         |
-| Translation Quality Policy | The resolved quality policy combining profile config and command-line quality mode. Controls linguistic audit severity, target-language rules, self-review mode, grammar backend selection, and fingerprinting.                         |
+| Term                       | Definition                                                                                                                                                                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chunk                      | A JSON file (chunks/NNNN.json) containing up to chunk_size source records extracted from the source document.                                                                                                                                              |
+| Record                     | A single translatable unit (sentence or paragraph) with placeholdered text, identified by a canonical record ID like 0001-000042.                                                                                                                          |
+| Placeholder                | A non-translatable span replaced by a deterministic token (**NAME_001**, **TAG_001**) during extraction. The original text is restored verbatim during build.                                                                                              |
+| Profile                    | An isolated translation target under translations/<profile>/ with its own store, context, version ledger, tasks, and output.                                                                                                                               |
+| Translation Store          | The logical canonical record-level translation repository for one profile. New profiles default to the v3 `translation-store/` shard backend; v2 `translation-store.json` remains a supported compatibility backend and materialized compatibility schema. |
+| Translation Candidate      | One versioned translation of a record, identified by a version_ref like 1.1, carrying target text, baseline refs, context hashes, and provenance metadata.                                                                                                 |
+| Review Candidate           | One quality-improved review output identified by a review_ref like R1.2, derived from a translation or earlier review base with provenance chain validation.                                                                                               |
+| Version Ledger             | translation-version-ledger.json tracking identity (actor, harness, model) per major version and context hash per subversion.                                                                                                                               |
+| Translation Task           | An immutable work item returned by translate next, containing records to translate with frozen context view paths, glossary/termbase bindings, and config hashes.                                                                                          |
+| Translation Todo           | A durable run-control artifact for bounded multi-chapter agent translation runs, carrying scope, stop conditions, and chapter lists.                                                                                                                       |
+| Review Todo                | A durable run-control artifact for bounded multi-pass review runs, carrying pass selection modes, chapter lists, and stop conditions.                                                                                                                      |
+| Context View               | A frozen snapshot of effective context used by a task, stored under context-history/views/<sha>/. Immutable once created.                                                                                                                                  |
+| Glossary (booktx)          | Human-curated terminology decisions (binding or advisory) with source/target variants, enforcement levels, and usage notes. Managed by booktx glossary.                                                                                                    |
+| Termbase                   | Advanced reusable preference storage for translation patterns (phrase preferences, collocations, word senses, forbidden literalisms). Managed by booktx termbase.                                                                                          |
+| Judge                      | Cross-profile comparison, selection, and revision workflow for evaluating translation quality across profiles.                                                                                                                                             |
+| Series                     | Multi-book project coordination under booktx series, enabling shared termbase and cross-book context management.                                                                                                                                           |
+| Source Config              | .booktx/source-config.toml defining source language, source file, format (markdown/epub), and chunk size.                                                                                                                                                  |
+| Profile Config             | translations/<profile>/config.toml defining target language, locale, output filename, identity defaults, and review configuration.                                                                                                                         |
+| Profile Root Marker        | .booktx-profile.json enabling agent-friendly profile resolution from a profile root directory, containing profile name, source identity, and target locale.                                                                                                |
+| Effective Candidate        | The output target for a record: the active TranslationReviewCandidate if chain-valid, otherwise the active TranslationCandidate.                                                                                                                           |
+| Submission Ingest          | The process of validating and applying translated or reviewed records into the canonical translation store.                                                                                                                                                |
+| Canonical Record ID        | Formatted as chunk_id-part_id (e.g., 0001-000042), the unique identifier for a source record within a project.                                                                                                                                             |
+| Quality Gate               | scripts/quality_gate.py — ordered checks (compile, focused tests, full pytest, Ruff, mypy, build, wheel install, CLI smoke tests) stopping at first failure.                                                                                               |
+| Bootstrap                  | booktx.bootstrap.main() — the lazy console entry point that wraps CLI import in try/except for startup error containment.                                                                                                                                  |
+| Names File                 | .booktx/names.json — manually curated list of protected terms that are placeholdered during extraction and restored during build.                                                                                                                          |
+| Source Manifest            | .booktx/source-manifest.json — extraction metadata including source file SHA-256, chunk listing, and format information.                                                                                                                                   |
+| Chapter Map                | .booktx/chapter-map.json — mapping of source document headings to chapters with chunk coverage information.                                                                                                                                                |
+| Quality Backend            | A pluggable local linguistic checker implementing the LinguisticBackend Protocol. Returns backend-neutral BackendFinding objects with rule, message, severity, and category.                                                                               |
+| Validation Receipt         | A short-lived JSON receipt stored under translations/<profile>/validation-receipts/ that records a successful staged translation validation. Allows translate submit to skip re-validation when the same file is resubmitted unchanged.                    |
+| Quality Benchmark          | A deterministic regression test runner that loads quality fixture files and measures builtin audit recall and false-positive rates. Used in CI to detect regressions in linguistic audit rules.                                                            |
+| Translation Quality Policy | The resolved quality policy combining profile config and command-line quality mode. Controls linguistic audit severity, target-language rules, self-review mode, grammar backend selection, and fingerprinting.                                            |

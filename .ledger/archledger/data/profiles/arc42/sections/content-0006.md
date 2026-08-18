@@ -7,7 +7,7 @@ section: runtime_view
 title: Runtime View
 order: 60
 status: accepted
-version: 2
+version: 3
 body_format: markdown
 ---
 
@@ -21,7 +21,7 @@ body_format: markdown
 4. booktx writes immutable `TranslationTask` JSON with frozen context paths
 5. Agent translates records and runs `booktx translate submit <task-id>` with translated JSON
 6. booktx validates submission against task snapshot, runs linguistic audit if configured
-7. On acceptance, booktx upserts `TranslationCandidate` versions into `TranslationStoreV2`
+7. On acceptance, booktx upserts `TranslationCandidate` versions into the canonical translation store
 
 ### RS-2: Review Lifecycle
 
