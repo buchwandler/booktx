@@ -1386,8 +1386,8 @@ __all__ = [
     "SeriesRecipeWriteOptions",
     "SeriesRecipeWriteResult",
     "build_series_recipe",
+    "finalize_series_book",
     "prepare_series_book",
     "review_series_book",
     "series_status",
-    "finalize_series_book",
 ]

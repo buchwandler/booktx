@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from booktx.command_hints import (
     check_command,
+    context_chapter_note_command,
     translate_todo_resume_command,
 )
 from booktx.config import Project, _err
@@ -19,6 +20,7 @@ from booktx.todo_status import (
     latest_incomplete_todo,
     load_translation_todo,
     recreate_todo_command,
+    required_chapter_note,
 )
 from booktx.validate import validate_project
 
@@ -106,6 +108,17 @@ def resume_translation_todo(
                 "Create a fresh bounded todo before requesting more work.\n"
                 f"next:\n  {recreate_command}"
             ),
+        )
+    missing_note = required_chapter_note(project, todo, bundle)
+    if missing_note is not None:
+        chapter_id, title = missing_note
+        note_command = context_chapter_note_command(
+            project, mode=mode, chapter_id=chapter_id, title=title or "<TITLE>"
+        )
+        raise _err(
+            "todo_chapter_note_required",
+            f"todo {todo.todo_id} requires a context note for completed chapter "
+            f"{chapter_id} before issuing the next task.\nnext:\n  {note_command}",
         )
     if report.errors or report.warnings:
         strict_check = check_command(

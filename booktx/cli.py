@@ -92,4 +92,4 @@ def main() -> None:
         sys.exit(exc.exit_code)
 
 
-__all__ = ["app", "main", "_project_status_snapshot"]
+__all__ = ["_project_status_snapshot", "app", "main"]

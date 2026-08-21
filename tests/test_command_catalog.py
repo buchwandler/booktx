@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import typer
 
-import booktx.command_catalog as command_catalog
+from booktx import command_catalog
 from booktx.command_catalog import (
     SUMMARY_OVERRIDES,
     CommandAudience,

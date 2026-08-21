@@ -25,9 +25,9 @@ if TYPE_CHECKING:
     from booktx.status import StatusBundle
 
 __all__ = [
+    "TermbaseAuditResult",
     "TermbaseMatch",
     "TermbaseSourceMatch",
-    "TermbaseAuditResult",
     "TermbaseSourceScanResult",
     "audit_termbase",
     "scan_source_termbase",

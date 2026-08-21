@@ -723,7 +723,7 @@ def context_questionnaire(
 
 
 @context_app.command(name="add-term")
-def context_add_term(  # noqa: C901 - long form mirrors original
+def context_add_term(
     project_dir: Path = typer.Argument(..., help="Project directory."),
     source: str = typer.Argument(..., help="Source term."),
     target: str | None = typer.Option(None, "--target", help="Approved target term."),
@@ -833,7 +833,7 @@ def context_remove_term(
 
 
 @context_app.command(name="reset-term")
-def context_reset_term(  # noqa: C901 - long form mirrors original
+def context_reset_term(
     project_dir: Path = typer.Argument(..., help="Project directory."),
     source: str = typer.Argument(..., help="Source term."),
     target: str | None = typer.Option(None, "--target", help="Approved target term."),

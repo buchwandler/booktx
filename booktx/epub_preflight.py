@@ -284,9 +284,7 @@ def assemble_epub_replacements(
         )
         sanitized_issues: list[FragmentValidationIssue] = []
         sanitized_xhtml = ""
-        if records_unchanged:
-            replacement_text = span_ref.source_text
-        elif joined_target == source_view:
+        if records_unchanged or joined_target == source_view:
             replacement_text = span_ref.source_text
         elif span_ref.source_markup == INLINE_XHTML_CODEC:
             sanitized = sanitize_target_fragment(joined_target, joined_source)

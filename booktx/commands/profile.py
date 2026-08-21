@@ -96,7 +96,7 @@ def profile_list_cmd(
             return
         console.print(
             "isolated mode: showing current profile only; "
-            "run from project root for all profiles"  # noqa: E501
+            "run from project root for all profiles"
         )
         console.print(f"  {profile_name}")
         return
@@ -242,7 +242,7 @@ def profile_migrate_current_cmd(
     console.print(
         "next: booktx translate next "
         f"{project_dir} --profile {profile_name} "
-        "--unit batch --max-words 500 --format block"  # noqa: E501
+        "--unit batch --max-words 500 --format block"
     )
 
 

@@ -23,24 +23,24 @@ from booktx.judge_policy import (
 from booktx.translation_quality import resolve_submission_quality_policy
 
 __all__ = [
-    "profile_option_fragment",
-    "translate_next_command",
-    "translate_lint_block_command",
-    "translate_insert_command",
-    "translate_todo_next_command",
-    "translate_todo_status_command",
-    "translate_todo_resume_command",
-    "judge_todo_next_command",
-    "judge_todo_status_command",
-    "judge_todo_resume_command",
-    "context_chapter_note_command",
-    "validate_command",
-    "check_command",
     "build_command",
+    "check_command",
+    "context_chapter_note_command",
+    "judge_todo_next_command",
+    "judge_todo_resume_command",
+    "judge_todo_status_command",
+    "profile_option_fragment",
     "review_next_command",
     "review_todo_next_command",
-    "review_todo_status_command",
     "review_todo_resume_command",
+    "review_todo_status_command",
+    "translate_insert_command",
+    "translate_lint_block_command",
+    "translate_next_command",
+    "translate_todo_next_command",
+    "translate_todo_resume_command",
+    "translate_todo_status_command",
+    "validate_command",
 ]
 
 # Preferred default batch words for translation runs.

@@ -1,5 +1,3 @@
-# ruff: noqa: E501
-
 """Tests for booktx chapter detection."""
 
 from __future__ import annotations

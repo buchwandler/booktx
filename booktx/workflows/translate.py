@@ -131,6 +131,7 @@ from booktx.todo_status import (
     current_todo_chapter_id,
     list_translation_todos,
     load_translation_todo,
+    required_chapter_note,
 )
 from booktx.translation_concordance import (
     build_concordance,
@@ -437,14 +438,33 @@ def translate_insert_workflow(
                 f"{task.task_id} is missing; falling back to generic next hints"
             )
         else:
+            scope_chapter = task.chapter_id or result.chapter_id
+            scoped_report = validate_project(
+                proj, chapter_id=scope_chapter, status_bundle=fresh
+            )
             todo_status = build_todo_status(
                 proj,
                 todo,
                 fresh,
-                fail_on_warnings=False,
+                validation_report=scoped_report,
+                fail_on_warnings=True,
+                scope_chapter_id=scope_chapter,
             )
+            missing_note = required_chapter_note(proj, todo, fresh)
+            if missing_note is not None and not todo_status.goal_complete:
+                note_id, note_title = missing_note
+                todo_status.state = "blocked"
+                todo_status.blocking_reason = (
+                    "chapter note required before continuation"
+                )
+                todo_status.next_safe_command = context_chapter_note_command(
+                    proj,
+                    mode=runtime.mode,
+                    chapter_id=note_id,
+                    title=note_title or "<TITLE>",
+                )
             if as_json:
-                if todo_status.goal_complete:
+                if todo_status.state == "complete":
                     action = AgentNextAction(
                         state="complete",
                         must_continue=False,
@@ -459,7 +479,11 @@ def translate_insert_workflow(
                         state="blocked",
                         must_continue=False,
                         next_safe_command=todo_status.next_safe_command,
-                        blocker_code="todo_validation_blocked",
+                        blocker_code=(
+                            "todo_chapter_note_required"
+                            if missing_note is not None
+                            else "todo_validation_blocked"
+                        ),
                         persisted_counts={
                             "records_remaining": sum(
                                 chapter.records_remaining_now
@@ -508,9 +532,19 @@ def translate_insert_workflow(
                     )
                 )
                 return
-            if todo_status.goal_complete:
+            if todo_status.state == "complete":
                 console.print(f"todo complete: {todo.todo_id}")
                 console.print("next: stop - todo goal complete")
+            elif todo_status.state == "blocked":
+                console.print(
+                    "TODO BLOCKED: resolve the scoped gate before continuing."
+                )
+                if todo_status.next_safe_command is not None:
+                    console.print(
+                        "next: " + todo_status.next_safe_command,
+                        soft_wrap=True,
+                        markup=False,
+                    )
             elif todo_status.next_safe_command is not None:
                 console.print(
                     "TODO INCOMPLETE: continue the same todo now; do not report completion."
@@ -685,20 +719,53 @@ def translate_todo_submit_workflow(
     if todo is None:
         _die(f"todo {task.todo_id} disappeared after submission")
     assert todo is not None
+    scope_chapter = task.chapter_id
+    scoped_report = validate_project(
+        proj, chapter_id=scope_chapter, status_bundle=fresh
+    )
     todo_status = build_todo_status(
         proj,
         todo,
         fresh,
-        validation_report=None,
-        fail_on_warnings=False,
-        scope_chapter_id=current_todo_chapter_id(todo, fresh),
+        validation_report=scoped_report,
+        fail_on_warnings=True,
+        scope_chapter_id=scope_chapter,
     )
-    if todo_status.goal_complete:
+    missing_note = required_chapter_note(proj, todo, fresh)
+    if missing_note is not None and not todo_status.goal_complete:
+        note_id, note_title = missing_note
+        todo_status.state = "blocked"
+        todo_status.blocking_reason = "chapter note required before continuation"
+        todo_status.next_safe_command = context_chapter_note_command(
+            proj,
+            mode=runtime.mode,
+            chapter_id=note_id,
+            title=note_title or "<TITLE>",
+        )
+    if todo_status.state == "complete":
         action = AgentNextAction(
             state="complete",
             must_continue=False,
             persisted_counts={
                 "records_remaining": 0,
+                "chapters_complete": todo_status.complete_count,
+                "chapters_requested": todo.chapters_requested,
+            },
+        )
+    elif todo_status.state == "blocked":
+        action = AgentNextAction(
+            state="blocked",
+            must_continue=False,
+            next_safe_command=todo_status.next_safe_command,
+            blocker_code=(
+                "todo_chapter_note_required"
+                if missing_note is not None
+                else "todo_validation_blocked"
+            ),
+            persisted_counts={
+                "records_remaining": sum(
+                    chapter.records_remaining_now for chapter in todo_status.chapters
+                ),
                 "chapters_complete": todo_status.complete_count,
                 "chapters_requested": todo.chapters_requested,
             },
@@ -1059,7 +1126,7 @@ def translate_lint_block_workflow(
 def translate_todo_next_workflow(
     project_dir: Path,
     profile: str | None = None,
-    chapters: int = 3,
+    chapters: int | None = None,
     batch_words: int = 800,
     batch_records: int | None = None,
     batch_sentences: int | None = None,
@@ -1072,6 +1139,7 @@ def translate_todo_next_workflow(
     output_format: str = "block",
     as_json: bool = False,
     supersede_overlapping: bool = False,
+    all_remaining: bool = False,
 ) -> None:
     """Create a durable run-control todo for a bounded multi-chapter translation run.
 
@@ -1084,6 +1152,9 @@ def translate_todo_next_workflow(
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
     proj = runtime.project
     require_translation_protocol(proj, command="translate todo-next")
+    if all_remaining and chapters is not None:
+        _die("--all-remaining cannot be combined with --chapters")
+    selected_chapter_count = None if all_remaining else (chapters or 3)
     if output_format not in {"text", "tsv", "block"}:
         _die("--format must be text, tsv, or block")
     if resume and not write:
@@ -1102,7 +1173,7 @@ def translate_todo_next_workflow(
         todo = build_translation_todo(
             proj,
             bundle,
-            chapters=chapters,
+            chapters=selected_chapter_count,
             batch_words=batch_words,
             batch_records=batch_records,
             batch_sentences=batch_sentences,

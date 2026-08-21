@@ -14,7 +14,7 @@ from booktx.translation_quality import resolve_submission_quality_policy
 if TYPE_CHECKING:
     from booktx.models import SubmissionQualityConfig
 
-__all__ = ["LinguisticAuditFinding", "audit_text", "audit_records"]
+__all__ = ["LinguisticAuditFinding", "audit_records", "audit_text"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +37,9 @@ _GERMAN_PARTICIPLE_RE = re.compile(
     r"\b(?:ge[A-Za-zÄÖÜäöüß-]+(?:t|en)|[A-Za-zÄÖÜäöüß-]+(?:iert|t))\b",
     re.IGNORECASE,
 )
-_GERMAN_AUXILIARY_RE = re.compile(r"\b(?:hat|haben|ist|sind|wird|wurde)\b", re.I)
+_GERMAN_AUXILIARY_RE = re.compile(
+    r"\b(?:hat|haben|ist|sind|wird|wurde)\b", re.IGNORECASE
+)
 _GERMAN_ACCUSATIVE_NP_RE = re.compile(
     r"\b(?:hat|haben)\s+(?:den|die|das|einen|eine|ein|meinen|meine|mein|ihren|ihre|ihr)\s+"
     r"[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+\s*[.!?]$",

@@ -1,5 +1,3 @@
-# ruff: noqa: E501
-
 """Regression tests for the EPUB visible-TOC chapter-map audit.
 
 Covers the five cases described in ``booktx_chapter_map_review.md``:

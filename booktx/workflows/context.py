@@ -238,7 +238,7 @@ def load_context_or_die(proj: Project) -> TranslationContext:
     """Load the active context, raising BooktxError when missing or invalid."""
     try:
         ctx = load_context(proj)
-    except Exception as exc:  # noqa: BLE001 - surface as user-facing CLI error
+    except Exception as exc:
         raise BooktxError(
             "context_invalid", f"translation context is invalid: {exc}"
         ) from exc
@@ -723,7 +723,7 @@ def remove_term_workflow(
     return f"removed {removed} term(s): {source}"
 
 
-def reset_term_workflow(  # noqa: C901 - long form mirrors original
+def reset_term_workflow(
     proj: Project,
     ctx: TranslationContext,
     *,
@@ -1402,9 +1402,9 @@ __all__ = [
     "approve_question_workflow",
     "audit_term_workflow",
     "build_context_status_payload",
+    "context_doctor_workflow",
     "context_pack_import_has_failures",
     "context_pack_import_payload",
-    "context_doctor_workflow",
     "context_sync_workflow",
     "export_context_pack_workflow",
     "import_context_pack_workflow",

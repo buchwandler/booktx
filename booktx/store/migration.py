@@ -203,9 +203,7 @@ def _blocking_findings(
     for finding in result.findings:
         if finding["code"] == "source_drift" and allow_source_drift:
             continue
-        if finding["severity"] == "error":
-            blocked.append(finding)
-        elif finding["code"] == "source_drift":
+        if finding["severity"] == "error" or finding["code"] == "source_drift":
             blocked.append(finding)
     return blocked
 

@@ -34,10 +34,10 @@ from booktx.placeholders import (
 )
 
 __all__ = [
-    "MarkdownExtraction",
     "FRONT_MATTER_RE",
-    "extract_markdown",
+    "MarkdownExtraction",
     "build_markdown",
+    "extract_markdown",
     "split_front_matter",
 ]
 

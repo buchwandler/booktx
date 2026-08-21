@@ -815,6 +815,31 @@ def test_check_epub_output_audits_existing_output(tmp_path: Path) -> None:
     assert errors == []
     assert payload["policy"]["applied"] is True
     assert payload["policy"]["language"] == "de-DE"
+    assert payload["archive"]["valid"] is True
+    assert payload["archive"]["crc_ok"] is True
+    assert payload["archive"]["mimetype"] == "application/epub+zip"
+    assert payload["archive"]["mimetype_valid"] is True
+    assert payload["archive"]["mimetype_stored"] is True
+    assert payload["archive"]["opf_resolvable"] is True
+    assert payload["archive"]["xhtml_entry_count"] > 0
+    assert payload["placeholders"]["unresolved_count"] == 0
+
+
+def test_check_epub_output_rejects_corrupt_archive(tmp_path: Path) -> None:
+    root = _epub_proj(tmp_path, build=True)
+    profile = load_project(root, profile="p")
+    assert profile.output_dir is not None
+    output_path = next(profile.output_dir.glob("*.epub"))
+    output_path.write_bytes(b"not an EPUB archive")
+    res = runner.invoke(
+        app, ["check", str(root), "--profile", "p", "--epub-output", "--json"]
+    )
+    assert res.exit_code == 1
+    payload = json.loads(res.output)
+    assert payload["archive"]["valid"] is False
+    assert any(
+        finding["rule"] == "epub_archive_invalid" for finding in payload["findings"]
+    )
 
 
 def test_check_epub_output_rejects_markdown_project(tmp_path: Path) -> None:
@@ -832,6 +857,32 @@ def test_check_epub_output_rejects_markdown_project(tmp_path: Path) -> None:
     payload = json.loads(res.output)
     rules = [f["rule"] for f in payload["findings"]]
     assert "not_an_epub_project" in rules
+
+
+def test_finalize_builds_and_verifies_epub(tmp_path: Path) -> None:
+    root = _epub_proj(tmp_path, build=False)
+    profile = load_project(root, profile="p")
+    assert profile.translated_dir is not None
+    profile.translated_dir.mkdir(parents=True, exist_ok=True)
+    for chunk_path in profile.chunks():
+        chunk = json.loads(chunk_path.read_text("utf-8"))
+        payload = {
+            "chunk_id": chunk["chunk_id"],
+            "records": [
+                {"id": record["id"], "target": record["source"]}
+                for record in chunk["records"]
+            ],
+        }
+        (profile.translated_dir / chunk_path.name).write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+    res = runner.invoke(app, ["finalize", str(root), "--profile", "p", "--json"])
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["status"] == "passed"
+    assert payload["epub_output"]["archive"]["valid"] is True
+    assert payload["epub_output"]["placeholders"]["unresolved_count"] == 0
+    assert payload["output_path"].endswith("book.de.epub")
 
 
 # ---------------------------------------------------------------------------
@@ -866,6 +917,7 @@ def test_command_tree_top_level_snapshot():
         "doctor",
         "epub",
         "extract",
+        "finalize",
         "glossary",
         "guide",
         "identity",

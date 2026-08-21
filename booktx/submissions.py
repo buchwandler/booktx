@@ -16,7 +16,6 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from booktx.acceptance import SubmittedRecord
 from booktx.block_protocol import source_only_directive_prefix
@@ -25,14 +24,11 @@ from booktx.models import TranslatedRecord
 from booktx.record_refs import parse_version_ref
 from booktx.text_normalization import normalize_submitted_target
 
-if TYPE_CHECKING:
-    pass
-
 __all__ = [
     "ParsedSubmission",
+    "parse_block_submission",
     "parse_json_submission",
     "parse_tsv_submission",
-    "parse_block_submission",
     "read_submission_file",
     "resolve_submission",
 ]
@@ -44,7 +40,7 @@ _BLOCK_HEADER_RE = re.compile(r"^>>>\s+(?P<id>\S+)\s*$")
 class ParsedSubmission:
     """A parsed submission payload: optional task id + validated records."""
 
-    __slots__ = ("task_id", "records", "translation_version", "profile")
+    __slots__ = ("profile", "records", "task_id", "translation_version")
 
     def __init__(
         self,

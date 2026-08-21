@@ -14,9 +14,9 @@ from booktx.context import GlossaryEntry
 from booktx.glossary_match import TermSpan, source_glossary_matches
 
 __all__ = [
-    "source_phrase_window",
     "detect_phrase_collision",
     "format_glossary_missing_message",
+    "source_phrase_window",
 ]
 
 

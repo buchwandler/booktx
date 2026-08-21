@@ -26,11 +26,11 @@ from booktx.models import Placeholder
 
 __all__ = [
     "NAME_TOKEN_RE",
+    "SKIP_BLOCK_TYPES",
+    "SPANTX_RE",
     "TAG_TOKEN_RE",
     "TOKEN_RE",
-    "SPANTX_RE",
     "TRANSLATABLE_INLINE_PARENTS",
-    "SKIP_BLOCK_TYPES",
     "ProtectResult",
     "protect_names",
     "protect_tags",

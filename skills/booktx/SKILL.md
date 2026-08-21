@@ -88,9 +88,10 @@ booktx build .
 The `.booktx-profile.json` marker binds the profile root to its enclosing
 project, profile configuration, target locale, and extracted source identity.
 This is booktx-mediated isolation, not an operating-system sandbox. Do not use
-parent paths, absolute paths, sibling profile paths, shell globs, or arbitrary
-filesystem inspection in isolated mode. If a command reveals a sibling or
-parent path, stop and report an isolation defect.
+parent paths, absolute paths, sibling profile paths, shell globs, arbitrary
+filesystem inspection, archive extraction, or shell archive inspection in isolated
+mode. If a command reveals a sibling or parent path, stop and report an isolation
+defect. Use booktx's EPUB inspection and output-check commands instead.
 
 There is no project-wide profile selector and target-state commands do not
 infer one profile from the profiles present. Create, list, compare, or migrate
@@ -206,6 +207,11 @@ booktx translate insert . \
   --task-id TASK --file ingest/TASK.block.txt --format block
 ```
 
+For an existing bounded todo, discover work without an expected-error probe:
+`booktx translate todo-list . --state open --json`. Select the exact `todo_id`
+and pass it to `todo-status` and `todo-resume`. The todo submission workflow
+performs the active task chapter's scoped check before it permits continuation.
+
 ## Historical consistency lookup
 
 Use booktx-mediated lookup before any direct filesystem search.
@@ -237,12 +243,13 @@ dashes. Never write policy from observed usage without explicit human approval.
 Quote validation counters exactly; do not infer that `chunks_checked == chunks_passed`.
 
 For a translation todo, a task is one bounded batch inside the user's todo.
-After every successful insert, run the printed scoped check and query the exact
-todo status. If the result says `must_continue=true`, resume the same todo in
-this assistant turn. A successful insert is not a stop condition, and the
-agent must not ask the user to say `continue`. Stop only when the todo is
-complete, booktx reports a blocker, the user explicitly stops the run, or a
-documented harness limit is reached.
+After every successful insert, use the emitted scoped-gate result and query the
+exact todo status. If the result says `must_continue=true`, resume the same todo
+in this assistant turn. A successful insert is not a stop condition, and the agent
+must not ask the user to say `continue`. Stop only when the todo is complete,
+booktx reports a blocker, the user explicitly stops the run, or a documented
+harness limit is reached. Write the required chapter note before requesting a
+task for the next planned chapter.
 
 The task records the profile, target language and locale, translation version,
 source hash, profile hashes, and an immutable effective context view under
@@ -255,8 +262,15 @@ booktx translate todo-next . --chapters 3 --batch-words 800 --write --resume --f
 ```
 
 Do not bypass a failed todo with a large unbounded task. Report the error and
-stop. Use `booktx check . --chapter CHAPTER --fail-on-warnings` between batches
-and `booktx validate . --fail-on-warnings` before the final build.
+stop. Use the todo submission scoped gate between batches and
+`booktx validate . --fail-on-warnings` before the final build.
+The complete-book ending is:
+
+```bash
+booktx validate . --fail-on-warnings
+booktx build . --require-complete
+booktx check . --epub-output --fail-on-warnings
+```
 
 After translation or review changes, indexes may be regenerated:
 

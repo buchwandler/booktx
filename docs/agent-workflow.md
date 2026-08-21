@@ -62,9 +62,10 @@ booktx context status .
 ```
 
 In isolated mode, use only profile-local `booktx ... .` commands. Never use
-parent paths, absolute paths, shell globs, interpreter snippets, or sibling
-profile commands. If booktx prints a sibling profile or a parent path, stop and
-report a booktx isolation bug.
+parent paths, absolute paths, shell globs, interpreter snippets, sibling profile
+commands, archive extraction, or shell archive inspection. If booktx prints a
+sibling profile or a parent path, stop and report a booktx isolation bug. Use
+`booktx check --epub-output` and `booktx epub inspect/grep/extract-text` for EPUBs.
 
 ## 2. Read the profile-local context
 
@@ -136,9 +137,12 @@ not approval or policy.
 ```bash
 booktx validate . --fail-on-warnings
 booktx build . --require-complete
+booktx check . --epub-output --fail-on-warnings
 ```
 
-For per-batch validation within a bounded todo, use scoped `booktx check . --chapter CHAPTER --fail-on-warnings` instead. Use `booktx validate` only for the final pre-build check.
+The todo submission workflow performs the active task chapter's scoped check
+before continuation. Use `booktx validate` for the final pre-build check and
+`check --epub-output` for the final artifact verification.
 
 ## 6b. Refresh editor QA indexes
 
@@ -151,6 +155,16 @@ booktx translate export-index .
 This writes `source-index.json`, `target-index.json`, and `source-target-index.json` into the profile directory. Use `rg` to search translated terms without English source false positives (`rg "Wespen" target-index.json`) or source terms without target matches (`rg "Wasp" source-index.json`). Use `nvim source-target-index.json` for side-by-side scanning.
 
 The three files are generated artifacts. Do not edit them manually and do not use them as build input. They are optional human/editor exploration artifacts, not the agent consistency protocol; use `translate search` or `translate concordance` instead.
+
+## 6c. Resume an existing bounded todo
+
+Discover open todos without an expected-error probe:
+
+```bash
+booktx translate todo-list . --state open --json
+```
+
+Select the exact `todo_id` and pass it to `todo-status` and `todo-resume`.
 
 ## 7. Longer bounded runs
 
@@ -219,10 +233,10 @@ booktx translate todo-resume . --latest --format block
 
 Only use `--force-chapter` for small chapters or when explicitly requested.
 
-After each chapter, always run `booktx check` before adding the chapter note:
+After each chapter, the todo submission scoped gate must pass before adding
+the chapter note:
 
 ```bash
-booktx check . --chapter 0005 --fail-on-warnings
 booktx context chapter-note . 0005 --title "ONE" ...
 ```
 
@@ -243,7 +257,7 @@ After validation passes, optional quality review improves the accepted target:
 3. Edit the prefilled ingest block under `translations/<profile>/reviews/`
 4. `booktx review insert . --review-task-id TASK --file reviews/TASK.block.txt`
 5. Repeat for pass 2: `booktx review next . --pass 2`, review, insert
-6. Validate and build: `booktx validate . --fail-on-warnings && booktx build . --require-complete --require-reviewed`
+6. Validate and build: `booktx validate . --fail-on-warnings && booktx build . --require-complete --require-reviewed && booktx check . --epub-output --fail-on-warnings`
 
 During review pass tasks, review the existing target critically. Preserve meaning,
 placeholders, protected terms, and inline XHTML. If the current target is already

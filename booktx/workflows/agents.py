@@ -303,8 +303,8 @@ def _write_profile_root(
     _reject_ancestor_conflict(root, sanitize=True)
     profile_root = runtime.mode.profile_root
     target_profile = runtime.mode.profile_name
-    assert profile_root is not None  # noqa: S101 - invariant of profile-root mode
-    assert target_profile is not None  # noqa: S101 - invariant of profile-root mode
+    assert profile_root is not None
+    assert target_profile is not None
     source_id = _current_source_id(root)
     text = render_agents_md(
         mode="isolated",
@@ -454,7 +454,7 @@ def _clean_profile_root(
             "run `booktx agents clean . --mode isolated` instead",
         )
     profile_root = runtime.mode.profile_root
-    assert profile_root is not None  # noqa: S101 - invariant of profile-root mode
+    assert profile_root is not None
     deleted: list[Path] = []
     skipped: list[AgentsMdSkippedPath] = []
     expected: AgentMode | None = "isolated" if mode == "isolated" else None
@@ -500,7 +500,7 @@ def agents_status_workflow(
 
     if runtime.mode.kind == "profile-root":
         profile_root = runtime.mode.profile_root
-        assert profile_root is not None  # noqa: S101 - invariant of profile-root mode
+        assert profile_root is not None
         local_path = profile_root / AGENTS_FILENAME
         inspection = inspect_agents_md(local_path)
         return (

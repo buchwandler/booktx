@@ -432,7 +432,7 @@ def load_epub_template_from_manifest(manifest: Manifest) -> EpubTemplateData:
 
     try:
         template = EpubTemplateData.model_validate(manifest.template)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ValueError(f"EPUB manifest template is invalid: {exc}") from exc
 
     if template.pipeline != EPUB_TEMPLATE_PIPELINE:

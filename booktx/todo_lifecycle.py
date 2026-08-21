@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -23,26 +22,23 @@ from booktx.io_utils import write_json_model_atomic
 from booktx.models import TranslationTodo, TranslationTodoLifecycle
 from booktx.versioning import canonical_json_sha256
 
-if TYPE_CHECKING:
-    pass
-
 __all__ = [
     "TodoLifecycleEntry",
-    "todo_scope_fingerprint",
-    "load_todo_lifecycle",
-    "write_todo_lifecycle",
-    "todo_lifecycle_state",
+    "abandon_todo",
     "list_todo_lifecycle",
+    "load_todo_lifecycle",
     "open_todo_ids",
     "supersede_todos_atomically",
-    "abandon_todo",
+    "todo_lifecycle_state",
+    "todo_scope_fingerprint",
+    "write_todo_lifecycle",
 ]
 
 
 class TodoLifecycleEntry:
     """A todo paired with its lifecycle sidecar state."""
 
-    __slots__ = ("todo", "lifecycle")
+    __slots__ = ("lifecycle", "todo")
 
     def __init__(self, todo: TranslationTodo, lifecycle: TranslationTodoLifecycle):
         self.todo = todo

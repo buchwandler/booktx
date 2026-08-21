@@ -334,6 +334,52 @@ def test_todo_next_creates_durable_files(tmp_path: Path):
     assert md_path.suffix == ".md"
 
 
+def test_todo_next_all_remaining_persists_actual_selection(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--all-remaining",
+            "--batch-words",
+            "800",
+            "--write",
+            "--json",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["chapters_requested"] == 3
+    assert [chapter["chapter_id"] for chapter in payload["chapters"]] == [
+        "0001",
+        "0002",
+        "0003",
+    ]
+
+
+def test_todo_next_all_remaining_rejects_explicit_chapters(tmp_path: Path):
+    project_dir = _make_three_chapter_project(tmp_path)
+    res = runner.invoke(
+        app,
+        [
+            "translate",
+            "todo-next",
+            str(project_dir),
+            "--profile",
+            "de_default",
+            "--all-remaining",
+            "--chapters",
+            "2",
+        ],
+    )
+    assert res.exit_code == 1
+    assert "cannot be combined with --chapters" in res.output
+
+
 def test_todo_next_selects_chapters_in_reading_order(tmp_path: Path):
     """After completing chapter 0001, the todo should select 0002 and 0003."""
     project_dir = _make_three_chapter_project(tmp_path)
@@ -1118,6 +1164,22 @@ def test_todo_resume_advances_to_next_planned_chapter_after_completion(tmp_path:
     project_dir = _make_three_chapter_project(tmp_path)
     todo = _create_todo(project_dir, chapters=2)
     _accept_chapter(project_dir, "0001")
+    note_res = runner.invoke(
+        app,
+        [
+            "context",
+            "chapter-note",
+            str(project_dir),
+            "0001",
+            "--profile",
+            "de_default",
+            "--title",
+            "One",
+            "--translation-summary",
+            "Completed chapter one.",
+        ],
+    )
+    assert note_res.exit_code == 0, note_res.output
 
     res = runner.invoke(
         app,
@@ -1791,11 +1853,10 @@ def test_todo_markdown_uses_strict_validate_and_advisory_budget(tmp_path: Path):
     assert "booktx translate todo-status ." in text
     assert "booktx translate todo-resume ." in text
     assert "stop and report progress before requesting more work" in text
-    # ac-0011: scoped check is used for per-task validation, not global validate.
-    assert "booktx check ." in text
+    assert "booktx translate todo-submit" in text
+    assert "booktx check ." not in text
     assert "booktx validate ." in text  # still present for final pre-build
-    # The stop condition references scoped check, not global validate.
-    assert "active todo chapter" in text
+    assert "active task chapter" in text
     assert "do not block continuing the todo" in text
 
 
@@ -2118,7 +2179,8 @@ def test_insert_hint_prints_chapter_note_template_for_todo_chapter_completion(
     assert "chapter complete: 0001 One" in insert_res.output
     assert "recommended context update template:" in insert_res.output
     assert "booktx context chapter-note ." in insert_res.output
-    assert f"--todo-id {todo['todo_id']}" in insert_res.output
+    assert "booktx translate todo-resume ." not in insert_res.output
+    assert f"--todo-id {todo['todo_id']}" not in insert_res.output
 
 
 def test_insert_hint_stops_when_todo_goal_is_complete(tmp_path: Path):
@@ -2312,6 +2374,7 @@ def test_insert_prints_todo_resume_command(tmp_path: Path):
     )
 
     assert insert_res.exit_code == 0, insert_res.output
-    assert "booktx translate todo-resume ." in insert_res.output
-    assert f"--todo-id {todo['todo_id']}" in insert_res.output
+    assert "booktx context chapter-note ." in insert_res.output
+    assert "booktx translate todo-resume ." not in insert_res.output
+    assert f"--todo-id {todo['todo_id']}" not in insert_res.output
     assert "translate next ." not in insert_res.output

@@ -29,16 +29,16 @@ if TYPE_CHECKING:
     from booktx.config import Project
 
 __all__ = [
-    "SelectionPurpose",
     "RevisionFocus",
-    "parse_sources_csv",
-    "selection_purpose",
-    "revision_focus",
-    "is_revision_selection_profile",
-    "is_grammar_revision_profile",
+    "SelectionPurpose",
     "configured_revision_source",
-    "resolve_judge_sources_for_purpose",
+    "is_grammar_revision_profile",
+    "is_revision_selection_profile",
+    "parse_sources_csv",
     "require_selection_profile",
+    "resolve_judge_sources_for_purpose",
+    "revision_focus",
+    "selection_purpose",
 ]
 
 

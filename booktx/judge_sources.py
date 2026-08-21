@@ -77,14 +77,14 @@ from booktx.translation_store import (
 __all__ = [
     "JudgeSourceProfileView",
     "JudgeSourceSyncResult",
-    "sync_judge_source_snapshots",
+    "configured_selection_sources",
+    "judge_sources_manifest_sha256",
+    "judge_task_candidates_sha256",
     "load_live_judge_source_views",
     "load_snapshot_judge_source_views",
-    "judge_sources_manifest_sha256",
+    "sync_judge_source_snapshots",
     "validate_judge_sources_snapshot",
-    "judge_task_candidates_sha256",
     "validate_snapshot_source_subset",
-    "configured_selection_sources",
 ]
 
 MANIFEST_VERSION = 1

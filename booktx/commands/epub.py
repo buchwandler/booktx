@@ -1,11 +1,4 @@
-"""Typer commands for built-EPUB XHTML inspection (Phase 3 slice 3).
-
-Thin command layer for ``epub inspect / grep / extract-text``. Each command
-loads the runtime/project via the shared CLI helper, resolves the output dir +
-XHTML files via :mod:`booktx.workflows.epub`, reads the (read-only) XHTML, and
-renders the result. ``proj.output_dir`` (not ``proj.paths.output_dir``) is used
-throughout.
-"""
+"""Typer commands for read-only built-EPUB inspection."""
 
 from __future__ import annotations
 
@@ -20,9 +13,17 @@ from booktx.cli_support import (
     console,
 )
 from booktx.errors import BooktxError
-from booktx.workflows.epub import resolve_epub_output_dir, select_xhtml_files
+from booktx.workflows.epub import EpubDocument, select_epub_documents
 
 epub_app = typer.Typer()
+
+
+def _documents_or_return(proj, chapter: str | None) -> list[EpubDocument] | None:
+    try:
+        return select_epub_documents(proj, chapter)
+    except BooktxError as exc:
+        _handle_booktx_error(exc)
+        return None
 
 
 @epub_app.command(name="inspect")
@@ -38,21 +39,16 @@ def epub_inspect_cmd(
         None, "--contains", help="Only show content containing this text."
     ),
 ) -> None:
-    """Inspect built EPUB XHTML output."""
+    """Inspect XHTML directly from the built EPUB archive."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
-    proj = runtime.project
-    try:
-        output_dir = resolve_epub_output_dir(proj)
-        xhtml_files = select_xhtml_files(output_dir, chapter)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
+    documents = _documents_or_return(runtime.project, chapter)
+    if documents is None:
         return
-
-    for xhtml_path in xhtml_files:
-        text = xhtml_path.read_text("utf-8", errors="replace")
+    for document in documents:
+        text = document.read_text()
         if contains is not None and contains.lower() not in text.lower():
             continue
-        console.print(f"--- {xhtml_path.name} ---")
+        console.print(f"--- {document.name} ---")
         if contains is not None:
             for line in text.splitlines():
                 if contains.lower() in line.lower():
@@ -71,29 +67,23 @@ def epub_grep_cmd(
         None, "--profile", help="Translation profile name."
     ),
 ) -> None:
-    """Grep built EPUB XHTML output for text."""
+    """Search XHTML directly inside the built EPUB archive."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
-    proj = runtime.project
-    try:
-        output_dir = resolve_epub_output_dir(proj)
-        xhtml_files = select_xhtml_files(output_dir)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
+    documents = _documents_or_return(runtime.project, None)
+    if documents is None:
         return
-
-    for xhtml_path in xhtml_files:
+    for document in documents:
         try:
-            text = xhtml_path.read_text("utf-8", errors="replace")
+            text = document.read_text()
             for lineno, line in enumerate(text.splitlines(), start=1):
                 if text_pattern.lower() in line.lower():
-                    rel = xhtml_path.relative_to(output_dir)
                     console.print(
-                        f"{rel}:{lineno}: {line.strip()}",
+                        f"{document.name}:{lineno}: {line.strip()}",
                         soft_wrap=True,
                         markup=False,
                     )
-        except Exception as exc:
-            console.print(f"error reading {xhtml_path.name}: {exc}")
+        except (BooktxError, OSError, UnicodeError) as exc:
+            console.print(f"error reading {document.name}: {exc}")
 
 
 @epub_app.command(name="extract-text")
@@ -106,21 +96,12 @@ def epub_extract_text_cmd(
         None, "--chapter", help="Chapter id to extract text from."
     ),
 ) -> None:
-    """Extract plain text from built EPUB XHTML."""
+    """Extract plain text from XHTML in the built EPUB archive."""
     runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
-    proj = runtime.project
-    try:
-        output_dir = resolve_epub_output_dir(proj)
-        xhtml_files = select_xhtml_files(output_dir, chapter)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
+    documents = _documents_or_return(runtime.project, chapter)
+    if documents is None:
         return
-
-    for xhtml_path in xhtml_files:
-        text = xhtml_path.read_text("utf-8", errors="replace")
+    for document in documents:
+        text = document.read_text()
         stripped = re.sub(r"<[^>]+>", "", text)
-        console.print(
-            stripped.strip(),
-            soft_wrap=True,
-            markup=False,
-        )
+        console.print(stripped.strip(), soft_wrap=True, markup=False)

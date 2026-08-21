@@ -44,6 +44,26 @@ Pass-through profiles are generated reconstruction checks. Compare their
 output with an EPUB diff tool or the repository's reconstruction tests. The
 documentation does not promise byte identity for an arbitrary EPUB fixture.
 
+## Built artifact verification
+
+A normal build writes one `.epub` ZIP archive under the profile output directory.
+The read-only inspection commands read that archive directly; they do not extract it
+to a temporary directory:
+
+```bash
+booktx validate . --fail-on-warnings
+booktx build . --require-complete
+booktx check . --epub-output --fail-on-warnings
+booktx epub inspect . --chapter CHAPTER
+booktx epub grep . "TEXT"
+booktx epub extract-text . --chapter CHAPTER
+```
+
+`check --epub-output --json` reports archive validity, CRC status, the required
+EPUB mimetype, the resolvable OPF, XHTML count, unresolved placeholders, and
+output-policy findings. In isolated profile mode, use these booktx commands
+instead of `unzip`, shell `grep`, temporary extraction, or direct archive traversal.
+
 ## Inline XHTML contract
 
 EPUB records with inline markup use `source_markup="epub-inline-xhtml:v1"`.

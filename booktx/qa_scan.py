@@ -29,8 +29,8 @@ if TYPE_CHECKING:
 __all__ = [
     "QaScanFinding",
     "QaScanResult",
-    "qa_scan",
     "build_language_leftover_words",
+    "qa_scan",
 ]
 
 # Simple English stopwords/heuristics for --language-leftovers detection.

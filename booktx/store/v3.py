@@ -188,7 +188,7 @@ class V3TranslationStoreRepository:
             return V3Manifest(created_at=timestamp, updated_at=timestamp)
         try:
             return V3Manifest.model_validate_json(path.read_text("utf-8"))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise _err(
                 "invalid_translation_store",
                 f"v3 store manifest is invalid at {path.as_posix()}: {exc}",

@@ -27,6 +27,7 @@ from booktx.workflows.termbase import (
 )
 
 __all__ = [
+    "glossary_add_variant_workflow",
     "glossary_add_workflow",
     "glossary_audit_workflow",
     "glossary_export_workflow",
@@ -34,9 +35,8 @@ __all__ = [
     "glossary_mandate_workflow",
     "glossary_remove_workflow",
     "glossary_reset_workflow",
-    "glossary_status_workflow",
-    "glossary_add_variant_workflow",
     "glossary_set_usage_workflow",
+    "glossary_status_workflow",
 ]
 
 

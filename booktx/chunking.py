@@ -27,11 +27,11 @@ from booktx.models import Chunk, Placeholder, Record
 from booktx.placeholders import collect_tokens
 
 __all__ = [
-    "ProseSpan",
     "RECORD_ID_SCHEME",
-    "segmenter_metadata",
-    "segment_spans",
+    "ProseSpan",
     "pack_chunks",
+    "segment_spans",
+    "segmenter_metadata",
     "spans_to_chunks",
 ]
 

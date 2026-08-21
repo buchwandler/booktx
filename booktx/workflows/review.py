@@ -699,7 +699,7 @@ def resume_review_todo_workflow(
             review_todo_id=review_todo_id,
             latest=latest,
         )
-    except Exception as exc:  # noqa: BLE001 - resume surfaces assorted value errors
+    except Exception as exc:
         raise _err("review_todo_resume", str(exc)) from exc
     return task  # type: ignore[no-any-return]
 

@@ -22,9 +22,9 @@ from booktx.models import (
 from booktx.translation_store import active_candidate, review_chain_is_stale
 
 __all__ = [
+    "ReviewGapIndex",
     "ReviewPassStatus",
     "ReviewStatusSnapshot",
-    "ReviewGapIndex",
     "build_review_gap_index",
     "compute_review_snapshot",
 ]

@@ -81,7 +81,7 @@ def make_todo_id(profile: str, first_chapter_id: str, chapter_ids: list[str]) ->
 def select_todo_chapters(
     bundle: StatusBundle,
     *,
-    chapters: int,
+    chapters: int | None,
     skip_current: bool = False,
     start_chapter: str | None = None,
 ) -> list[ChapterProgress]:
@@ -90,7 +90,7 @@ def select_todo_chapters(
     Raises :class:`ValueError` when no chapters have remaining records or when
     the start chapter is not found.
     """
-    if chapters < 1:
+    if chapters is not None and chapters < 1:
         raise ValueError("chapters must be >= 1")
 
     all_chapters = bundle.index.chapter_summaries
@@ -116,14 +116,14 @@ def select_todo_chapters(
     if not eligible:
         return []
 
-    return eligible[:chapters]
+    return eligible if chapters is None else eligible[:chapters]
 
 
 def build_translation_todo(
     project: Project,
     bundle: StatusBundle,
     *,
-    chapters: int,
+    chapters: int | None,
     batch_words: int,
     batch_records: int | None = None,
     batch_sentences: int | None = None,
@@ -136,7 +136,7 @@ def build_translation_todo(
 
     Raises :class:`ValueError` when no chapters are pending.
     """
-    if chapters < 1:
+    if chapters is not None and chapters < 1:
         raise ValueError("chapters must be >= 1")
     if batch_words < 1:
         raise ValueError("batch_words must be >= 1")
@@ -197,7 +197,7 @@ def build_translation_todo(
         profile=project.profile or "",
         target_language=project.config.target_language,
         target_locale=target_locale,
-        chapters_requested=chapters,
+        chapters_requested=len(selected),
         batch_words=batch_words,
         batch_records=batch_records,
         batch_sentences=batch_sentences,
@@ -233,7 +233,6 @@ def render_translation_todo_markdown(
     starting the bounded run.
     """
     from booktx.command_hints import (
-        check_command,
         translate_todo_resume_command,
         translate_todo_status_command,
     )
@@ -271,12 +270,9 @@ def render_translation_todo_markdown(
     # Stop conditions
     lines.append("## Stop immediately if")
     lines.append("")
-    first_chapter_id = todo.chapters[0].chapter_id if todo.chapters else None
-    scoped_check = check_command(
-        project, mode=mode, chapter_id=first_chapter_id, fail_on_warnings=True
-    )
     lines.append(
-        f"- `{scoped_check}` reports errors or warnings for the active todo chapter."
+        "- `booktx translate todo-submit` performs the active task chapter "
+        "scoped check and reports errors or warnings before continuation."
     )
     lines.append(
         "- Full-project validation warnings outside this todo"
@@ -332,11 +328,10 @@ def render_translation_todo_markdown(
     lines.append("")
     lines.append("6. Submit exactly the printed submit command.")
     lines.append("")
-    lines.append("7. Validate the active todo chapter:")
-    lines.append("")
-    lines.append("   ```bash")
-    lines.append(f"   {scoped_check}")
-    lines.append("   ```")
+    lines.append(
+        "7. The todo submission automatically validates the active task chapter "
+        "before continuation."
+    )
     lines.append("   For the final pre-build check, use full-project validation:")
     lines.append("")
     lines.append("   ```bash")

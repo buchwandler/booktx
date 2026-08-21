@@ -8,8 +8,8 @@ from booktx.runtime import RuntimeMode
 
 __all__ = [
     "display_path",
-    "relative_or_posix",
     "display_source_ref",
+    "relative_or_posix",
 ]
 
 

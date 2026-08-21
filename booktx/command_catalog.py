@@ -251,6 +251,17 @@ TOP_LEVEL: dict[str, CommandDescriptor] = {
         modes=frozenset({"project_root", "profile_root"}),
         help_panel="RUN AND MONITOR",
     ),
+    "finalize": CommandDescriptor(
+        "finalize",
+        CommandAudience.HUMAN_CORE,
+        "release",
+        "Validate, build, and verify one complete translated artifact.",
+        writes="always",
+        modes=frozenset({"project_root", "profile_root"}),
+        requires_profile=True,
+        help_panel="RUN AND MONITOR",
+        example="booktx finalize ./book --profile PROFILE --require-reviewed",
+    ),
     "review": CommandDescriptor(
         "review",
         CommandAudience.HUMAN_CORE,
@@ -680,9 +691,7 @@ def descriptor_for_path(path: str) -> CommandDescriptor:
         summary = f"Run the `{path}` workflow."
     audience = _leaf_audience(parts[0], parts[-1])
     writes: WritesMode = "conditional"
-    if path == "doctor cli":
-        writes = "never"
-    elif any(
+    if path == "doctor cli" or any(
         flag in path
         for flag in ("status", "show", "list", "compare", "inspect", "grep")
     ):

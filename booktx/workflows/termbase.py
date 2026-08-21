@@ -177,7 +177,7 @@ def _effective_counts(effective: EffectiveTranslationTermbase) -> tuple[int, int
 def _validate_entry_file(input_path: Path) -> TermbaseEntry:
     try:
         return TermbaseEntry.model_validate_json(input_path.read_text("utf-8"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _err(
             "termbase_entry_invalid", f"invalid termbase entry file: {exc}"
         ) from exc

@@ -186,9 +186,7 @@ def build_epub(
         records_unchanged = all(
             target == source for target, source in zip(targets, sources, strict=True)
         )
-        if records_unchanged:
-            replacement_text = span_ref.source_text
-        elif joined_target == source_view:
+        if records_unchanged or joined_target == source_view:
             replacement_text = span_ref.source_text
         elif span_ref.source_markup == "epub-inline-xhtml:v1":
             sanitized = sanitize_target_fragment(joined_target, joined_source)

@@ -18,12 +18,17 @@ booktx guide ./book --profile PROFILE
 booktx status ./book --profile PROFILE
 booktx check ./book --profile PROFILE
 booktx build ./book --profile PROFILE
+booktx check ./book --profile PROFILE --epub-output --fail-on-warnings
+booktx finalize ./book --profile PROFILE
 ```
 
 Use `booktx inspect` for a read-only pre-extraction estimate and
 `booktx qa-scan` for advanced target checks. `booktx validate` is the detailed
 validation command. `booktx epub inspect` is the EPUB output inspection
 surface.
+For a complete EPUB finalization, run `validate`, `build --require-complete`, and
+`check --epub-output --fail-on-warnings`. EPUB inspect, grep, and extract-text
+read the built archive directly and do not require shell archive tools.
 
 ## Human decisions
 
@@ -120,8 +125,9 @@ booktx translate insert ./book --profile PROFILE --task-id TASK \
   --file translations/PROFILE/ingest/TASK.block.txt --format block
 booktx translate lint-block ./book --profile PROFILE --file ingest/TASK.block.txt --format block
 booktx translate todo-next ./book --profile PROFILE --chapters 3 --batch-words 800 --write
-booktx translate todo-status ./book --profile PROFILE --latest
-booktx translate todo-resume ./book --profile PROFILE --latest --format block
+booktx translate todo-list ./book --profile PROFILE --state open --json
+booktx translate todo-status ./book --profile PROFILE --todo-id TODO_ID
+booktx translate todo-resume ./book --profile PROFILE --todo-id TODO_ID --format block
 booktx translate get-record ./book --profile PROFILE RECORD --json
 booktx translate compare ./book --profile PROFILE RECORD --versions 1.1,1.2
 booktx translate revise-record ./book --profile PROFILE RECORD --target "Revised target"

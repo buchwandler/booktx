@@ -660,7 +660,7 @@ def status_cmd(
         )
         return
     guide = build_guide_result(runtime, bundle=summary, project_arg=str(project_dir))
-    _print_status_human(summary, selected, guide)
+    _print_status_human(summary, selected, guide, mode=runtime.mode)
 
 
 @root_app.command(name="next")
@@ -747,11 +747,19 @@ def chapters_cmd(
     ),
 ) -> None:
     """Detect and list chapter ranges, or audit EPUB chapter completeness."""
-    try:
-        proj = load_project(project_dir)
-    except BooktxError as exc:
-        _handle_booktx_error(exc)
+    runtime = _load_runtime_or_exit(project_dir, profile=None, require_profile=False)
+    if runtime.mode.isolated_output:
+        message = (
+            "booktx chapters is project-root only. "
+            "Use `booktx status .` for profile-local state, or run "
+            "`booktx chapters PROJECT --audit` from the project root."
+        )
+        if as_json:
+            console.print_json(json.dumps({"error": message}))
+            raise typer.Exit(code=1)
+        _die(message)
         return
+    proj = runtime.project
     if audit:
         _run_chapter_audit(proj, as_json=as_json)
         return
@@ -1027,6 +1035,101 @@ def build(
             f"replacements={result.report.get('replacement_count', 0)} "
             f"unresolved_tokens={result.report.get('unresolved_token_count', 0)}"
         )
+
+
+@root_app.command()
+def finalize(
+    project_dir: Path = typer.Argument(..., help="Project directory."),
+    profile: str | None = typer.Option(
+        None, "--profile", help="Translation profile name."
+    ),
+    require_reviewed: bool = typer.Option(
+        False,
+        "--require-reviewed",
+        help="Require configured review coverage before building.",
+    ),
+    fail_on_warnings: bool = typer.Option(
+        True,
+        "--fail-on-warnings/--allow-warnings",
+        help="Fail finalization when validation or artifact checks warn.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit a stable JSON receipt."),
+) -> None:
+    """Validate, build, and verify one complete translated artifact."""
+    runtime = _load_runtime_or_exit(project_dir, profile=profile, require_profile=True)
+    proj = runtime.project
+    report = validate_project(proj)
+    receipt: dict[str, object] = {
+        "status": "failed"
+        if validation_exits_nonzero(report, fail_on_warnings=fail_on_warnings)
+        else "ready",
+        "profile": proj.profile,
+        "format": proj.config.format,
+        "validation": {
+            "chunks_checked": report.chunks_checked,
+            "passed": report.chunks_passed,
+            "errors": len(report.errors),
+            "warnings": len(report.warnings),
+            "missing": report.chunks_missing_translation,
+        },
+    }
+    review_snapshot = None
+    if (
+        proj.profile_config is not None
+        and proj.profile_config.quality_review is not None
+    ):
+        from booktx.workflows.review import build_review_status_snapshot
+
+        review_snapshot = build_review_status_snapshot(
+            proj, runtime, bundle=_project_status_snapshot(proj)
+        )
+        receipt["review"] = review_snapshot.model_dump(mode="json")
+    else:
+        receipt["review"] = {"enabled": False}
+
+    def emit() -> None:
+        if as_json:
+            console.print_json(json.dumps(receipt, ensure_ascii=False))
+            return
+        console.print(f"finalize: {receipt['status']}")
+        validation = receipt["validation"]
+        console.print(
+            f"validation: errors={validation['errors']} "
+            f"warnings={validation['warnings']} missing={validation['missing']}"
+        )
+        if receipt.get("output_path") is not None:
+            console.print(f"output: {receipt['output_path']}")
+
+    if receipt["status"] == "failed":
+        emit()
+        raise typer.Exit(code=1)
+
+    try:
+        result = build_project(
+            proj,
+            require_complete=True,
+            require_reviewed=require_reviewed,
+        )
+    except (BuildError, BooktxError) as exc:
+        receipt["status"] = "failed"
+        receipt["build_error"] = str(exc)
+        emit()
+        raise typer.Exit(code=1) from None
+
+    receipt["output_path"] = display_path(result.output_path, runtime.mode)
+    receipt["build"] = result.as_dict()
+    if proj.config.format == "epub":
+        findings, artifact = _epub_output_audit_findings(proj)
+        receipt["epub_output"] = artifact
+        blocking = any(f.severity == Severity.ERROR for f in findings) or (
+            fail_on_warnings and any(f.severity == Severity.WARN for f in findings)
+        )
+        if blocking:
+            receipt["status"] = "failed"
+            emit()
+            raise typer.Exit(code=1)
+    receipt["status"] = "passed"
+    emit()
 
 
 @root_app.command(name="pass-through")

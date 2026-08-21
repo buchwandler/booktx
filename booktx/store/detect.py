@@ -19,9 +19,9 @@ DEFAULT_NEW_PROFILE_STORE_FORMAT = StoreFormat.V3
 
 __all__ = [
     "DEFAULT_NEW_PROFILE_STORE_FORMAT",
+    "create_translation_store",
     "detect_store_format",
     "open_translation_store",
-    "create_translation_store",
 ]
 
 
@@ -44,7 +44,7 @@ def detect_store_format(project: Project) -> StoreFormat:
             )
         try:
             V3Manifest.model_validate_json(manifest_path.read_text("utf-8"))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise _err(
                 "invalid_translation_store",
                 f"v3 store manifest is invalid at {manifest_path.as_posix()}: {exc}",
@@ -54,7 +54,7 @@ def detect_store_format(project: Project) -> StoreFormat:
         return StoreFormat.MISSING
     try:
         raw = json.loads(legacy_path.read_text("utf-8"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _err(
             "invalid_translation_store",
             f"translation store is invalid at {legacy_path.as_posix()}: {exc}",

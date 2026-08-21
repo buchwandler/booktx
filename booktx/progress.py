@@ -12,14 +12,14 @@ from booktx.models import Chunk, Placeholder
 
 __all__ = [
     "WORD_RE",
-    "SourceRecordView",
-    "RecordProgress",
-    "ChunkProgress",
     "ChapterProgress",
+    "ChunkProgress",
+    "RecordProgress",
+    "SourceRecordView",
     "count_words",
-    "source_record_sha256",
     "load_source_chunks",
     "load_source_records",
+    "source_record_sha256",
 ]
 
 

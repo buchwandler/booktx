@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 
-import booktx.cli_support as cli_support
 import booktx.validate as validate_module
 import booktx.workflows.translate as translate_workflows
 import booktx.workflows.translate_query as translate_query_workflows
+from booktx import cli_support
 from booktx.cli_support import _store_record_payload
 from booktx.config import (
     current_source_sha256,

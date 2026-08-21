@@ -66,13 +66,13 @@ if TYPE_CHECKING:
     from booktx.validate import Finding
 
 __all__ = [
-    "SubmittedJudgeRecord",
     "JudgeInsertResult",
+    "SubmittedJudgeRecord",
+    "accept_judge_submission",
+    "lint_judge_submission",
     "parse_judge_block_submission",
     "parse_judge_decisions_submission",
     "parse_judge_json_submission",
-    "lint_judge_submission",
-    "accept_judge_submission",
 ]
 
 _BLOCK_HEADER_RE = re.compile(r"^##\s+(?P<id>\S+)\s*$")

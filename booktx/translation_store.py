@@ -27,9 +27,9 @@ if TYPE_CHECKING:
     from booktx.progress import SourceRecordView
 
 __all__ = [
-    "MigrationResult",
     "EffectiveCandidateError",
     "EffectiveCandidateSelection",
+    "MigrationResult",
     "active_candidate",
     "active_review_candidate",
     "effective_candidate_selection",
@@ -37,8 +37,8 @@ __all__ = [
     "ensure_store_record",
     "find_candidate",
     "find_review_candidate",
-    "migrate_legacy_store",
     "legacy_store_to_v2",
+    "migrate_legacy_store",
     "resolve_review_base",
     "review_candidate_is_stale",
     "review_chain_is_stale",
@@ -514,8 +514,6 @@ def upsert_translation_version(
         if context_notes_through_chapter_id is not None:
             existing.context_notes_through_chapter_id = context_notes_through_chapter_id
         candidate = existing
-    if record.active_version is None and candidate.status == "accepted":
-        record.active_version = candidate.version_ref
-    elif activate:
+    if record.active_version is None and candidate.status == "accepted" or activate:
         record.active_version = candidate.version_ref
     return candidate

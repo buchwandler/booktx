@@ -200,7 +200,6 @@ def _audit_inline_records(
             result.findings.append(
                 {"record_id": record_id, "rule": f.rule, "message": f.message}
             )
-    return
 
 
 def _single_full_wrapper(source: str) -> tuple[str, tuple[tuple[str, str], ...]] | None:

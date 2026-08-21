@@ -8,4 +8,4 @@ from __future__ import annotations
 
 from booktx.workflows.root import doctor_app, root_app
 
-__all__ = ["root_app", "doctor_app"]
+__all__ = ["doctor_app", "root_app"]

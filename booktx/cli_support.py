@@ -46,9 +46,11 @@ from booktx.context import (
     unapproved_required_questions,
     unresolved_required_questions,
 )
+from booktx.epub_verify import inspect_epub_archive
 from booktx.errors import BooktxError, _err
 from booktx.identity import identity_payload
 from booktx.models import TranslationIdentity
+from booktx.output_paths import OutputPathError, expected_epub_output_path
 from booktx.path_display import display_path
 from booktx.progress import SourceRecordView, load_source_records
 from booktx.record_refs import parse_record_ref
@@ -335,9 +337,12 @@ def _maybe_auto_export_indexes(
 
     should_export = export_index
     if indexes_cfg is not None:
-        if trigger == "review" and indexes_cfg.auto_export_after_review:
-            should_export = True
-        elif trigger == "translation" and indexes_cfg.auto_export_after_insert:
+        if (
+            trigger == "review"
+            and indexes_cfg.auto_export_after_review
+            or trigger == "translation"
+            and indexes_cfg.auto_export_after_insert
+        ):
             should_export = True
 
     if not should_export:
@@ -570,7 +575,7 @@ def _format_chunk_span(chunk_ids: list[str]) -> str:
     return format_chunk_span(chunk_ids)
 
 
-def _render_epub_audit_summary(audit: Any) -> None:
+def _render_epub_audit_summary(audit: Any, mode: RuntimeMode | None = None) -> None:
     """Print a recomputed EPUB chapter-audit summary when findings exist."""
     if audit is None or not getattr(audit, "findings", None):
         return
@@ -582,7 +587,11 @@ def _render_epub_audit_summary(audit: Any) -> None:
         f"(visible TOC vs extracted chapters).",
         soft_wrap=True,
     )
-    console.print("[dim]details: booktx chapters . --audit[/dim]", soft_wrap=True)
+    if mode is not None and mode.isolated_output:
+        hint = "run booktx chapters PROJECT --audit from the project root"
+    else:
+        hint = "booktx chapters PROJECT --audit"
+    console.print(f"[dim]details: {hint}[/dim]", soft_wrap=True)
 
 
 def _block_on_epub_audit_errors(bundle: StatusBundle) -> None:
@@ -601,7 +610,7 @@ def _block_on_epub_audit_errors(bundle: StatusBundle) -> None:
     _die(
         f"EPUB chapter audit reports {len(errors)} blocking error(s); refusing to "
         f"select new work until resolved. {preview}{suffix}\n"
-        "Inspect: booktx chapters . --audit"
+        "Inspect: run `booktx chapters PROJECT --audit` from the project root."
     )
 
 
@@ -663,9 +672,10 @@ def _print_status_human(
     bundle: StatusBundle,
     chapter: ChapterProgress | None,
     guide: GuideResult | None = None,
+    mode: RuntimeMode | None = None,
 ) -> None:
     print_status_human(bundle, chapter, guide)
-    _render_epub_audit_summary(getattr(bundle, "epub_audit", None))
+    _render_epub_audit_summary(getattr(bundle, "epub_audit", None), mode=mode)
 
 
 def _print_translate_task(
@@ -766,13 +776,7 @@ def _render_validate_findings(report: ValidationReport) -> None:
 def _epub_output_audit_findings(
     proj: Project,
 ) -> tuple[list[Finding], dict[str, object]]:
-    """Non-writing audit of the expected EPUB output path.
-
-    Returns validation-style findings plus a JSON payload. Errors clearly when
-    no output exists or the project is not an EPUB project.
-    """
-    from booktx.build import _output_path
-    from booktx.config import find_source_file
+    """Audit the expected EPUB artifact without building or modifying it."""
     from booktx.epub_output_policy import (
         PolicyError,
         audit_epub_output_policy,
@@ -792,8 +796,8 @@ def _epub_output_audit_findings(
         return findings, {"findings": [f.as_dict() for f in findings]}
 
     try:
-        source = find_source_file(proj, persist_discovery=False)
-    except Exception as exc:  # noqa: BLE001
+        out_path = expected_epub_output_path(proj)
+    except (OutputPathError, FileNotFoundError) as exc:
         findings.append(
             Finding(
                 chunk_id="epub_output",
@@ -804,7 +808,6 @@ def _epub_output_audit_findings(
         )
         return findings, {"findings": [f.as_dict() for f in findings]}
 
-    out_path = _output_path(proj, source, suffix=".epub")
     payload: dict[str, object] = {"output_path": str(out_path)}
     if not out_path.is_file():
         findings.append(
@@ -820,6 +823,103 @@ def _epub_output_audit_findings(
         )
         payload["findings"] = [f.as_dict() for f in findings]
         return findings, payload
+
+    try:
+        archive = inspect_epub_archive(out_path)
+    except BooktxError as exc:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_archive_invalid",
+                message=str(exc),
+            )
+        )
+        payload["archive"] = {"valid": False}
+        payload["findings"] = [f.as_dict() for f in findings]
+        return findings, payload
+
+    payload["archive"] = {
+        key: archive[key]
+        for key in (
+            "valid",
+            "crc_ok",
+            "crc_error_entry",
+            "mimetype",
+            "mimetype_valid",
+            "mimetype_stored",
+            "opf_path",
+            "opf_resolvable",
+            "entry_count",
+            "xhtml_entry_count",
+        )
+    }
+    unresolved = archive["unresolved_tokens"]
+    payload["placeholders"] = {
+        "unresolved_count": archive["unresolved_count"],
+        "entries": unresolved,
+    }
+
+    if not archive["crc_ok"]:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_crc_failed",
+                message=(
+                    f"EPUB entry {archive['crc_error_entry']!r} failed CRC verification"
+                ),
+            )
+        )
+    if archive["mimetype"] is None:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_mimetype_missing",
+                message="EPUB archive is missing the required mimetype entry.",
+            )
+        )
+    elif not archive["mimetype_valid"]:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_mimetype_invalid",
+                message=(
+                    f"EPUB mimetype is {archive['mimetype']!r}, "
+                    "expected 'application/epub+zip'"
+                ),
+            )
+        )
+    elif not archive["mimetype_stored"]:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_mimetype_compressed",
+                message="EPUB mimetype must be stored without compression.",
+            )
+        )
+    if not archive["opf_resolvable"]:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_opf_missing",
+                message="EPUB package document is not resolvable from container.xml.",
+            )
+        )
+    for item in unresolved:
+        findings.append(
+            Finding(
+                chunk_id="epub_output",
+                severity=Severity.ERROR,
+                rule="epub_unresolved_placeholder",
+                message=f"unresolved placeholder {item['token']} in {item['entry']}",
+                document_href=str(item["entry"]),
+            )
+        )
 
     try:
         policy = resolve_epub_output_policy(proj)
@@ -850,14 +950,14 @@ def _epub_output_audit_findings(
                 ),
             )
         )
-    for w in report.warnings:
+    for warning in report.warnings:
         findings.append(
             Finding(
                 chunk_id="epub_output",
                 severity=Severity.WARN,
                 rule="epub_output_css_conflict",
-                message=f"{w['entry']}: {w['declaration']}",
-                document_href=w.get("entry", ""),
+                message=f"{warning['entry']}: {warning['declaration']}",
+                document_href=warning.get("entry", ""),
             )
         )
     payload["findings"] = [f.as_dict() for f in findings]

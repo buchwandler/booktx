@@ -35,13 +35,13 @@ from booktx.versioning import canonical_json_sha256
 
 __all__ = [
     "ContextSyncError",
+    "ContextSyncPlan",
     "ContextSyncSource",
     "ContextSyncTargetPlan",
-    "ContextSyncPlan",
+    "apply_context_sync",
     "build_filtered_context_pack",
     "discover_sync_targets",
     "plan_context_sync",
-    "apply_context_sync",
 ]
 
 _SECTIONS = {"glossary", "style", "global-rules", "questions"}

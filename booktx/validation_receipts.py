@@ -17,9 +17,9 @@ if TYPE_CHECKING:
     from booktx.models import TranslationTask
 
 __all__ = [
+    "load_matching_validation_receipt",
     "validation_receipt_key",
     "write_validation_receipt",
-    "load_matching_validation_receipt",
 ]
 
 

@@ -15,8 +15,6 @@ The JSON report (``SourceAnalysisReport``) is authoritative; the Markdown view
 (``render_report_markdown``) is a generated readable rendering of that JSON.
 """
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 import json
@@ -39,37 +37,37 @@ if TYPE_CHECKING:
     from booktx.models import Chunk, Record
 
 __all__ = [
-    "IDENTITY_RULESET_VERSION",
     "ANALYSIS_RULESET_VERSION",
-    "COMMON_WORDS_VERSION",
     "ANALYSIS_SCHEMA",
+    "COMMON_WORDS_VERSION",
+    "IDENTITY_RULESET_VERSION",
     "SNAPSHOT_SCHEMA",
     "AnalysisCapabilities",
-    "SourceAnalysisSettings",
-    "SourceAnalysisOccurrence",
-    "SourceCandidate",
-    "SourceStyleMetrics",
-    "SourceAnalysisReport",
-    "SourceAnalysisSnapshot",
+    "CaseBucket",
     "PreparedRecord",
     "SnapshotRead",
     "SnapshotValidationError",
-    "prepare_record",
-    "prepare_records",
-    "candidate_id_from_identity",
-    "extracted_input_sha256",
-    "compute_analysis_sha256",
-    "source_analysis_preflight",
-    "build_source_analysis",
+    "SourceAnalysisOccurrence",
+    "SourceAnalysisReport",
+    "SourceAnalysisSettings",
+    "SourceAnalysisSnapshot",
+    "SourceCandidate",
+    "SourceStyleMetrics",
     "build_snapshot",
-    "validate_snapshot_payload",
-    "read_snapshot",
-    "read_canonical_report",
-    "render_report_markdown",
+    "build_source_analysis",
+    "candidate_id_from_identity",
     "common_word_set",
     "common_words_metadata",
+    "compute_analysis_sha256",
+    "extracted_input_sha256",
+    "prepare_record",
+    "prepare_records",
+    "read_canonical_report",
+    "read_snapshot",
+    "render_report_markdown",
     "resolve_engine",
-    "CaseBucket",
+    "source_analysis_preflight",
+    "validate_snapshot_payload",
 ]
 
 
@@ -279,21 +277,193 @@ class SourceAnalysisSnapshot(BaseModel):
 # corpus-internal signals and emit a warning.
 
 _COMMON_WORDS_EN = frozenset(
-    """
-    a an the and or but if then else of to in on at by for with from into onto
-    upon over under above below between among through during before after as is
-    are was were be been being am do does did doing have has had having i you he
-    she it we they me him her us them my your his its our their this that these
-    those there here not no nor so too very can could shall should will would may
-    might must ought about above across against along although among any both each
-    few more most other some such only own same than that them then thence there
-    these they thine this those thou though three thy til tis unto was wept were
-    what when where which while who whom why will with within without yet you your
-    hers ourselves yourself yourselves themselves itself myself himself everything
-    nothing someone anyone everyone none one two three four five six seven eight
-    nine ten first second third new old good bad great little big long short high
-    low own all another such
-    """.split()
+    [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "else",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "for",
+        "with",
+        "from",
+        "into",
+        "onto",
+        "upon",
+        "over",
+        "under",
+        "above",
+        "below",
+        "between",
+        "among",
+        "through",
+        "during",
+        "before",
+        "after",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "am",
+        "do",
+        "does",
+        "did",
+        "doing",
+        "have",
+        "has",
+        "had",
+        "having",
+        "i",
+        "you",
+        "he",
+        "she",
+        "it",
+        "we",
+        "they",
+        "me",
+        "him",
+        "her",
+        "us",
+        "them",
+        "my",
+        "your",
+        "his",
+        "its",
+        "our",
+        "their",
+        "this",
+        "that",
+        "these",
+        "those",
+        "there",
+        "here",
+        "not",
+        "no",
+        "nor",
+        "so",
+        "too",
+        "very",
+        "can",
+        "could",
+        "shall",
+        "should",
+        "will",
+        "would",
+        "may",
+        "might",
+        "must",
+        "ought",
+        "about",
+        "above",
+        "across",
+        "against",
+        "along",
+        "although",
+        "among",
+        "any",
+        "both",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+        "than",
+        "that",
+        "them",
+        "then",
+        "thence",
+        "there",
+        "these",
+        "they",
+        "thine",
+        "this",
+        "those",
+        "thou",
+        "though",
+        "three",
+        "thy",
+        "til",
+        "tis",
+        "unto",
+        "was",
+        "wept",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "while",
+        "who",
+        "whom",
+        "why",
+        "will",
+        "with",
+        "within",
+        "without",
+        "yet",
+        "you",
+        "your",
+        "hers",
+        "ourselves",
+        "yourself",
+        "yourselves",
+        "themselves",
+        "itself",
+        "myself",
+        "himself",
+        "everything",
+        "nothing",
+        "someone",
+        "anyone",
+        "everyone",
+        "none",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "first",
+        "second",
+        "third",
+        "new",
+        "old",
+        "good",
+        "bad",
+        "great",
+        "little",
+        "big",
+        "long",
+        "short",
+        "high",
+        "low",
+        "own",
+        "all",
+        "another",
+        "such",
+    ]
 )
 
 
@@ -1260,7 +1430,7 @@ def _detect_phrases(
             tokens = _tokenize_phrase_unit(prepared, unit)
             n = len(tokens)
             for size in range(2, ngram_max + 1):
-                for i in range(0, n - size + 1):
+                for i in range(n - size + 1):
                     window = tokens[i : i + size]
                     # Trim leading/trailing boundary (common/short) tokens.
                     lo, hi = 0, len(window)
@@ -1849,16 +2019,19 @@ def _classify_review_bucket(
         review_bucket = "domain_phrase"
         suggested_action = "add_advisory_glossary"
     elif (
-        accum.kind == "phrase"
-        and features.token_count <= 2
-        and any(token in runtime.generic_lemmas for token in accum.tokens)
-        and not (
-            features.contains_known_world_morpheme or features.matches_include_pattern
+        (
+            accum.kind == "phrase"
+            and features.token_count <= 2
+            and any(token in runtime.generic_lemmas for token in accum.tokens)
+            and not (
+                features.contains_known_world_morpheme
+                or features.matches_include_pattern
+            )
         )
+        or accum.kind == "phrase"
+        and features.token_count <= 3
+        and genericity >= 1.2
     ):
-        review_bucket = "no_action"
-        suppression_reason = "generic_phrase"
-    elif accum.kind == "phrase" and features.token_count <= 3 and genericity >= 1.2:
         review_bucket = "no_action"
         suppression_reason = "generic_phrase"
     elif genericity >= 1.0 and features.token_count == 1:

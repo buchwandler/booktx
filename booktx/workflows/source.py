@@ -311,9 +311,9 @@ def read_source_analysis(project: Project, *, isolated: bool) -> SourceAnalysisR
 
 __all__ = [
     "ChapterSourceRecords",
-    "SyncedProfile",
-    "SourceAnalysisResult",
     "SourceAnalysisRead",
+    "SourceAnalysisResult",
+    "SyncedProfile",
     "analyze_source",
     "build_source_status_payload",
     "collect_chapter_records",

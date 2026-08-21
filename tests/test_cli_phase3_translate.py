@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 """Behavioral tests for the consolidated translate command surface."""
 
 from __future__ import annotations

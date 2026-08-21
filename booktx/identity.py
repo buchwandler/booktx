@@ -21,8 +21,8 @@ from booktx.store import StoreFormat, detect_store_format, open_translation_stor
 from booktx.versioning import canonical_json_sha256, resolve_identity
 
 __all__ = [
-    "identity_payload",
     "context_identity_payload",
+    "identity_payload",
     "store_identity_payload",
 ]
 

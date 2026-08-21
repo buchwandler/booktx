@@ -29,17 +29,17 @@ if TYPE_CHECKING:
     from booktx.models import EpubSpanRef
 
 __all__ = [
-    "EpubTocEntry",
+    "CHAPTER_AUDIT_REPORT_NAME",
     "EpubTocAuditFinding",
     "EpubTocAuditResult",
+    "EpubTocEntry",
     "audit_epub_chapter_map",
-    "write_audit_report",
+    "chapter_ordinal",
+    "extract_toc_entries",
     "normalize_href",
     "resolve_relative_href",
-    "extract_toc_entries",
-    "chapter_ordinal",
     "toc_document_start_boundaries",
-    "CHAPTER_AUDIT_REPORT_NAME",
+    "write_audit_report",
 ]
 
 #: Filename written under ``.booktx/reports/``.

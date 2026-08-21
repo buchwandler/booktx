@@ -24,9 +24,9 @@ from .models import (
 from .paths import validate_relative_store_path
 
 __all__ = [
+    "_json_revision",
     "commit_v3_transaction",
     "recover_v3_transactions",
-    "_json_revision",
 ]
 
 
@@ -247,7 +247,7 @@ def _recover_one_transaction(store_root: Path, tx_dir: Path) -> None:
         journal = StoreTransactionJournal.model_validate_json(
             journal_path.read_text("utf-8")
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _err(
             "store_recovery_required",
             f"invalid transaction journal at {journal_path.as_posix()}: {exc}",
@@ -387,7 +387,7 @@ def commit_v3_transaction(
         )
     except BooktxError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _err("translation_store_commit_failed", str(exc)) from exc
     finally:
         _release_lock(lock_dir)

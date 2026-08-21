@@ -10,8 +10,8 @@ from xml.etree import ElementTree as ET
 from booktx.models import Placeholder
 from booktx.placeholders import protect_names
 
-INLINE_XHTML_CODEC: Final[Literal["epub-inline-xhtml:v1"]] = "epub-inline-xhtml:v1"
-PLAIN_CODEC: Final[Literal["plain:v1"]] = "plain:v1"
+INLINE_XHTML_CODEC: Final = "epub-inline-xhtml:v1"
+PLAIN_CODEC: Final = "plain:v1"
 
 BLOCK_TAGS = {
     "p",

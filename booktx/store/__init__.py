@@ -21,11 +21,7 @@ from .models import (
 )
 
 __all__ = [
-    "detect_store_format",
     "DEFAULT_NEW_PROFILE_STORE_FORMAT",
-    "create_translation_store",
-    "execute_store_migration",
-    "open_translation_store",
     "CompatibilityTranslationStoreRepository",
     "MaterializedStoreRecord",
     "MaterializedStoreSnapshot",
@@ -34,6 +30,10 @@ __all__ = [
     "StoreMigrationPlan",
     "StoreMigrationResult",
     "TranslationStoreRepository",
+    "create_translation_store",
+    "detect_store_format",
+    "execute_store_migration",
     "materialize_compatibility_store",
+    "open_translation_store",
     "write_materialized_compatibility_store",
 ]

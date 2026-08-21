@@ -34,12 +34,12 @@ from booktx.models import Placeholder
 from booktx.placeholders import SPANTX_RE, protect_names
 
 __all__ = [
-    "HtmlExtraction",
-    "TRANSLATABLE_BLOCK_TAGS",
     "SKIP_BLOCK_TAGS",
-    "parse_xhtml",
-    "extract_xhtml",
+    "TRANSLATABLE_BLOCK_TAGS",
+    "HtmlExtraction",
     "build_xhtml",
+    "extract_xhtml",
+    "parse_xhtml",
     "restore_block_content",
 ]
 

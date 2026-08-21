@@ -53,8 +53,8 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
-    "RevisionProvenanceIssue",
     "RevisionProvenanceAudit",
+    "RevisionProvenanceIssue",
     "audit_revision_provenance",
 ]
 

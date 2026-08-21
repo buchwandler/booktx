@@ -61,8 +61,9 @@ def test_isolated_render_contains_required_commands():
         "booktx translate todo-next . --chapters N --batch-words 800 --write "
         "--resume --format block" in text
     )
-    assert "booktx translate todo-status . --latest" in text
-    assert "booktx translate todo-resume . --latest --format block" in text
+    assert "booktx translate todo-list . --state open --json" in text
+    assert "todo-status --todo-id" in text
+    assert "booktx translate todo-resume . --todo-id TODO_ID" in text
     assert (
         "booktx translate lint-block . --task-id TASK"
         " --file ingest/TASK.block.txt --format block"
@@ -78,6 +79,8 @@ def test_isolated_render_contains_required_commands():
     )
     # bounded-todo completion does not require a whole-book build
     assert "booktx build . --require-complete" in text
+    assert "booktx check . --epub-output --fail-on-warnings" in text
+    assert "do not use unzip, zip, grep over archives" in text
 
 
 def test_isolated_render_has_no_forbidden_tokens():

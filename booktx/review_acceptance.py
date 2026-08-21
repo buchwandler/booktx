@@ -44,8 +44,8 @@ if TYPE_CHECKING:
     from booktx.validate import Finding
 
 __all__ = [
-    "SubmittedReview",
     "ReviewAcceptResult",
+    "SubmittedReview",
     "accept_review_submission",
 ]
 

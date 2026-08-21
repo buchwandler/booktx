@@ -68,27 +68,27 @@ if TYPE_CHECKING:
     from booktx.config import Project
 
 __all__ = [
-    "ContextPackSource",
-    "SeriesContextPack",
+    "CORE_QUESTION_STYLE_FIELDS",
+    "ContextPackError",
     "ContextPackImportFinding",
     "ContextPackImportResult",
-    "ContextPackError",
+    "ContextPackSource",
     "PackConflictMode",
     "PackQuestionInclusion",
-    "CORE_QUESTION_STYLE_FIELDS",
+    "SeriesContextPack",
     "collapse_whitespace",
+    "export_context_pack",
     "glossary_identity",
-    "question_identity",
+    "has_unfinished_tasks",
+    "import_context_pack",
     "normalize_glossary_entry",
+    "parse_context_pack",
+    "plan_context_pack_import",
+    "question_identity",
+    "read_context_pack",
     "validate_pack_glossary",
     "validate_pack_questions",
-    "parse_context_pack",
-    "read_context_pack",
     "write_context_pack",
-    "export_context_pack",
-    "plan_context_pack_import",
-    "import_context_pack",
-    "has_unfinished_tasks",
 ]
 
 
@@ -402,7 +402,7 @@ def parse_context_pack(data: str | bytes) -> SeriesContextPack:
         pack = SeriesContextPack.model_validate_json(data)
     except ContextPackError:
         raise
-    except Exception as exc:  # noqa: BLE001 - surface as pack error with code
+    except Exception as exc:
         raise ContextPackError(
             "pack_parse_error", f"invalid series context pack: {exc}"
         ) from exc

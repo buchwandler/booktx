@@ -18,6 +18,7 @@ from booktx.config import (
     translation_todo_dir,
     translation_todo_json_path,
 )
+from booktx.context import load_context
 from booktx.models import TranslationTodo
 from booktx.status import StatusBundle
 from booktx.todo_lifecycle import load_todo_lifecycle
@@ -29,14 +30,15 @@ if TYPE_CHECKING:
 
 __all__ = [
     "TodoChapterStatus",
-    "TodoValidationStatus",
     "TodoStatusSnapshot",
-    "current_todo_chapter_id",
-    "load_translation_todo",
-    "list_translation_todos",
-    "latest_incomplete_todo",
+    "TodoValidationStatus",
     "build_todo_status",
+    "current_todo_chapter_id",
+    "latest_incomplete_todo",
+    "list_translation_todos",
+    "load_translation_todo",
     "recreate_todo_command",
+    "required_chapter_note",
 ]
 
 
@@ -149,7 +151,7 @@ def load_translation_todo(project: Project, todo_id: str) -> TranslationTodo | N
             "invalid_todo",
             f"todo file {todo_id} is invalid: {exc}",
         ) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _err("invalid_todo", f"todo {todo_id} is invalid: {exc}") from exc
 
 
@@ -174,7 +176,7 @@ def list_translation_todos(project: Project) -> list[TranslationTodo]:
                 "invalid_todo",
                 f"todo file {path.name} is invalid: {exc}",
             ) from exc
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise _err(
                 "invalid_todo",
                 f"todo file {path.name} is invalid: {exc}",
@@ -275,6 +277,33 @@ def current_todo_chapter_id(todo: TranslationTodo, bundle: StatusBundle) -> str 
     return None
 
 
+def required_chapter_note(
+    project: Project, todo: TranslationTodo, bundle: StatusBundle
+) -> tuple[str, str] | None:
+    """Return the first completed planned chapter missing its context note."""
+    current_id = current_todo_chapter_id(todo, bundle)
+    if current_id is None:
+        return None
+    planned_ids = [chapter.chapter_id for chapter in todo.chapters]
+    try:
+        current_index = planned_ids.index(current_id)
+    except ValueError:
+        return None
+    context = load_context(project)
+    noted_ids = (
+        {note.chapter_id for note in context.chapter_contexts} if context else set()
+    )
+    for planned in todo.chapters[:current_index]:
+        live = bundle.index.chapters_by_id.get(planned.chapter_id)
+        if (
+            live is not None
+            and live.records_remaining == 0
+            and planned.chapter_id not in noted_ids
+        ):
+            return planned.chapter_id, planned.title
+    return None
+
+
 def build_todo_status(
     project: Project,
     todo: TranslationTodo,
@@ -323,9 +352,7 @@ def build_todo_status(
     state = "ready"
     blocking_reason: str | None = None
     next_safe_command: str | None = None
-    if goal_complete:
-        state = "complete"
-    elif source_drifted:
+    if source_drifted:
         state = "blocked"
         blocking_reason = "source drifted since the todo was created"
         next_safe_command = "booktx extract ."
@@ -353,6 +380,8 @@ def build_todo_status(
         next_safe_command = check_command(
             project, mode=mode, chapter_id=scope_chapter_id, fail_on_warnings=True
         )
+    elif goal_complete:
+        state = "complete"
     elif current is not None:
         next_safe_command = translate_todo_resume_command(
             project,

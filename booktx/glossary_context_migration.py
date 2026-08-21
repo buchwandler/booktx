@@ -11,10 +11,10 @@ from booktx.termbase import TermbaseEntry, TranslationTermbase
 
 __all__ = [
     "GlossaryContextMigrationResult",
-    "context_glossary_to_termbase_entry",
-    "termbase_entry_to_context_glossary",
-    "plan_context_glossary_migration",
     "apply_context_glossary_migration",
+    "context_glossary_to_termbase_entry",
+    "plan_context_glossary_migration",
+    "termbase_entry_to_context_glossary",
 ]
 
 

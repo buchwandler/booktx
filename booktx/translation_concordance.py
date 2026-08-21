@@ -24,9 +24,9 @@ if TYPE_CHECKING:
     from booktx.status import StatusBundle
 
 __all__ = [
-    "ConcordanceQuery",
-    "ConcordanceHit",
     "ConcordanceGroup",
+    "ConcordanceHit",
+    "ConcordanceQuery",
     "TranslationConcordanceReport",
     "build_concordance",
     "render_concordance_human",

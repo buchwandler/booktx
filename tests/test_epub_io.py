@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -12,7 +13,12 @@ from typer.testing import CliRunner
 
 from booktx.chunking import spans_to_chunks
 from booktx.cli import app
-from booktx.config import load_project
+from booktx.config import (
+    create_profile,
+    find_source_file,
+    init_source_project,
+    load_project,
+)
 from booktx.epub_io import build_epub, extract_epub, read_epub
 from booktx.placeholders import restore
 
@@ -512,3 +518,77 @@ def test_epub_grep_no_files(tmp_path: Path):
     )
     assert res.exit_code != 0
     assert "no XHTML files" in res.output
+
+
+def _built_epub_profile(tmp_path: Path) -> Path:
+
+    root = tmp_path / "built-book"
+    project = init_source_project(root)
+    _make_epub(str(project.source_dir / "book.epub"))
+    find_source_file(project)
+    create_profile(root, "p", target_language="de", target_locale="de-DE")
+    assert _runner.invoke(app, ["extract", str(root)]).exit_code == 0
+    profile = load_project(root, profile="p")
+    assert profile.translated_dir is not None
+    profile.translated_dir.mkdir(parents=True, exist_ok=True)
+    for chunk_path in profile.chunks():
+        chunk = json.loads(chunk_path.read_text("utf-8"))
+        payload = {
+            "chunk_id": chunk["chunk_id"],
+            "records": [
+                {"id": record["id"], "target": record["source"]}
+                for record in chunk["records"]
+            ],
+        }
+        (profile.translated_dir / chunk_path.name).write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+    result = _runner.invoke(
+        app, ["build", str(root), "--profile", "p", "--require-complete"]
+    )
+    assert result.exit_code == 0, result.output
+    return root
+
+
+def test_epub_commands_read_built_archive_and_filter_metadata_chapter(
+    tmp_path: Path,
+) -> None:
+    project_dir = _built_epub_profile(tmp_path)
+    inspect = _runner.invoke(
+        app,
+        [
+            "epub",
+            "inspect",
+            str(project_dir),
+            "--profile",
+            "p",
+            "--chapter",
+            "0001",
+        ],
+    )
+    assert inspect.exit_code == 0, inspect.output
+    assert "EPUB/ch1.xhtml" in inspect.output
+    assert "EPUB/ch2.xhtml" not in inspect.output
+    assert not (project_dir / "translations" / "p" / "output" / "EPUB").is_dir()
+
+    grep = _runner.invoke(
+        app, ["epub", "grep", str(project_dir), "--profile", "p", "Alice"]
+    )
+    assert grep.exit_code == 0, grep.output
+    assert "EPUB/ch1.xhtml" in grep.output
+
+    extracted = _runner.invoke(
+        app,
+        [
+            "epub",
+            "extract-text",
+            str(project_dir),
+            "--profile",
+            "p",
+            "--chapter",
+            "0002",
+        ],
+    )
+    assert extracted.exit_code == 0, extracted.output
+    assert "The end." in extracted.output
+    assert "Alice met" not in extracted.output

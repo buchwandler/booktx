@@ -34,13 +34,13 @@ if TYPE_CHECKING:
     from booktx.judge_sources import JudgeSourceProfileView
 
 __all__ = [
-    "parse_sources_csv",
-    "resolve_selection_sources",
-    "require_selection_profile",
-    "validate_judge_source_profile",
-    "selected_record_ids",
-    "record_has_candidate_gap",
     "collect_source_candidates",
+    "parse_sources_csv",
+    "record_has_candidate_gap",
+    "require_selection_profile",
+    "resolve_selection_sources",
+    "selected_record_ids",
+    "validate_judge_source_profile",
 ]
 
 

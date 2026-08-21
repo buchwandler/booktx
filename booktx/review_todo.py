@@ -41,15 +41,15 @@ if TYPE_CHECKING:
     from booktx.status import StatusBundle
 
 __all__ = [
-    "make_review_todo_id",
-    "build_review_todo",
-    "write_review_todo",
-    "load_review_todo",
-    "list_review_todos",
     "ReviewTodoChapterStatus",
     "ReviewTodoStatus",
+    "build_review_todo",
     "compute_review_todo_status",
+    "list_review_todos",
+    "load_review_todo",
+    "make_review_todo_id",
     "resume_review_todo",
+    "write_review_todo",
 ]
 
 
@@ -405,7 +405,7 @@ def load_review_todo(project: Project, review_todo_id: str) -> ReviewTodo | None
             "invalid_review_todo",
             f"review todo file {review_todo_id} is invalid: {exc}",
         ) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _err(
             "invalid_review_todo", f"review todo {review_todo_id} is invalid: {exc}"
         ) from exc
@@ -430,7 +430,7 @@ def list_review_todos(project: Project) -> list[ReviewTodo]:
                 "invalid_review_todo",
                 f"review todo file {path.name} is invalid: {exc}",
             ) from exc
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise _err(
                 "invalid_review_todo",
                 f"review todo file {path.name} is invalid: {exc}",

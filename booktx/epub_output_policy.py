@@ -22,18 +22,18 @@ from booktx.models import EpubOutputConfig
 
 __all__ = [
     "POLICY_STYLE_ID",
-    "PolicyError",
+    "CssConflict",
     "EpubOutputPolicy",
     "EpubOutputPolicyReport",
-    "CssConflict",
+    "PolicyError",
+    "audit_epub_output_policy",
+    "build_policy_css",
+    "reconcile_css_injection",
     "resolve_epub_output_policy",
     "resolve_language_tag",
-    "validate_language_tag",
-    "build_policy_css",
     "scan_css_conflicts",
     "to_text2epub_output_rewrite",
-    "reconcile_css_injection",
-    "audit_epub_output_policy",
+    "validate_language_tag",
 ]
 
 # The author policy is injected under this stable id so it can be replaced
@@ -307,12 +307,12 @@ def build_policy_css(hyphenation: HyphenationMode) -> str:
 # a conservative regex pass over linked and inline CSS; it cannot determine
 # computed style, so conflicts are reported as warnings.
 _CONFLICT_PATTERNS = [
-    re.compile(r"-epub-word-break\s*:\s*break-all", re.I),
-    re.compile(r"(?<![-\w])word-break\s*:\s*break-all", re.I),
-    re.compile(r"overflow-wrap\s*:\s*anywhere", re.I),
-    re.compile(r"word-wrap\s*:\s*break-word", re.I),
-    re.compile(r"-epub-hyphens\s*:\s*[^;}{]+", re.I),
-    re.compile(r"(?<![-\w])hyphens\s*:\s*[^;}{]+", re.I),
+    re.compile(r"-epub-word-break\s*:\s*break-all", re.IGNORECASE),
+    re.compile(r"(?<![-\w])word-break\s*:\s*break-all", re.IGNORECASE),
+    re.compile(r"overflow-wrap\s*:\s*anywhere", re.IGNORECASE),
+    re.compile(r"word-wrap\s*:\s*break-word", re.IGNORECASE),
+    re.compile(r"-epub-hyphens\s*:\s*[^;}{]+", re.IGNORECASE),
+    re.compile(r"(?<![-\w])hyphens\s*:\s*[^;}{]+", re.IGNORECASE),
 ]
 
 # Any of the relevant declarations escalated with !important can override the
@@ -320,7 +320,7 @@ _CONFLICT_PATTERNS = [
 _IMPORTANT_RE = re.compile(
     r"(?:-epub-hyphens|hyphens|-epub-word-break|word-break|overflow-wrap|word-wrap)"
     r"\s*:[^;}{]*!\s*important",
-    re.I,
+    re.IGNORECASE,
 )
 
 _CSS_EXTENSIONS = (".css",)
@@ -446,7 +446,7 @@ def is_effectively_preserving(policy: EpubOutputPolicy) -> bool:
 # --------------------------------------------------------------------------- #
 
 _LANG_ATTR_RE = re.compile(
-    r"<html\b[^>]*\b(?:xml:lang|lang)\s*=\s*\"([^\"]+)\"", re.I | re.S
+    r"<html\b[^>]*\b(?:xml:lang|lang)\s*=\s*\"([^\"]+)\"", re.IGNORECASE | re.DOTALL
 )
 
 
@@ -618,30 +618,32 @@ def _find_opf_path(zf: ZipFile, names: list[str]) -> str | None:
 
 def _opf_primary_language(opf_text: str) -> str | None:
     match = re.search(
-        r"<dc:language[^>]*>\s*([^<]+?)\s*</dc:language>", opf_text, re.I | re.S
+        r"<dc:language[^>]*>\s*([^<]+?)\s*</dc:language>",
+        opf_text,
+        re.IGNORECASE | re.DOTALL,
     )
     return match.group(1).strip() if match else None
 
 
 def _root_lang_matches(text: str, language: str) -> bool:
-    html_match = re.search(r"<html\b[^>]*>", text, re.I | re.S)
+    html_match = re.search(r"<html\b[^>]*>", text, re.IGNORECASE | re.DOTALL)
     if html_match is None:
         return False
     tag = html_match.group(0)
-    lang = re.search(r'\blang\s*=\s*"([^"]+)"', tag, re.I)
-    xml_lang = re.search(r'\bxml:lang\s*=\s*"([^"]+)"', tag, re.I)
+    lang = re.search(r'\blang\s*=\s*"([^"]+)"', tag, re.IGNORECASE)
+    xml_lang = re.search(r'\bxml:lang\s*=\s*"([^"]+)"', tag, re.IGNORECASE)
     if lang is None or xml_lang is None:
         return False
     return lang.group(1) == language and xml_lang.group(1) == language
 
 
 def _body_lang_matches(text: str, language: str) -> bool:
-    body_match = re.search(r"<body\b[^>]*>", text, re.I | re.S)
+    body_match = re.search(r"<body\b[^>]*>", text, re.IGNORECASE | re.DOTALL)
     if body_match is None:
         return False
     tag = body_match.group(0)
-    lang = re.search(r'\blang\s*=\s*"([^"]+)"', tag, re.I)
-    xml_lang = re.search(r'\bxml:lang\s*=\s*"([^"]+)"', tag, re.I)
+    lang = re.search(r'\blang\s*=\s*"([^"]+)"', tag, re.IGNORECASE)
+    xml_lang = re.search(r'\bxml:lang\s*=\s*"([^"]+)"', tag, re.IGNORECASE)
     if "lang" not in tag:
         # No lang attributes on body at all: treat as not matching when patching
         # is requested.
@@ -652,7 +654,7 @@ def _body_lang_matches(text: str, language: str) -> bool:
 
 
 def _is_fixed_layout(text: str) -> bool:
-    head_match = re.search(r"<head\b.*?</head>", text, re.I | re.S)
+    head_match = re.search(r"<head\b.*?</head>", text, re.IGNORECASE | re.DOTALL)
     if head_match is None:
         return False
     head = head_match.group(0)
@@ -661,6 +663,6 @@ def _is_fixed_layout(text: str) -> bool:
             r"<meta[^>]+name\s*=\s*[\"']viewport[\"'][^>]+content\s*=\s*[\"']"
             r"[^\"']*(?:width\s*=\s*\d+|height\s*=\s*\d+)",
             head,
-            re.I,
+            re.IGNORECASE,
         )
     )

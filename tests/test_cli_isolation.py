@@ -1322,3 +1322,16 @@ def test_agents_isolated_template_distinguishes_bounded_and_complete_book(
     assert "booktx validate . --fail-on-warnings" in text
     assert "booktx build . --require-complete" in text
     assert "--require-reviewed" in text
+
+
+def test_chapters_audit_from_profile_root_reports_project_root_only(
+    monkeypatch, tmp_path: Path
+) -> None:
+    project_dir, profile_root = _make_project(tmp_path)
+    monkeypatch.chdir(profile_root)
+    result = runner.invoke(app, ["chapters", ".", "--audit"])
+    assert result.exit_code == 1
+    assert "project-root only" in result.output
+    assert "booktx status ." in result.output
+    assert str(project_dir) not in result.output
+    assert ".." not in result.output

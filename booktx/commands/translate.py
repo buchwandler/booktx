@@ -255,8 +255,11 @@ def translate_todo_next(
     profile: str | None = typer.Option(
         None, "--profile", help="Translation profile name."
     ),
-    chapters: int = typer.Option(
-        3, "--chapters", min=1, help="Number of incomplete chapters to complete."
+    chapters: int | None = typer.Option(
+        None,
+        "--chapters",
+        min=1,
+        help="Number of incomplete chapters to complete (default: 3).",
     ),
     batch_words: int = typer.Option(
         800, "--batch-words", min=1, help="Source-word budget per translate next batch."
@@ -310,6 +313,11 @@ def translate_todo_next(
         "--supersede-overlapping",
         help="Explicitly supersede open overlapping todos when writing.",
     ),
+    all_remaining: bool = typer.Option(
+        False,
+        "--all-remaining",
+        help="Select every incomplete chapter from the requested start point.",
+    ),
 ) -> None:
     """"""
     translate_todo_next_workflow(
@@ -328,6 +336,7 @@ def translate_todo_next(
         output_format,
         as_json,
         supersede_overlapping,
+        all_remaining,
     )
 
 
