@@ -1,0 +1,118 @@
+---
+schema_version: 2
+object_type: release_entry
+versioning:
+  schema_version: 1
+  revision: 1
+entry_id: entry-0007
+release_version: v0.5.2
+kind: added
+summary: Added explicit work-item discovery and built-EPUB verification commands
+status: accepted
+audience: null
+scopes: []
+source_refs:
+  - git:6a5f0585336ce5737aaf8113e95aa7180419dadd
+paths:
+  - booktx/acceptance.py
+  - booktx/agent_todo.py
+  - booktx/agents_md.py
+  - booktx/build.py
+  - booktx/chunking.py
+  - booktx/cli.py
+  - booktx/cli_support.py
+  - booktx/command_catalog.py
+  - booktx/command_hints.py
+  - booktx/commands/context.py
+  - booktx/commands/epub.py
+  - booktx/commands/profile.py
+  - booktx/commands/root.py
+  - booktx/commands/translate.py
+  - booktx/config.py
+  - booktx/context.py
+  - booktx/context_packs.py
+  - booktx/context_sync.py
+  - booktx/epub_inline_xhtml.py
+  - booktx/epub_io.py
+  - booktx/epub_manifest.py
+  - booktx/epub_output_policy.py
+  - booktx/epub_preflight.py
+  - booktx/epub_toc_audit.py
+  - booktx/epub_verify.py
+  - booktx/glossary_context_migration.py
+  - booktx/glossary_diagnostics.py
+  - booktx/html_io.py
+  - booktx/identity.py
+  - booktx/inline_audit.py
+  - booktx/judge_acceptance.py
+  - booktx/judge_provenance.py
+  - booktx/judge_sources.py
+  - booktx/judge_store.py
+  - booktx/judge_tasks.py
+  - booktx/linguistic_audit.py
+  - booktx/markdown_io.py
+  - booktx/models.py
+  - booktx/output_paths.py
+  - booktx/path_display.py
+  - booktx/placeholders.py
+  - booktx/progress.py
+  - booktx/qa_scan.py
+  - booktx/review_acceptance.py
+  - booktx/review_status.py
+  - booktx/review_tasks.py
+  - booktx/review_todo.py
+  - booktx/runtime.py
+  - booktx/selection_mode.py
+  - booktx/source_analysis.py
+  - booktx/status.py
+  - booktx/store/__init__.py
+  - booktx/store/detect.py
+  - booktx/store/migration.py
+  - booktx/store/models.py
+  - booktx/store/transactions.py
+  - booktx/store/v3.py
+  - booktx/submissions.py
+  - booktx/tasks.py
+  - booktx/termbase.py
+  - booktx/termbase_audit.py
+  - booktx/todo_lifecycle.py
+  - booktx/todo_resume.py
+  - booktx/todo_status.py
+  - booktx/translation_concordance.py
+  - booktx/translation_store.py
+  - booktx/validate.py
+  - booktx/validation_receipts.py
+  - booktx/workflows/agents.py
+  - booktx/workflows/context.py
+  - booktx/workflows/epub.py
+  - booktx/workflows/glossary.py
+  - booktx/workflows/judge.py
+  - booktx/workflows/review.py
+  - booktx/workflows/root.py
+  - booktx/workflows/series.py
+  - booktx/workflows/source.py
+  - booktx/workflows/termbase.py
+  - booktx/workflows/translate.py
+  - docs/agent-workflow.md
+  - docs/commands.md
+  - docs/epub.md
+  - skills/booktx/SKILL.md
+  - tests/test_agents_md.py
+  - tests/test_chapters.py
+  - tests/test_cli.py
+  - tests/test_cli_isolation.py
+  - tests/test_cli_phase3_translate.py
+  - tests/test_cli_translate_todo.py
+  - tests/test_command_catalog.py
+  - tests/test_epub_io.py
+  - tests/test_epub_toc_audit.py
+  - tests/test_store_backend_v3.py
+issues: []
+prs: []
+sources:
+  - git:6a5f0585336ce5737aaf8113e95aa7180419dadd
+contributors: []
+breaking: false
+internal: false
+order: 7
+---

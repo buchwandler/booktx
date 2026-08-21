@@ -1,0 +1,426 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.5.2
+git_base_ref: v0.5.1
+git_base_sha: b4af027e3a3370f0729a415b80f9a6ee31a1452d
+git_head_ref: HEAD
+git_head_sha: 6a5f0585336ce5737aaf8113e95aa7180419dadd
+git_range: b4af027e3a3370f0729a415b80f9a6ee31a1452d..6a5f0585336ce5737aaf8113e95aa7180419dadd
+commit_count: 7
+rows:
+  - sha: c176bc173a286003cddf35ffcaa44cde35c35c2e
+    source_ref: git:c176bc173a286003cddf35ffcaa44cde35c35c2e
+    short_sha: c176bc1
+    changed_paths:
+      - booktx/acceptance.py
+      - booktx/agent_todo.py
+      - booktx/agents_md.py
+      - booktx/command_hints.py
+      - booktx/commands/translate.py
+      - booktx/judge_tasks.py
+      - booktx/linguistic_audit.py
+      - booktx/models.py
+      - booktx/quality_backends/__init__.py
+      - booktx/quality_backends/languagetool.py
+      - booktx/quality_benchmark.py
+      - booktx/tasks.py
+      - booktx/todo_resume.py
+      - booktx/todo_status.py
+      - booktx/translation_quality.py
+      - booktx/validation_receipts.py
+      - booktx/workflows/agents.py
+      - booktx/workflows/translate.py
+      - docs/agent-workflow.md
+      - docs/commands.md
+      - docs/translation-contract.md
+      - pyproject.toml
+      - skills/booktx/SKILL.md
+      - tests/fixtures/translation_quality/book6.json
+      - tests/test_quality_benchmark.py
+      - tests/test_translation_batch_budget.py
+      - tests/test_translation_quality.py
+      - tests/test_validation_receipts.py
+    stats:
+      files_changed: 0
+      insertions: 1357
+      deletions: 82
+    inspected: true
+    inspected_paths:
+      - booktx/translation_quality.py
+      - booktx/quality_backends/languagetool.py
+      - booktx/quality_benchmark.py
+      - booktx/acceptance.py
+      - booktx/workflows/translate.py
+      - docs/translation-contract.md
+      - docs/commands.md
+      - tests/test_translation_quality.py
+      - tests/test_quality_benchmark.py
+    observed_behavior:
+      Introduces a shared submission-quality policy, target-language
+      self-review prompts, deterministic linguistic checks, an optional explicitly configured
+      local LanguageTool backend, and quality benchmark coverage across translation
+      workflows.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: new concept to improve translation quality"
+    target_entry_id: entry-0001
+    notes: Covered by the translation quality release entry.
+  - sha: d47cc01abec9374439948ae82a09730a680c0b15
+    source_ref: git:d47cc01abec9374439948ae82a09730a680c0b15
+    short_sha: d47cc01
+    changed_paths:
+      - booktx/acceptance.py
+      - booktx/agent_todo.py
+      - booktx/linguistic_audit.py
+      - booktx/translation_quality.py
+      - tests/test_translation_batch_budget.py
+    stats:
+      files_changed: 0
+      insertions: 25
+      deletions: 37
+    inspected: true
+    inspected_paths:
+      - booktx/acceptance.py
+      - booktx/linguistic_audit.py
+      - booktx/translation_quality.py
+      - tests/test_translation_batch_budget.py
+    observed_behavior:
+      Applies formatting and lint corrections to the translation-quality
+      implementation and its focused tests without changing the public workflow contract.
+    public_impact: internal
+    decision: internal
+    evidence_subject: "chore: pre-commit"
+    target_entry_id: entry-0002
+    notes: Formatting-only maintenance; retained as an internal release record.
+  - sha: 383e7b520edfa973c9e630f26da782f1140f5ebd
+    source_ref: git:383e7b520edfa973c9e630f26da782f1140f5ebd
+    short_sha: 383e7b5
+    changed_paths:
+      - booktx/acceptance.py
+      - booktx/workflows/translate.py
+      - tests/test_acceptance.py
+      - tests/test_cli_translate_todo.py
+      - tests/test_translation_quality.py
+    stats:
+      files_changed: 0
+      insertions: 242
+      deletions: 43
+    inspected: true
+    inspected_paths:
+      - booktx/acceptance.py
+      - booktx/workflows/translate.py
+      - tests/test_acceptance.py
+      - tests/test_cli_translate_todo.py
+      - tests/test_translation_quality.py
+    observed_behavior:
+      Unifies the quality audit used by lint and todo submission, blocks
+      strict quality failures before persistence, and adds regression coverage for advisory
+      and blocking findings.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "fix: new workflow fix"
+    target_entry_id: entry-0003
+    notes: Covered by the acceptance quality-gate release entry.
+  - sha: c58ed292f118aea79bc88dd87a26d493300537c9
+    source_ref: git:c58ed292f118aea79bc88dd87a26d493300537c9
+    short_sha: c58ed29
+    changed_paths:
+      - booktx/cli_support.py
+      - booktx/collection_utils.py
+      - booktx/commands/judge.py
+      - booktx/commands/judge_presenters.py
+      - booktx/config.py
+      - booktx/context.py
+      - booktx/context_packs.py
+      - booktx/context_sync.py
+      - booktx/glossary_match.py
+      - booktx/identity.py
+      - booktx/inline_audit.py
+      - booktx/judge_acceptance.py
+      - booktx/judge_provenance.py
+      - booktx/judge_sources.py
+      - booktx/judge_store.py
+      - booktx/path_display.py
+      - booktx/source_analysis.py
+      - booktx/source_analysis_context.py
+      - booktx/source_analysis_render.py
+      - booktx/source_analysis_snapshot.py
+      - booktx/store/models.py
+      - booktx/store/transactions.py
+      - booktx/store/v1_v2.py
+      - booktx/store/v3.py
+      - booktx/translation_concordance.py
+      - booktx/validate.py
+      - booktx/workflows/judge.py
+      - booktx/workflows/profile.py
+      - booktx/workflows/root.py
+      - booktx/workflows/termbase.py
+      - booktx/workflows/translate.py
+      - docs/agent-workflow.md
+      - docs/api.md
+      - docs/architecture.md
+      - docs/concepts.md
+      - docs/development.md
+      - docs/profiles.md
+      - docs/project-layout.md
+      - docs/translation-contract.md
+      - docs/translation-store.md
+      - docs/troubleshooting.md
+      - tests/test_config.py
+      - tests/test_epub_inline_xhtml.py
+      - tests/test_store_backend_parity.py
+      - tests/test_store_backend_v3.py
+      - tests/test_validate.py
+    stats:
+      files_changed: 0
+      insertions: 1813
+      deletions: 915
+    inspected: true
+    inspected_paths:
+      - booktx/store/models.py
+      - booktx/store/v3.py
+      - booktx/store/migration.py
+      - booktx/source_analysis_render.py
+      - booktx/source_analysis_snapshot.py
+      - booktx/workflows/translate.py
+      - docs/translation-store.md
+      - tests/test_store_backend_v3.py
+    observed_behavior:
+      Refactors translation, review, and source-analysis workflows
+      around backend-neutral store interfaces, compatibility snapshots, transactional
+      v3 writes, and reusable source-analysis rendering and snapshot helpers.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: stop to matialize always v2"
+    target_entry_id: entry-0004
+    notes: Covered by the translation-store integration release entry.
+  - sha: c4612ff20401857edeb2a0b1f3317fb3b8e4ca9c
+    source_ref: git:c4612ff20401857edeb2a0b1f3317fb3b8e4ca9c
+    short_sha: c4612ff
+    changed_paths:
+      - .ledger/archledger/data/document-state.json
+      - .ledger/archledger/data/profiles/arc42/sections/content-0005.md
+      - .ledger/archledger/data/records/building_blocks/block-0113.md
+      - .ledger/archledger/data/records/building_blocks/block-0114.md
+      - .ledger/archledger/data/records/building_blocks/block-0115.md
+      - .ledger/archledger/data/records/building_blocks/block-0116.md
+      - .ledger/archledger/data/records/building_blocks/block-0117.md
+      - .ledger/archledger/data/records/building_blocks/block-0118.md
+      - .ledger/archledger/data/records/building_blocks/block-0119.md
+      - .ledger/archledger/data/records/glossary/glossary-0120.md
+      - .ledger/archledger/data/records/glossary/glossary-0121.md
+      - .ledger/archledger/data/records/glossary/glossary-0122.md
+      - .ledger/archledger/data/records/glossary/glossary-0123.md
+      - .ledger/archledger/data/source-state.json
+      - .ledger/archledger/data/storage.yaml
+      - ARCHITECTURE.md
+      - booktx/identity.py
+      - booktx/inline_audit.py
+      - booktx/source_analysis_context.py
+      - tests/test_epub_inline_xhtml.py
+      - tests/test_store_backend_parity.py
+      - tests/test_store_backend_v3.py
+    stats:
+      files_changed: 0
+      insertions: 607
+      deletions: 536
+    inspected: true
+    inspected_paths:
+      - ARCHITECTURE.md
+      - booktx/identity.py
+      - booktx/inline_audit.py
+      - booktx/source_analysis_context.py
+      - tests/test_store_backend_v3.py
+    observed_behavior:
+      Refreshes the generated architecture documentation and its source
+      records, while keeping the related store and source-analysis behavior covered
+      by regression tests.
+    public_impact: docs
+    decision: accepted
+    evidence_subject: "feat: update architecture docu and fix pre-commit"
+    target_entry_id: entry-0005
+    notes: Covered by the architecture documentation release entry.
+  - sha: 5c6294ecbd342a784cf68e4e466f843fe03d8144
+    source_ref: git:5c6294ecbd342a784cf68e4e466f843fe03d8144
+    short_sha: 5c6294e
+    changed_paths:
+      - .ledger/archledger/data/document-state.json
+      - .ledger/archledger/data/profiles/arc42/sections/content-0002.md
+      - .ledger/archledger/data/profiles/arc42/sections/content-0005.md
+      - .ledger/archledger/data/profiles/arc42/sections/content-0006.md
+      - .ledger/archledger/data/profiles/arc42/sections/content-0009.md
+      - .ledger/archledger/data/profiles/arc42/sections/content-0011.md
+      - .ledger/archledger/data/profiles/arc42/sections/content-0012.md
+      - .ledger/archledger/data/records/constraints/constraint-0023.md
+      - .ledger/archledger/data/records/decisions/adr-0070.md
+      - .ledger/archledger/data/records/glossary/glossary-0090.md
+      - .ledger/archledger/data/records/risks/risk-0082.md
+      - .ledger/archledger/data/records/runtime/runtime-0053.md
+      - ARCHITECTURE.md
+      - README.md
+      - booktx/config.py
+      - booktx/judge_provenance.py
+      - booktx/source_analysis_snapshot.py
+      - booktx/source_record_index.py
+      - booktx/status.py
+      - booktx/store/__init__.py
+      - booktx/store/doctor.py
+      - booktx/store/migration.py
+      - booktx/store/models.py
+      - booktx/store/v1_v2.py
+      - booktx/store/v3.py
+      - booktx/validate.py
+      - booktx/workflows/series.py
+      - booktx/workflows/translate.py
+      - booktx/workflows/translate_query.py
+      - docs/architecture.md
+      - pyproject.toml
+      - tests/test_docs_consistency.py
+      - tests/test_store_backend_v3.py
+      - tests/test_translation_concordance.py
+    stats:
+      files_changed: 0
+      insertions: 1213
+      deletions: 850
+    inspected: true
+    inspected_paths:
+      - booktx/source_record_index.py
+      - booktx/status.py
+      - booktx/workflows/translate_query.py
+      - booktx/store/doctor.py
+      - booktx/store/migration.py
+      - tests/test_store_backend_v3.py
+    observed_behavior:
+      Moves ordinary status, search, list, and export reads to a source
+      record index and chunk-scoped repository access, reserving full materialized compatibility
+      snapshots for migration and other compatibility operations.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: improved v3  store integration"
+    target_entry_id: entry-0006
+    notes: Covered by the chunk-scoped store access release entry.
+  - sha: 6a5f0585336ce5737aaf8113e95aa7180419dadd
+    source_ref: git:6a5f0585336ce5737aaf8113e95aa7180419dadd
+    short_sha: 6a5f058
+    changed_paths:
+      - booktx/acceptance.py
+      - booktx/agent_todo.py
+      - booktx/agents_md.py
+      - booktx/build.py
+      - booktx/chunking.py
+      - booktx/cli.py
+      - booktx/cli_support.py
+      - booktx/command_catalog.py
+      - booktx/command_hints.py
+      - booktx/commands/context.py
+      - booktx/commands/epub.py
+      - booktx/commands/profile.py
+      - booktx/commands/root.py
+      - booktx/commands/translate.py
+      - booktx/config.py
+      - booktx/context.py
+      - booktx/context_packs.py
+      - booktx/context_sync.py
+      - booktx/epub_inline_xhtml.py
+      - booktx/epub_io.py
+      - booktx/epub_manifest.py
+      - booktx/epub_output_policy.py
+      - booktx/epub_preflight.py
+      - booktx/epub_toc_audit.py
+      - booktx/epub_verify.py
+      - booktx/glossary_context_migration.py
+      - booktx/glossary_diagnostics.py
+      - booktx/html_io.py
+      - booktx/identity.py
+      - booktx/inline_audit.py
+      - booktx/judge_acceptance.py
+      - booktx/judge_provenance.py
+      - booktx/judge_sources.py
+      - booktx/judge_store.py
+      - booktx/judge_tasks.py
+      - booktx/linguistic_audit.py
+      - booktx/markdown_io.py
+      - booktx/models.py
+      - booktx/output_paths.py
+      - booktx/path_display.py
+      - booktx/placeholders.py
+      - booktx/progress.py
+      - booktx/qa_scan.py
+      - booktx/review_acceptance.py
+      - booktx/review_status.py
+      - booktx/review_tasks.py
+      - booktx/review_todo.py
+      - booktx/runtime.py
+      - booktx/selection_mode.py
+      - booktx/source_analysis.py
+      - booktx/status.py
+      - booktx/store/__init__.py
+      - booktx/store/detect.py
+      - booktx/store/migration.py
+      - booktx/store/models.py
+      - booktx/store/transactions.py
+      - booktx/store/v3.py
+      - booktx/submissions.py
+      - booktx/tasks.py
+      - booktx/termbase.py
+      - booktx/termbase_audit.py
+      - booktx/todo_lifecycle.py
+      - booktx/todo_resume.py
+      - booktx/todo_status.py
+      - booktx/translation_concordance.py
+      - booktx/translation_store.py
+      - booktx/validate.py
+      - booktx/validation_receipts.py
+      - booktx/workflows/agents.py
+      - booktx/workflows/context.py
+      - booktx/workflows/epub.py
+      - booktx/workflows/glossary.py
+      - booktx/workflows/judge.py
+      - booktx/workflows/review.py
+      - booktx/workflows/root.py
+      - booktx/workflows/series.py
+      - booktx/workflows/source.py
+      - booktx/workflows/termbase.py
+      - booktx/workflows/translate.py
+      - docs/agent-workflow.md
+      - docs/commands.md
+      - docs/epub.md
+      - skills/booktx/SKILL.md
+      - tests/test_agents_md.py
+      - tests/test_chapters.py
+      - tests/test_cli.py
+      - tests/test_cli_isolation.py
+      - tests/test_cli_phase3_translate.py
+      - tests/test_cli_translate_todo.py
+      - tests/test_command_catalog.py
+      - tests/test_epub_io.py
+      - tests/test_epub_toc_audit.py
+      - tests/test_store_backend_v3.py
+    stats:
+      files_changed: 0
+      insertions: 1660
+      deletions: 626
+    inspected: true
+    inspected_paths:
+      - booktx/agent_todo.py
+      - booktx/todo_status.py
+      - booktx/commands/translate.py
+      - booktx/epub_verify.py
+      - booktx/output_paths.py
+      - docs/commands.md
+      - docs/epub.md
+      - skills/booktx/SKILL.md
+      - tests/test_cli_translate_todo.py
+      - tests/test_cli.py
+    observed_behavior:
+      Adds explicit open-todo discovery and todo-id selection, supports
+      selecting all remaining chapters, and adds read-only built-EPUB archive verification
+      and inspection paths with structural and unresolved-token checks.
+    public_impact: public
+    decision: accepted
+    evidence_subject: "feat: better todo list commands and improved skill"
+    target_entry_id: entry-0007
+    notes: Covered by the todo and EPUB verification release entry.
